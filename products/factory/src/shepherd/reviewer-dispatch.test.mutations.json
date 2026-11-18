@@ -40,6 +40,15 @@
         "agentChatReviewerDispatch roster retired generations refuses a reviewer whose seat's retired first generation the implementer spawned",
         "agentChatReviewerDispatch roster retired generations proves nothing, and still reads the roster, on an agent-chat that predates --include-retired"
       ]
+    },
+    {
+      "name": "a gate roster timeout reads as a landed ask again",
+      "file": "products/factory/src/shepherd/reviewer-dispatch.ts",
+      "find": "throw notLaunched(error);",
+      "replace": "throw error;",
+      "kills": [
+        "agentChatReviewerDispatch reviewer-slot reading reports a gate roster read that timed out as a not-launched busy refusal, launching nobody (TP-5295)"
+      ]
     }
   ]
 }

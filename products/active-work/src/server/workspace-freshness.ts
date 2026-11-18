@@ -11,8 +11,8 @@ import { existsSync } from 'node:fs';
 import { watchTree, type TreeWatcher } from '@titan-design/daemon';
 import type { Freshness } from '../session-index/freshness.js';
 import type { WorkspaceGraph } from '../session-index/graph.js';
-import { withRefreshLock } from '../session-index/refresh.js';
-import { withinBudget } from '../session-index/scheduler.js';
+import { withRefreshLock } from '../session-index/refresh-lock.js';
+import { isLockContention, withinBudget } from '../session-index/scheduler.js';
 import { getActiveRoot, getMinerRoot } from '../utils/paths.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 
@@ -25,6 +25,15 @@ export interface WorkspaceFreshness {
   idle(): Promise<void>;
 }
 
+interface InfoLogger {
+  info(obj: object, msg: string): void;
+}
+
+interface WorkspaceFreshnessOptions {
+  log?: InfoLogger;
+  now?: () => number;
+}
+
 interface WorkspaceRefreshState {
   dirty: boolean;
   /** Resolves true when the refresh succeeded. */
@@ -32,8 +41,12 @@ interface WorkspaceRefreshState {
 }
 
 /** A change that lands while a refresh runs gets a follow-up refresh. */
-export function createWorkspaceFreshness(refresh: () => Promise<unknown>): WorkspaceFreshness {
+export function createWorkspaceFreshness(
+  refresh: () => Promise<unknown>,
+  options: WorkspaceFreshnessOptions = {},
+): WorkspaceFreshness {
   const state: WorkspaceRefreshState = { dirty: false, inFlight: null };
+  const timed = withRefreshLog(refresh, options);
   return {
     markDirty: () => {
       state.dirty = true;
@@ -41,10 +54,59 @@ export function createWorkspaceFreshness(refresh: () => Promise<unknown>): Works
     ensure: (budgetMs) =>
       !state.dirty && !state.inFlight
         ? Promise.resolve('fresh')
-        : withinBudget(() => catchUpWorkspace(state, refresh), budgetMs),
+        : ensureWithinBudget(() => catchUpWorkspace(state, timed), budgetMs, options.log),
     idle: async () => {
       await state.inFlight;
     },
+  };
+}
+
+/** A stale answer with the pass still running means the budget ran out, not that the refresh failed. */
+async function ensureWithinBudget(
+  catchUp: () => Promise<boolean>,
+  budgetMs: number,
+  log: InfoLogger | undefined,
+): Promise<Freshness> {
+  const pass = { settled: false };
+  const freshness = await withinBudget(async () => {
+    const ok = await catchUp();
+    pass.settled = true;
+    return ok;
+  }, budgetMs);
+  if (freshness === 'stale' && !pass.settled) {
+    log?.info({ budgetMs }, 'workspace freshness stale: budget expired');
+  }
+  return freshness;
+}
+
+type RefreshOutcome = 'ok' | 'failed' | 'lock-held';
+
+function refreshCounts(result: unknown): { files?: number; indexed?: number } {
+  const { files, indexed } = (result ?? {}) as { files?: unknown; indexed?: unknown };
+  return {
+    ...(typeof files === 'number' ? { files } : {}),
+    ...(typeof indexed === 'number' ? { indexed } : {}),
+  };
+}
+
+/** One info line per refresh, so the reader budget can be re-measured from daemon.log. */
+function withRefreshLog(
+  refresh: () => Promise<unknown>,
+  { log, now = Date.now }: WorkspaceFreshnessOptions,
+): () => Promise<unknown> {
+  if (!log) return refresh;
+  const record = (started: number, outcome: RefreshOutcome, result?: unknown): void =>
+    log.info({ ms: now() - started, ...refreshCounts(result), outcome }, 'workspace refresh');
+  return async () => {
+    const started = now();
+    try {
+      const result = await refresh();
+      record(started, 'ok', result);
+      return result;
+    } catch (err) {
+      record(started, isLockContention(err) ? 'lock-held' : 'failed');
+      throw err;
+    }
   };
 }
 
@@ -78,7 +140,7 @@ async function catchUpWorkspace(
   return state.dirty ? startWorkspaceRefresh(state, refresh) : ok;
 }
 
-interface WarnLogger {
+interface WarnLogger extends InfoLogger {
   warn(obj: object, msg: string): void;
 }
 
@@ -122,6 +184,6 @@ export function startWorkspaceFreshness(
   signal: AbortSignal,
   log: WarnLogger,
 ): { workspace: WorkspaceFreshness; watcher: TreeWatcher | null } {
-  const workspace = createWorkspaceFreshness(workspaceRefresh(currentGraph, signal));
+  const workspace = createWorkspaceFreshness(workspaceRefresh(currentGraph, signal), { log });
   return { workspace, watcher: watchWorkspace(getActiveRoot(), workspace, log) };
 }

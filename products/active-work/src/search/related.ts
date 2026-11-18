@@ -1,10 +1,22 @@
 import { existsSync } from 'node:fs';
+import {
+  deriveQuery,
+  planContext,
+  type ContextPlan,
+  type Degradation,
+  type DerivedQuery,
+  type DropReason,
+} from '@titan-design/retrieval';
 import { NoteReadIfSchema } from '../schemas/note.js';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
-import { deriveQuery, type DerivedQuery } from './derive-query.js';
+import { DECISIONS_CLASS, SEARCH_CLASSES } from './classes.js';
+import { hitTiers } from './context-tiers.js';
 import { graphTermStatistics } from './document-frequency.js';
 import { searchWorkspace } from './index.js';
+import { decisionHits } from './related-decisions.js';
+import { namedIdCount, namesTask, servedByRelated } from './related-filters.js';
 import type { ResolvedHit } from './resolve.js';
+import { visibilityFor, type Shown } from '../sessions/visibility.js';
 import { readRawFrontmatter } from '../utils/gray-matter-io.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { toAbsolute } from '../workspace-index/refs.js';
@@ -35,9 +47,23 @@ import { toAbsolute } from '../workspace-index/refs.js';
  */
 export const RELATED_DEFAULT_LIMIT = 6;
 export const RELATED_DEFAULT_BUDGET = 1500;
+/** RELATED_DEFAULT_BUDGET characters at chars/4. */
+export const RELATED_DEFAULT_TOKENS = 375;
+/** How many ranked hits context mode plans over. */
+export const RELATED_CONTEXT_CANDIDATES = 20;
+type RelatedMode = 'list' | 'context';
 
-/** Workspace classes only. Transcripts are the raw form of what the notes distil. */
-export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions'];
+/** Workspace classes and the decision ledger. Transcripts are the raw form of what the notes distil. */
+export const RELATED_DEFAULT_CLASSES = ['notes', 'sources', 'tasks', 'sessions', 'plans', DECISIONS_CLASS.name];
+
+function wantsDecisions(input: RelatedInput): boolean {
+  return (input.classes ?? RELATED_DEFAULT_CLASSES).includes(DECISIONS_CLASS.name);
+}
+
+/** The ledger is not in the graph, so the workspace search must never be asked for it. */
+function workspaceClasses(input: RelatedInput): string[] {
+  return (input.classes ?? RELATED_DEFAULT_CLASSES).filter((name) => name !== DECISIONS_CLASS.name);
+}
 
 export type RelatedHit = Pick<
   ResolvedHit,
@@ -53,16 +79,40 @@ export interface RelatedDegradation {
   message: string;
 }
 
+interface RelatedEntry {
+  ref: string;
+  class: string;
+  tier: number;
+  text: string;
+  tokens: number;
+}
+
+interface RelatedDropped {
+  ref: string;
+  class: string;
+  reason: DropReason;
+}
+
 export interface RelatedResult {
   hits: RelatedHit[];
   degraded: RelatedDegradation[];
   query: DerivedQuery;
+  /** The context-mode fields below are present only in context mode. */
+  entries?: RelatedEntry[];
+  dropped?: RelatedDropped[];
+  usedTokens?: number;
+  budgetTokens?: number;
 }
 
 export interface RelatedInput {
   text: string;
   initiative?: string;
   limit?: number;
+  mode?: RelatedMode;
+  /** Context mode: token budget. */
+  tokens?: number;
+  /** Context mode: deepest tier. */
+  maxTier?: number;
   /** Most rendered characters, summed over hits. */
   budget?: number;
   classes?: string[];
@@ -70,10 +120,12 @@ export interface RelatedInput {
   exclude?: string[];
   /** How the caller renders a hit, so the budget counts what is actually printed. */
   render?: (hit: RelatedHit) => string;
-  /** False drops the hit before the cap, so a withheld initiative never takes a slot. */
-  servable?: (initiative: string | null) => boolean;
   dbPath?: string;
   activeRoot?: string;
+  /** An already-open graph, left open; a caller running many queries opens it once. */
+  graph?: WorkspaceGraph;
+  /** An already-computed agent visibility verdict, reused instead of rereading every brief. */
+  visible?: Shown;
 }
 
 const EMPTY_QUERY: DerivedQuery = { terms: [], expression: '' };
@@ -132,17 +184,6 @@ async function withReadIf(hits: RelatedHit[], activeRoot: string): Promise<Relat
   );
 }
 
-/**
- * Handoff archives restate session records, which have their own class, and
- * were served 15 times and opened 0 times in the week to 2026-09-23 (TP-331).
- * `search` still finds them; only the unasked-for related block drops them.
- */
-const NOT_SERVED_BY_RELATED = /(^|\/)sources\/handoff-archive[^/]*\.md$/;
-
-function servedByRelated(hit: ResolvedHit): boolean {
-  return hit.class !== 'sources' || hit.path === null || !NOT_SERVED_BY_RELATED.test(hit.path);
-}
-
 function openIndex(dbPath: string): WorkspaceGraph | RelatedDegradation {
   // Opening creates the file, and nothing on this path may write to the graph.
   if (!existsSync(dbPath)) {
@@ -155,37 +196,131 @@ function openIndex(dbPath: string): WorkspaceGraph | RelatedDegradation {
   }
 }
 
+/** Each class's page share, read as its share of the token budget. */
+function sharesAsQuotas(): Record<string, number> {
+  return Object.fromEntries([...SEARCH_CLASSES, DECISIONS_CLASS].map((cls) => [cls.name, cls.share]));
+}
+
+function requestedTokens(input: RelatedInput): number {
+  return input.tokens ?? RELATED_DEFAULT_TOKENS;
+}
+
+function placedFields(
+  hits: RelatedHit[],
+  plan: ContextPlan,
+): Pick<RelatedResult, 'hits' | 'entries' | 'dropped' | 'usedTokens' | 'budgetTokens'> {
+  const placed = new Set(plan.entries.map((entry) => entry.id));
+  return {
+    hits: hits.filter((hit) => placed.has(hit.ref)),
+    entries: plan.entries.map(({ id, category, tier, text, tokens }) => ({
+      ref: id,
+      class: category,
+      tier,
+      text,
+      tokens,
+    })),
+    dropped: plan.dropped.map(({ id, category, reason }) => ({
+      ref: id,
+      class: category,
+      reason,
+    })),
+    usedTokens: plan.usedTokens,
+    budgetTokens: plan.budgetTokens,
+  };
+}
+
+async function planRelated(
+  hits: RelatedHit[],
+  input: RelatedInput,
+  activeRoot: string,
+): Promise<Pick<RelatedResult, 'hits' | 'entries' | 'dropped' | 'usedTokens' | 'budgetTokens'>> {
+  const candidates = await Promise.all(
+    hits.map(async (hit, i) => ({
+      id: hit.ref,
+      category: hit.class,
+      score: hits.length - i,
+      tiers: await hitTiers(hit, activeRoot),
+    })),
+  );
+  const plan = planContext(candidates, {
+    tokens: requestedTokens(input),
+    quotas: sharesAsQuotas(),
+    ...(input.maxTier !== undefined ? { maxTier: input.maxTier } : {}),
+  });
+  return placedFields(hits, plan);
+}
+
+async function rankedHits(
+  graph: WorkspaceGraph,
+  input: RelatedInput,
+  limit: number,
+  query: DerivedQuery,
+  activeRoot: string,
+  visible: Shown,
+): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
+  const exclude = new Set(input.exclude ?? []);
+  const result = await searchWorkspace(query.expression, {
+    visible,
+    graph,
+    rawExpression: true,
+    limit: limit + exclude.size + namedIdCount(input.text),
+    classes: workspaceClasses(input),
+    ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
+    ...(input.activeRoot !== undefined ? { activeRoot: input.activeRoot } : {}),
+  });
+  const kept = result.hits
+    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit) && !namesTask(input.text, hit))
+    .slice(0, limit)
+    .map(toRelatedHit);
+  return { hits: await withReadIf(kept, activeRoot), degraded: result.degraded.map(toRelatedDegradation) };
+}
+
+function toRelatedDegradation({ retriever, reason, message }: Degradation): RelatedDegradation {
+  return { source: retriever, reason, message };
+}
+
+async function gatherHits(
+  graph: WorkspaceGraph,
+  input: RelatedInput,
+  query: DerivedQuery,
+  limit: number,
+  activeRoot: string,
+): Promise<{ hits: RelatedHit[]; degraded: RelatedDegradation[] }> {
+  // Related context is pasted into sessions no surface marked as the owner's, so it gets an agent's view.
+  const visible = input.visible ?? (await visibilityFor({ activeRoot, warnings: [] }));
+  const decisions = wantsDecisions(input)
+    ? await decisionHits({
+        query,
+        visible,
+        activeRoot,
+        limit: Math.max(1, Math.ceil(limit * DECISIONS_CLASS.share)),
+        ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
+        ...(input.exclude !== undefined ? { exclude: input.exclude } : {}),
+      })
+    : { hits: [], degraded: [] };
+  const workspace =
+    workspaceClasses(input).length === 0
+      ? { hits: [], degraded: [] }
+      : await rankedHits(graph, input, Math.max(1, limit - decisions.hits.length), query, activeRoot, visible);
+  return {
+    hits: [...workspace.hits, ...decisions.hits],
+    degraded: [...workspace.degraded, ...decisions.degraded],
+  };
+}
+
 async function searchOpenIndex(
   graph: WorkspaceGraph,
   input: RelatedInput,
   query: DerivedQuery,
 ): Promise<RelatedResult> {
-  const limit = input.limit ?? RELATED_DEFAULT_LIMIT;
-  const exclude = new Set(input.exclude ?? []);
-  const servable = input.servable ?? (() => true);
-  const result = await searchWorkspace(query.expression, {
-    graph,
-    rawExpression: true,
-    limit: limit + exclude.size,
-    classes: input.classes ?? RELATED_DEFAULT_CLASSES,
-    ...(input.initiative !== undefined ? { initiative: input.initiative } : {}),
-    ...(input.activeRoot !== undefined ? { activeRoot: input.activeRoot } : {}),
-  });
-  const kept = result.hits
-    .filter((hit) => !exclude.has(hit.ref) && servedByRelated(hit) && servable(hit.initiative))
-    .slice(0, limit)
-    .map(toRelatedHit);
+  const context = input.mode === 'context';
+  const limit = input.limit ?? (context ? RELATED_CONTEXT_CANDIDATES : RELATED_DEFAULT_LIMIT);
+  const activeRoot = input.activeRoot ?? getActiveRoot();
+  const { hits, degraded } = await gatherHits(graph, input, query, limit, activeRoot);
+  if (context) return { ...(await planRelated(hits, input, activeRoot)), degraded, query };
   return {
-    hits: withinBudget(
-      await withReadIf(kept, input.activeRoot ?? getActiveRoot()),
-      input.budget ?? RELATED_DEFAULT_BUDGET,
-      input.render ?? defaultRender,
-    ),
-    degraded: result.degraded.map(({ retriever, reason, message }) => ({
-      source: retriever,
-      reason,
-      message,
-    })),
+    hits: withinBudget(hits, input.budget ?? RELATED_DEFAULT_BUDGET, input.render ?? defaultRender),
+    degraded,
     query,
   };
 }
@@ -207,11 +342,16 @@ async function relatedFromIndex(
   }
 }
 
-export async function relatedContext(input: RelatedInput): Promise<RelatedResult> {
+function withContextFields(result: RelatedResult, input: RelatedInput): RelatedResult {
+  return { entries: [], dropped: [], usedTokens: 0, budgetTokens: requestedTokens(input), ...result };
+}
+
+async function relatedOrDegraded(input: RelatedInput): Promise<RelatedResult> {
   if (input.text.trim().length === 0) {
     return degradedResult(EMPTY_QUERY, { source: 'query', reason: 'empty', message: 'no text' });
   }
-  const opened = openIndex(input.dbPath ?? defaultGraphPath());
+  const borrowed = input.graph !== undefined;
+  const opened = input.graph ?? openIndex(input.dbPath ?? defaultGraphPath());
   if (!('db' in opened)) return degradedResult(EMPTY_QUERY, opened);
   try {
     return await relatedFromIndex(opened, input);
@@ -222,6 +362,11 @@ export async function relatedContext(input: RelatedInput): Promise<RelatedResult
       message: describe(err),
     });
   } finally {
-    opened.db.close();
+    if (!borrowed) opened.db.close();
   }
+}
+
+export async function relatedContext(input: RelatedInput): Promise<RelatedResult> {
+  const result = await relatedOrDegraded(input);
+  return input.mode === 'context' ? withContextFields(result, input) : result;
 }

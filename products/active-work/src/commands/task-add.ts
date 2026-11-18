@@ -17,6 +17,7 @@ import { nowIso, today } from '../utils/today.js';
 import { assertEdgeWrite } from '../tasks/edge-index.js';
 import { DRAFT_TAG } from '../tasks/draft.js';
 import { ValidationError } from '../errors.js';
+import { assertKnownBet } from './_bet-check.js';
 import { assertKnownDeliverables } from './_deliverables.js';
 import { doneWhenProblem } from './_done-when-gate.js';
 import {
@@ -34,6 +35,16 @@ import {
   type TaskOrLine,
 } from './_task-quiet.js';
 import { warnRelatedTasks } from './_task-related.js';
+import {
+  assertProvenance,
+  assertRequiredFields,
+  filedBy,
+  filedOrigins,
+  provenanceArgs,
+  TASK_PROVENANCE_OPTIONS,
+  TaskProvenanceArgsShape,
+} from './_task-provenance.js';
+import { parseOwnerSteps, TASK_PLAN_OPTIONS, TaskPlanArgsShape } from './_task-plan-fields.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -52,6 +63,8 @@ const ArgsSchema = z.object({
   area: z.string().min(1).optional(),
   due: DueArg,
   draft: z.boolean().optional(),
+  ...TaskPlanArgsShape,
+  ...TaskProvenanceArgsShape,
   quiet: QuietArg,
 });
 
@@ -82,8 +95,12 @@ function nextPriority(existing: Task[]): number {
   return max + 1;
 }
 
-function newTask(args: Args, id: string, priority: number): Task {
+function newTask(args: Args, id: string, priority: number, filer: string): Task {
+  const provenance = provenanceArgs(args);
   return {
+    ...provenance,
+    filed_by: filer,
+    field_origin: filedOrigins(undefined, Object.keys(provenance)),
     id,
     parent: args.parent,
     dep: args.dep,
@@ -100,10 +117,25 @@ function newTask(args: Args, id: string, priority: number): Task {
     due: args.due,
     tags: args.draft ? [...new Set([...(args.tags ?? []), DRAFT_TAG])] : args.tags,
     notes: args.notes,
+    bet: args.bet,
+    fold: args.fold,
+    owner_steps: parseOwnerSteps(args.owner_step),
     created: nowIso(),
     updated: today(),
     done_at: null,
   };
+}
+
+async function assertFileable(
+  activeRoot: string,
+  frontmatter: Record<string, unknown>,
+  task: Task,
+  args: Args,
+): Promise<void> {
+  assertRequiredFields(frontmatter, task);
+  await assertProvenance(activeRoot, task);
+  await assertCategories(activeRoot, task, changedCategoryFields(args));
+  await assertKnownBet(task, undefined, args.slug);
 }
 
 export default defineCommand<Args, TaskOrLine>({
@@ -125,22 +157,24 @@ export default defineCommand<Args, TaskOrLine>({
         long: '--done-when',
         description: 'Definition of done',
       },
-      tags: { long: '--tags', description: 'Comma-separated tag list' },
+      tags: { long: '--tags', description: 'Tag for the task. Repeat the flag for each value' },
       notes: { long: '--notes', description: 'Free-form notes' },
       parent: { long: '--parent', description: 'Parent task id, in this initiative' },
       dep: {
         long: '--dep',
-        description: 'Comma-separated ids this task depends on (any initiative)',
+        description: 'Id this task depends on (any initiative). Repeat the flag for each value',
       },
       deliverable: {
         long: '--deliverable',
-        description: 'Comma-separated deliverable ids this task counts toward',
+        description: 'Deliverable id this task counts toward. Repeat the flag for each value',
       },
       draft: {
         long: '--draft',
         description: 'File as a draft without a done_when; tagged draft, hidden from the bootstrap; promote with task edit --remove-tag draft',
       },
       ...CATEGORY_OPTIONS,
+      ...TASK_PLAN_OPTIONS,
+      ...TASK_PROVENANCE_OPTIONS,
       quiet: quietOption('PRJ-12 created'),
     },
   },
@@ -162,8 +196,8 @@ export default defineCommand<Args, TaskOrLine>({
       if (args.parent !== undefined || args.dep !== undefined) {
         await assertEdgeWrite({ slug: args.slug, id, parent: args.parent, dep: args.dep });
       }
-      const task = newTask(args, id, args.priority ?? nextPriority(existing));
-      await assertCategories(activeRoot, task, changedCategoryFields(args));
+      const task = newTask(args, id, args.priority ?? nextPriority(existing), filedBy(process.env, ctx));
+      await assertFileable(activeRoot, brief.frontmatter, task, args);
       const taskDir = path.join(getInitiativeDir(args.slug), 'tasks');
       await fs.mkdir(taskDir, { recursive: true });
       await writeYaml(path.join(taskDir, `${id}.yml`), task, TaskSchema);

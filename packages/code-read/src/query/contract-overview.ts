@@ -1,13 +1,12 @@
 import { DEFAULT_HEALTH_WEIGHTS, type PenaltyWeight } from "@titan-design/code-graph/analysis";
 import { z } from "zod";
-import { BaselineFields } from "./contract-findings.js";
 import { ChurnWindow } from "./contract-hotspots.js";
-import { NodeRef, SnapshotRef } from "./schemas.js";
+import { BaselineFields, NodeRef, SnapshotRef } from "./schemas.js";
 
 /** Most rows the reading order or the look-first list returns. */
 export const OVERVIEW_ROWS_MAX = 50;
 
-export const AttentionSignalKey = z.enum(["hotspots", "findings", "complexity", "hidden-coupling"]);
+const AttentionSignalKey = z.enum(["hotspots", "findings", "complexity", "hidden-coupling"]);
 
 /** One named signal of where attention is due, with the points the caller's weights give it. */
 export const AttentionSignal = z.object({
@@ -20,7 +19,7 @@ export const AttentionSignal = z.object({
   detail: z.string(),
 });
 
-export const LookFirstReason = z.enum(["over-cutoff", "findings", "churn-complexity"]);
+const LookFirstReason = z.enum(["over-cutoff", "findings", "churn-complexity"]);
 
 export const LookFirstRow = z.object({
   node: NodeRef,

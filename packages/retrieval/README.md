@@ -61,6 +61,26 @@ locked index lowers recall; it never breaks search.
 
 `minScore` and `dropoff` (cut at the largest relative score drop) trim the fused list.
 
+## Vocabulary correction
+
+Pure functions for fixing a misspelled query against the terms an index has seen.
+
+- `extractTerms(text)` returns a `Map` from stored (lowercase) term to the first cased form
+  seen. It keeps terms of 3 to 40 characters and drops stop words, pure numbers and
+  hex strings of 7 or more characters that contain a digit.
+- `scoreTerm(cased, docFrequency, totalDocs)` is IDF plus a length bonus plus 0.5 for an
+  identifier (`snake_case`, `kebab-case`, `camelCase`). Pass the cased form, or camelCase
+  loses its bonus.
+- `editDistance(a, b, maxDistance?)` is Levenshtein over NFC code points, banded: past
+  `maxDistance` it stops and returns `maxDistance + 1`.
+- `findCorrection(term, source)` keeps a known term. Otherwise it fetches candidates within
+  `maxEditDistance(length)` (1 up to 4 characters, 2 up to 12, 3 beyond) and takes the
+  closest, ties to the higher score, then the earlier term.
+- `correctQuery(query, source)` corrects the first 8 words of 3 or more characters.
+
+The `VocabularySource` (`has`, `candidates(minLength, maxLength, limit)`) is injected, so
+correction needs no database. `vocabularyFromEntries(entries)` is an in-memory source.
+
 ## Reranking
 
 `crossEncoderReranker()` runs `Xenova/ms-marco-MiniLM-L-6-v2` in-process through
@@ -72,3 +92,36 @@ ranking and reports `{ retriever: RERANK_STAGE, reason: "error", message }` in t
 `degraded` array, so a cross-encoder that runs out of memory costs the reordering and not
 the answer. `textFor` throwing degrades the same way.
 
+
+## Context mode
+
+`planContext` turns scored candidates into a token-budgeted block: breadth first at each
+candidate's default tier, then a cap of twice the mean share per entry, then deepening the
+best hits with whatever budget is left. The rules are in
+[the reference page](https://hjewkes.github.io/titan-platform/reference/retrieval).
+
+Entries come back in score order. Set `budget.order: "edges"` to put the best hits at both
+ends of the list, where a model attends most: rank 1 first, rank 2 last, rank 3 second, and so
+on, so the weakest land mid-list. Which entries are kept does not change.
+
+`engine.retrieve(request, { tierSource, categoryOf, estimateTokens, signal })` runs the same
+ranking as `search` and plans the result:
+
+```ts
+const tierSource: TierSource = {
+  tiers: async (result) => {
+    const title = titleOf(result.id);
+    return [title, `${title}: ${summaryOf(result.id)}`];
+  },
+};
+
+const response = await engine.retrieve(
+  { mode: "context", query: "deploy checklist", limit: 20, budget: { tokens: 600, quotas: { notes: 0.5 } } },
+  { tierSource, categoryOf: (result) => result.id.split(":")[0]! },
+);
+```
+
+`mode: "list"` returns exactly what `search` does. A tier source that throws drops that
+result as `tier-error` and adds one `{ retriever: TIERS_STAGE, reason: "error" }`
+degradation; a missing `tierSource` in context mode throws `TypeError`, and a malformed
+request throws `ZodError`. `zod` ^4 is a peer dependency.

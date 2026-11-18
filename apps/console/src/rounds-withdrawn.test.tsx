@@ -47,12 +47,13 @@ async function renderLiveRounds(): Promise<void> {
   await screen.findByText("Open rounds");
 }
 
-const rowIdsIn =(status: string): (string | null)[] =>
+const rowIdsIn = (status: string): (string | null)[] =>
   within(screen.getByTestId(`rounds-${status}`)).queryAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
 
 describe("withdrawn rounds on the rounds list", () => {
   it("keeps a withdrawn round out of Open and lists it under Withdrawn with its reason", async () => {
     await renderRounds();
+    fireEvent.click(screen.getByText("Withdrawn rounds (2)"));
 
     expect(rowIdsIn("open")).not.toContain(`round-row-${SUPERSEDED}`);
     expect(rowIdsIn("withdrawn")).toEqual(expect.arrayContaining([`round-row-${SUPERSEDED}`, `round-row-${CLOSED}`]));
@@ -61,6 +62,7 @@ describe("withdrawn rounds on the rounds list", () => {
 
   it("links a superseded round to the round that replaced it", async () => {
     await renderRounds();
+    fireEvent.click(screen.getByText("Withdrawn rounds (2)"));
 
     const reason = within(screen.getByTestId(`round-row-${SUPERSEDED}`)).getByTestId(`round-withdrawn-${SUPERSEDED}`);
     expect(within(reason).getByText("Superseded by")).toBeTruthy();
@@ -71,6 +73,7 @@ describe("withdrawn rounds on the rounds list", () => {
 
   it("keeps an answered round under Sent, never Open, when a withdrawal raced its answer", async () => {
     await renderRounds();
+    fireEvent.click(screen.getByText("Sent rounds (1)"));
 
     expect(rowIdsIn("open")).not.toContain(`round-row-${ANSWERED_THEN_WITHDRAWN}`);
     expect(rowIdsIn("sent")).toContain(`round-row-${ANSWERED_THEN_WITHDRAWN}`);
@@ -83,6 +86,7 @@ describe("withdrawn rounds on the rounds list", () => {
 
     await rounds.withdraw(LATE, "closed");
     fireEvent.focus(window);
+    fireEvent.click(await screen.findByText(/^Withdrawn rounds \(/));
 
     await waitFor(() => expect(rowIdsIn("withdrawn")).toContain(`round-row-${LATE}`));
     expect(rowIdsIn("open")).not.toContain(`round-row-${LATE}`);

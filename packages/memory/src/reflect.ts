@@ -1,5 +1,6 @@
 import type { WatermarkTable } from "@titan-design/store-sqlite";
 import { curate, type CurateOptions, type CurationReport } from "./curate.js";
+import { keywordScore } from "./recall.js";
 import type { PlaybookStore } from "./store.js";
 import { normalizeContent } from "./text.js";
 import { PlaybookDeltaSchema, type Bullet, type ParsedDelta } from "./types.js";
@@ -25,6 +26,8 @@ export interface ReflectSessionInput {
 export interface ReflectOptions extends Omit<CurateOptions, "provenance"> {
   maxIterations?: number;
   maxDeltas?: number;
+  /** Most playbook bullets sent to the reflector per iteration; only bullets matching the diary are sent. */
+  maxBullets?: number;
 }
 
 export interface RejectedDelta {
@@ -54,13 +57,14 @@ export interface ReflectDeps {
 export async function reflectSession(deps: ReflectDeps, input: ReflectSessionInput, reflector: Reflector, options: ReflectOptions = {}): Promise<ReflectionResult> {
   const maxIterations = options.maxIterations ?? 3;
   const maxDeltas = options.maxDeltas ?? 50;
+  const maxBullets = options.maxBullets ?? 40;
   const deltas: ParsedDelta[] = [];
   const rejected: RejectedDelta[] = [];
   const seen = new Set<string>();
   let iterations = 0;
   while (iterations < maxIterations && deltas.length < maxDeltas) {
     iterations++;
-    const raw = await reflector({ sessionRef: input.sessionRef, diary: input.diary, iteration: iterations, bullets: deps.store.list(), priorDeltas: [...deltas] });
+    const raw = await reflector({ sessionRef: input.sessionRef, diary: input.diary, iteration: iterations, bullets: matchingBullets(deps.store, input.diary, maxBullets), priorDeltas: [...deltas] });
     const fresh = parseDeltas(raw, seen, iterations, rejected);
     if (fresh.length === 0) break;
     deltas.push(...fresh.slice(0, maxDeltas - deltas.length));
@@ -68,6 +72,16 @@ export async function reflectSession(deps: ReflectDeps, input: ReflectSessionInp
   const report = curate(deps.store, deltas, { ...curateOptions(options), provenance: { sessionRef: input.sessionRef, byteOffset: input.byteOffset } });
   advanceWatermark(deps.watermark, input);
   return { deltas, rejected, iterations, report };
+}
+
+function matchingBullets(store: PlaybookStore, diary: string, maxBullets: number): Bullet[] {
+  return store
+    .list()
+    .map((bullet) => ({ bullet, score: keywordScore(bullet.content, bullet.tags, diary) }))
+    .filter((ranked) => ranked.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxBullets)
+    .map((ranked) => ranked.bullet);
 }
 
 function curateOptions(options: ReflectOptions): Omit<CurateOptions, "provenance"> {

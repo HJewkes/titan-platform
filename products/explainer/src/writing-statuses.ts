@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { ownerStatus } from "./writing-gate-policy.js";
 import type { WritingStatus } from "./writing-status.js";
 
 const STATUS = z.enum(["drop", "gate", "warning", "report-only"]);
@@ -17,8 +18,16 @@ const POOLED_BUCKET = "full";
 
 let table: StatusTable | undefined;
 
+/** The calibrated statuses with the owner's overrides from `doctrine/writing-gate.json` laid over them. */
+function withOwnerOverrides(calibrated: StatusTable): StatusTable {
+  const statusByBucket = Object.fromEntries(Object.entries(calibrated.statusByBucket).map(([row, byBucket]) => [
+    row, Object.fromEntries(Object.entries(byBucket).map(([bucket, status]) => [bucket, ownerStatus(row, status)])),
+  ]));
+  return { ...calibrated, statusByBucket };
+}
+
 const statusTable = (): StatusTable => {
-  table ??= StatusTableSchema.parse(JSON.parse(readFileSync(new URL("../doctrine/writing-check.json", import.meta.url), "utf8")));
+  table ??= withOwnerOverrides(StatusTableSchema.parse(JSON.parse(readFileSync(new URL("../doctrine/writing-check.json", import.meta.url), "utf8"))));
   return table;
 };
 

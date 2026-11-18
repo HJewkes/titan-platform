@@ -28,7 +28,7 @@ export const SYMBOL_COUNT_NOTES = {
 };
 
 /** Indexes `tree` into a throwaway store and returns the rows; the store never outlives the call. */
-export async function collectTreeMetrics(tree) {
+async function collectTreeMetrics(tree) {
   const cg = await import(ENTRY);
   const work = mkdtempSync(path.join(tmpdir(), "codewatch-metrics-"));
   const store = cg.openCodeGraph(path.join(work, "graph.db"));

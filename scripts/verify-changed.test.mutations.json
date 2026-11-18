@@ -36,6 +36,15 @@
       "kills": [
         "planCommands exits 1 with the summary when any step failed and 0 with none otherwise"
       ]
+    },
+    {
+      "name": "a seeded run past the file budget keeps its cold fallback",
+      "file": "scripts/verify-changed.mjs",
+      "find": "...(files > DEAD_CHECK_MAX_FILES ? { [DEFER_COLD_ENV]: \"1\" } : {})",
+      "replace": "",
+      "kills": [
+        "dead:check cold fallback forbids a cold fallback on a seeded run past the file budget"
+      ]
     }
   ]
 }

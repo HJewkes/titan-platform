@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateSkillFiles } from "./skill.js";
+import { detectLanguages } from "./template-helpers.js";
 import type { Profile } from "../schema/profile.js";
 
 const sampleProfile: Profile = {
@@ -139,5 +140,13 @@ describe("generateSkillFiles", () => {
       f.path.includes("per-language/typescript.md"),
     )!;
     expect(langMd.content).toContain("## Critical Rules");
+  });
+
+  it("does not report typescript for a profile with no naming or structure evidence", () => {
+    const profile: Profile = { ...sampleProfile, naming: {}, structure: {} };
+
+    expect(detectLanguages(profile)).toEqual([]);
+    const files = generateSkillFiles(profile);
+    expect(files.some((f) => f.path.includes("per-language/typescript.md"))).toBe(false);
   });
 });

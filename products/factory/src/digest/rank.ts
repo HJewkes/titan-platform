@@ -1,7 +1,7 @@
 import { keysIn } from "./keys.js";
 import type { Ask, DigestModel, Merged, Stuck } from "./model.js";
 
-export interface Caps {
+interface Caps {
   needsYou: number;
   merged: number;
   stuck: number;
@@ -22,7 +22,7 @@ export interface RankedDigest extends DigestModel {
 }
 
 /** The first source to name a PR or run wins, so a factory gate (exact command) beats a queue line about the same PR; an ask that also names something new stays, so two gates on one PR, keyed `gate:<id>`, stay two asks. */
-export function dedupeAsks(asks: readonly Ask[]): Ask[] {
+function dedupeAsks(asks: readonly Ask[]): Ask[] {
   const kept: Ask[] = [];
   const seen = new Set<string>();
   for (const ask of asks) {

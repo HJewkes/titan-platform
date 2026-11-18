@@ -1,4 +1,4 @@
-import type { GitHubPort, RepoSlug } from "./port.js";
+import type { GitHubPort, RepoSlug } from "./port-types.js";
 
 interface JobDigest {
   /** The first vitest failure line (`FAIL `, `×` or `✗`), or null when the log has none. */

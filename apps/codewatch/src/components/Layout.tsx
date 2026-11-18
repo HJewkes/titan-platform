@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 import { Badge, BadgeText, HStack } from "@titan-design/react-ui";
-import { href, type Route } from "../router.js";
+import { DEFAULT_PRIORITIES_QUERY, href, type Route } from "../router.js";
 import { useReport } from "../report-context.js";
 import { SearchBox } from "./SearchBox.js";
 
 const NAV: ReadonlyArray<{ label: string; route: Route }> = [
   { label: "Overview", route: { page: "overview" } },
-  { label: "Priorities", route: { page: "priorities", query: { filters: {}, sort: "severity", offset: 0 } } },
+  { label: "Priorities", route: { page: "priorities", query: DEFAULT_PRIORITIES_QUERY } },
   { label: "Compare", route: { page: "compare" } },
 ];
 
@@ -16,7 +16,7 @@ export function Layout({ current, children }: { current: Route["page"]; children
       <header className="mb-6 border-b border-hairline pb-3">
         <HStack justify="between" align="center" gap={4}>
           <HStack align="center" gap={4}>
-            <h1 className="m-0 text-xl font-semibold">Code report</h1>
+            <h1 className="m-0 text-xl font-semibold">codewatch</h1>
             <nav aria-label="Report views" className="flex gap-4">
               {NAV.map(({ label, route }) => (
                 <a key={label} href={href(route)} aria-current={route.page === current ? "page" : undefined}

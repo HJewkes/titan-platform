@@ -1,5 +1,13 @@
 # @titan-design/speech-stt
 
+## 0.1.1
+
+### Patch Changes
+
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.1.0
 
 ### Minor Changes

@@ -39,7 +39,7 @@ const TranscriptStateSchema = z.object({
   pendingToolNames: z.record(z.string(), z.string()).default({}),
 });
 
-export const ReaderStateSchema = z.object({
+const ReaderStateSchema = z.object({
   version: z.literal(1).default(1),
   transcripts: z.array(TranscriptStateSchema).default([]),
 });
@@ -52,9 +52,9 @@ export type ReaderState = z.infer<typeof ReaderStateSchema>;
  * result never arrives (interrupt, crash, compaction) would otherwise leak an
  * entry forever; the newest ids are the ones a result can still reference.
  */
-export const MAX_PENDING_TOOL_NAMES = 256;
+const MAX_PENDING_TOOL_NAMES = 256;
 
-export function readerStatePath(root: string = getMinerRoot()): string {
+function readerStatePath(root: string = getMinerRoot()): string {
   return path.join(root, 'reader-state.json');
 }
 

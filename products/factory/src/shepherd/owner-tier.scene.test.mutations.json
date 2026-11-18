@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "decideOnFacts skips the owner-tier check",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "changedFilesGate(evidence, visual, honour) ?? ownerTierGate(evidence, guardRule(\"owner-tier\"));",
+      "replace": "changedFilesGate(evidence, visual, honour);",
+      "kills": [
+        "under ownerTier on a reviewed green PR touching a merge-policy file raises approve-merge on owner-tier",
+        "under ownerTier on a reviewed green PR touching a settings file raises approve-merge on owner-tier"
+      ]
+    },
+    {
+      "name": "the merge-evidence route passes no mode, so a shadow config gates as on",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "ownerTier: deps.ownerTier, ",
+      "replace": "",
+      "kills": [
+        "under ownerTier shadow the same PR merges on MRG-AU-RV and its evidence records the rows"
+      ]
+    },
+    {
+      "name": "the shepherd deps drop the live getter, so a shadow config gates as on",
+      "file": "products/factory/src/workflows-routes.ts",
+      "find": "get ownerTier() { return current(deps.ownerTier); }, ",
+      "replace": "",
+      "kills": [
+        "under ownerTier shadow the same PR merges on MRG-AU-RV and its evidence records the rows"
+      ]
+    }
+  ]
+}

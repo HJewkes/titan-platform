@@ -16,7 +16,7 @@ export const REFRESH_LOCK = ".oauth_refresh.lock";
 // on a non-empty dir. It names which lock dirs this package made, and for which process.
 export const REFRESH_LOCK_HOLDER = ".oauth_refresh.lock.anthropic-account";
 
-export type CredentialsText =
+type CredentialsText =
   | { status: "text"; text: string }
   | { status: "missing" }
   | { status: "refused"; reason: RefusedReason };

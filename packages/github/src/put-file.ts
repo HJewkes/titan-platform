@@ -1,5 +1,5 @@
 import type { PutFileRequest } from "./port-types.js";
-import type { GitHubWire, RepoSlug, WriteResult } from "./port.js";
+import type { GitHubWire, RepoSlug, WriteResult } from "./port-types.js";
 import { checkPath, checkRef, checkSha } from "./validate.js";
 
 /** A write whose precondition no longer holds, such as a blob that changed under an edit. */

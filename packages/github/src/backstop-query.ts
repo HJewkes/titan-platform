@@ -1,16 +1,16 @@
 import { redact } from "./redact.js";
 import type { Rest } from "./rest.js";
 
-export const OPEN_PAGE = 50;
-export const DONE_PAGE = 20;
-export const HISTORY_PAGE = 50;
-export const CONTEXTS_PAGE = 50;
-export const REVIEWS_PAGE = 20;
-export const TRAINS_PAGE = 50;
+const OPEN_PAGE = 50;
+const DONE_PAGE = 20;
+const HISTORY_PAGE = 50;
+const CONTEXTS_PAGE = 50;
+const REVIEWS_PAGE = 20;
+const TRAINS_PAGE = 50;
 /** The branches Shepherd pushes candidate merges to; only the factory may write under it. */
 export const TRAIN_PREFIX = "shepherd-train/";
 /** Follow-up pages read one PR or commit each, so they take GitHub's largest page for the same single request. */
-export const FOLLOW_UP_PAGE = 100;
+const FOLLOW_UP_PAGE = 100;
 
 /** What GitHub charged for one query, read from the query itself. */
 export interface RateLimit {
@@ -19,7 +19,7 @@ export interface RateLimit {
   resetAt: string;
 }
 
-export interface GhPageInfo {
+interface GhPageInfo {
   hasNextPage: boolean;
   endCursor: string | null;
 }
@@ -28,12 +28,12 @@ export type GhContext =
   | { __typename: "CheckRun"; databaseId: number; name: string; status: string; conclusion: string | null; completedAt: string | null }
   | { __typename: "StatusContext"; context: string; state: string; createdAt: string; creator?: { login: string } | null };
 
-export interface GhContexts {
+interface GhContexts {
   pageInfo: GhPageInfo;
   nodes: GhContext[];
 }
 
-export interface GhRollup {
+interface GhRollup {
   statusCheckRollup: { contexts: GhContexts } | null;
 }
 

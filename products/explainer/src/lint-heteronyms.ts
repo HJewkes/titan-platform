@@ -22,7 +22,7 @@ function readingNames(table: HeteronymTable, form: string): string[] {
 }
 
 /** One unsettled occurrence: the word, the readings that would settle it, and its one-based place among the line's words. */
-export interface UnsettledHeteronym {
+interface UnsettledHeteronym {
   word: string;
   readings: string[];
   /** Absent for a declaration whose word the line does not say. */

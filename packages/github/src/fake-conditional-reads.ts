@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { OpenPrList } from "./pr-list.js";
 import type { RefRead, RulesetList } from "./conditional-reads.js";
-import type { PullRequest } from "./port.js";
+import type { PullRequest } from "./port-types.js";
 import type { FakeGitHub } from "./fake-types.js";
 
 /** Like GitHub's list: rows carry no mergeable state or `behind`, so the ETag changes only with what a row shows. */

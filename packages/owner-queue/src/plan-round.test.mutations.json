@@ -5,7 +5,7 @@
       "name": "the binding's approve is the Revise label",
       "file": "packages/owner-queue/src/plan-round.ts",
       "find": "binding: { questionId, approve, task, repo,",
-      "replace": "binding: { questionId, approve: revise, task, repo,",
+      "replace": "binding: { questionId, approve: other, task, repo,",
       "kills": [
         "buildPlanRound binds one ci-policy ask to one pick-one whose approve option records the task, repo, gate and scope"
       ]
@@ -13,8 +13,8 @@
     {
       "name": "the copied scope keeps only the first pinned file",
       "file": "packages/owner-queue/src/plan-round.ts",
-      "find": "? { gate: ask.gate, scope: ask.scope } :",
-      "replace": "? { gate: ask.gate, scope: { ...ask.scope, files: ask.scope.files.slice(0, 1) } } :",
+      "find": "if (ask.gate === \"ci-policy\") return { gate: ask.gate, scope: ask.scope };",
+      "replace": "if (ask.gate === \"ci-policy\") return { gate: ask.gate, scope: { ...ask.scope, files: ask.scope.files.slice(0, 1) } };",
       "kills": [
         "buildPlanRound binds one ci-policy ask to one pick-one whose approve option records the task, repo, gate and scope"
       ]

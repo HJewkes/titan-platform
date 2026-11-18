@@ -7,6 +7,7 @@ import { WRITING_METRICS, type WritingMetric } from "./lint-writing.js";
 import { migrateSpike } from "./migrate.js";
 import { parseWritingCheck, type BucketName } from "./writing-calibrate.js";
 import { scoreWriting, type WritingBeat, type WritingReport } from "./writing-check.js";
+import { useReportOnlyGate } from "./writing-gate-fixtures.test-helpers.js";
 import { applySeededEdit, SEEDED_DOSES, SEEDED_EDIT_NAMES, SEEDED_ROW, type SeededDose, type SeededEdit } from "./writing-seeded-edits.js";
 
 interface RowGolden {
@@ -23,6 +24,9 @@ interface Golden {
   ours: Record<string, ScriptGolden>;
   seeded: Record<SeededEdit, { row: WritingMetric; doses: Record<string, { words: number; value: number | null; outOfBand: boolean }> }>;
 }
+
+// The calibrated rows alone: the writing gate rows (TP-5721) have tests of their own in writing-gate.test.ts.
+useReportOnlyGate();
 
 const fixture = (path: string): string => readFileSync(new URL(`../fixtures/${path}`, import.meta.url), "utf8");
 const SHIPPED = fixture("../doctrine/writing-check.json");

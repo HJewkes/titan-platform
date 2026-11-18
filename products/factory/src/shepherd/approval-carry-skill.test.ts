@@ -106,7 +106,7 @@ describe("an owner merge approval meeting a repo skill change", () => {
     expect(r.gates).toEqual([APPROVED, LATER]);
   });
 
-  it("still follows a skill-free small fix without asking the owner", async () => {
+  it("still follows a skill-free merge-up without asking the owner", async () => {
     const r = rig({ fix: mergeUp(["src/a.ts", "docs/skills/x.md"]) });
 
     await r.ask("approve-merge", landPrompt(APPROVED));

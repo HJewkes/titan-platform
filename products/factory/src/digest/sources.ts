@@ -8,7 +8,7 @@ import { readQueueAsks } from "./queues.js";
 
 export const AGENT_CHAT_TIMEOUT_MS = 20_000;
 
-export interface ExecResult {
+interface ExecResult {
   code: number;
   stdout: string;
   stderr: string;

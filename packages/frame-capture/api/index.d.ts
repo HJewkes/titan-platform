@@ -6,6 +6,14 @@ import { Page, Browser } from 'playwright-core';
  * `TitanMotionApi` (react-ui `/motion`, `MotionProvider` on a `seekClock`), but any page that sets
  * the global can be captured.
  */
+declare const MARK_KINDS: readonly ["settled", "step", "before", "transform-start", "transform-end", "hero"];
+type MarkKind = (typeof MARK_KINDS)[number];
+/** A moment worth looking at: `t` seconds into beat number `beat`. */
+interface PageMark {
+    t: number;
+    beat: number;
+    kind: MarkKind;
+}
 interface TitanMotionApi {
     /** Shows the frame at `t` seconds. It must commit synchronously: the capture screenshots after `ready()`. */
     seek(t: number): void;
@@ -13,6 +21,8 @@ interface TitanMotionApi {
     ready(): Promise<void>;
     /** The timeline length in seconds; the capture renders `duration * fps` frames unless told otherwise. */
     readonly duration: number;
+    /** The moments the page marks, read once after the API appears; a page without it has no marks. */
+    marks?(): PageMark[];
 }
 /** The global the page publishes `TitanMotionApi` under. */
 declare const TITAN_MOTION_GLOBAL = "__titanMotion";
@@ -53,6 +63,8 @@ interface Viewport {
 interface PageOptions extends Viewport {
     /** Load every declared FontFace before frame 0. Off only to measure what it prevents. */
     preloadFonts?: boolean;
+    /** Leave pixels the page does not paint at alpha 0 instead of Chromium's white default. */
+    transparent?: boolean;
 }
 interface FontState {
     family: string;
@@ -83,6 +95,8 @@ interface CapturePage {
     /** `__titanMotion.duration` in seconds. */
     duration: number;
     fonts: FontState[];
+    /** `__titanMotion.marks()`, validated and sorted by t; empty when the page has none. */
+    marks: PageMark[];
     /** Every uncaught page error, collected from before navigation; empty when the open succeeds. */
     errors: readonly Error[];
 }
@@ -135,6 +149,8 @@ interface FramesResult {
     /** `__titanMotion.duration`: the page's own idea of the timeline length. */
     pageDurationS: number;
     fonts: CapturePage['fonts'];
+    /** `__titanMotion.marks()`, sorted by t; empty when the page publishes none. */
+    marks: CapturePage['marks'];
 }
 /**
  * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
@@ -145,6 +161,17 @@ interface FramesResult {
  * only once all of them have closed their browsers and the spill is gone.
  */
 declare function captureFrames(options: FramesOptions, sink: Sink): Promise<FramesResult>;
+
+interface StillsOptions extends PageOptions {
+    url: string;
+    /** A browser to open the page in; without one, a browser is launched for the stills and closed after. */
+    browser?: Browser;
+}
+/**
+ * True-size PNG stills of one page at the given seconds: one page, no encode. Virtual time only moves forward, so
+ * the moments are taken in time order on one page and returned in the order they were asked for.
+ */
+declare function stills(options: StillsOptions, atS: readonly number[]): Promise<Buffer[]>;
 
 /** One voice clip in the mix: `wavPath(id)` names its file, and it is padded to `durationS`. */
 interface MixSegment {
@@ -157,7 +184,75 @@ interface Encoder {
     write(png: Buffer): Promise<void>;
     finish(): Promise<void>;
 }
-/** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
-declare function startEncoder(out: string, fps: number, audio: string): Encoder;
+/**
+ * One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata.
+ * With `plate`, an mp4 under the frames, the PNGs are composited over it, so transparent pixels show the plate.
+ */
+declare function startEncoder(out: string, fps: number, audio: string, plate?: string): Encoder;
 
-export { type CapturePage, type Encoder, FontLoadError, type FontState, type FramesOptions, type FramesResult, type MixSegment, type PageOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, launch, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, withBrowser, withCapturePage };
+/*!
+ * The halving test is adapted from anatomy, https://github.com/wheresryan22/anatomy,
+ * kit/turn-audit.mjs L969-L986 at e9488296. Copyright (c) 2026 Ryan, licensed under the
+ * MIT License; the full text is in this package's NOTICE.
+ * Changed here: the frame is any value a caller-supplied `delta` can compare, so one measure
+ * replaces the source's scale-4 then scale-16 pair, and the grid walk is new.
+ * @license MIT
+ */
+/** A frame source that is a pure function of `t`: seeking the same `t` twice gives the same frame. */
+type SeekFrame<F> = (t: number) => F | Promise<F>;
+/** How visibly two frames differ, as a non-negative number (for example, changed pixels). */
+type FrameDelta<F> = (a: F, b: F) => number;
+/** The largest change over the whole step and over its halves, quarters and eighths. */
+interface HalvingMeasure {
+    full: number;
+    half: number;
+    quarter: number;
+    eighth: number;
+}
+interface PopFinding {
+    /** Index of the grid step `[t, t + step]` that holds the pop. */
+    index: number;
+    t: number;
+    measure: HalvingMeasure;
+}
+interface PopReport {
+    findings: PopFinding[];
+    /** Grid steps whose change passed `threshold` and were re-measured. */
+    checked: number;
+}
+interface PopCheckOptions<F> {
+    seek: SeekFrame<F>;
+    delta: FrameDelta<F>;
+    start: number;
+    end: number;
+    step: number;
+    /** A grid step whose change is at least this is re-measured; smaller steps are never pops. */
+    threshold: number;
+}
+/** Raw RGBA pixels, four bytes per pixel, row by row. */
+interface RgbaFrame {
+    width: number;
+    height: number;
+    data: Uint8Array;
+}
+/** Counts pixels where any channel differs by more than `tolerance`: a `FrameDelta` for RGBA frames. */
+declare function changedPixels(a: RgbaFrame, b: RgbaFrame, tolerance?: number): number;
+/** Each finer measure must keep more than this share of the coarser one for the change to be a pop. */
+declare const HALVING_RATIO = 0.6;
+/** A pop must still change at least this much over an eighth of the step. */
+declare const MIN_POP_CHANGE = 2;
+/**
+ * Smooth motion halves its per-step change as the step halves; a pop keeps its whole change
+ * inside one ever-smaller sub-step.
+ */
+declare function isPop(m: HalvingMeasure): boolean;
+/** Measures nine frames spanning one step at eighths: frames[0] is t, frames[8] is t + step. */
+declare function measureHalving<F>(frames: readonly F[], delta: FrameDelta<F>): HalvingMeasure;
+/**
+ * Walks a grid of `t` from `start` to `end`; a last step shorter than `step` ends at `end`. Where a
+ * step's change reaches `threshold`, it re-measures the step at h/2, h/4 and h/8 and reports a pop
+ * only when the change does not halve.
+ */
+declare function checkPops<F>(options: PopCheckOptions<F>): Promise<PopReport>;
+
+export { type CapturePage, type Encoder, FontLoadError, type FontState, type FrameDelta, type FramesOptions, type FramesResult, HALVING_RATIO, type HalvingMeasure, MIN_POP_CHANGE, type MarkKind, type MixSegment, type PageMark, type PageOptions, type PopCheckOptions, type PopFinding, type PopReport, type RgbaFrame, type SeekFrame, type StillsOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, changedPixels, checkPops, isPop, launch, measureHalving, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, stills, withBrowser, withCapturePage };

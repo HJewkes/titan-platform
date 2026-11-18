@@ -38,7 +38,7 @@ async function evidenceFor(files: PrFile[], ciPolicy?: CiPolicy) {
   fake.addPr({ headSha: HEAD, mergeSha: fakeSha("test-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
   fake.prFiles.set(1, files);
-  return mergeEvidence(githubPort(fake.wire), { ...input, ...(ciPolicy && { ciPolicy }) }, noFreezeStoreUntilTp523, { kind: "correctness" });
+  return mergeEvidence(githubPort(fake.wire), { ...input, ...(ciPolicy && { ciPolicy }) }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { ownerTier: "off" });
 }
 
 const modified = (path: string): PrFile[] => [{ path, status: "modified" }];

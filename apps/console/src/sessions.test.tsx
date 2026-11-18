@@ -107,9 +107,17 @@ describe("the sessions list", () => {
   it("shows each session's agent, tasks, PR, duration, tokens and cost", async () => {
     renderConsole("#/sessions", recorded());
     await screen.findByTestId(`session-row-${NEWEST}`);
-    const [agent, tasks, pr, , duration, tokens, cost] = cells(`session-row-${NEWEST}`);
+    const [agent, , tasks, pr, , duration, tokens, cost] = cells(`session-row-${NEWEST}`);
     expect([agent, tasks, pr, duration, tokens, cost]).toEqual(["orbit-builder", "OR-12", "example/orbit#41 ↗", "1h 05m", "250K", "$3.40"]);
-    expect(cells(`session-row-${OLDER}`).slice(4)).toEqual(["45s", "250K", "$3.40"]);
+    expect(cells(`session-row-${OLDER}`).slice(5)).toEqual(["45s", "250K", "$3.40"]);
+  });
+
+  it("shows a titled session's title and a dash for an untitled one", async () => {
+    const untitled = row(OLDER, "2031-03-04T08:00:00.000Z", "2031-03-04T08:00:45.000Z", { title: null });
+    renderConsole("#/sessions", recorded(listWith({ ...FIRST_PAGE, sessions: [row(NEWEST, "2031-03-04T09:00:00.000Z", "2031-03-04T10:05:00.000Z"), untitled] })));
+    await screen.findByTestId(`session-row-${NEWEST}`);
+    expect(cells(`session-row-${NEWEST}`)[1]).toBe("Retry a dropped handshake");
+    expect(cells(`session-row-${OLDER}`)[1]).toBe("–");
   });
 
   it("says how fresh the index is", async () => {
@@ -121,7 +129,7 @@ describe("the sessions list", () => {
     renderConsole("#/sessions", recorded());
     fireEvent.click(await screen.findByText("Load more"));
     expect(await screen.findByTestId(`session-row-${OLDEST}`)).toBeTruthy();
-    expect(cells(`session-row-${OLDEST}`)[1]).toBe("OR-9OR-10");
+    expect(cells(`session-row-${OLDEST}`)[2]).toBe("OR-9OR-10");
     await waitFor(() => expect(screen.queryByText("Load more")).toBeNull());
   });
 
@@ -182,27 +190,34 @@ describe("a session's detail", () => {
     for (const text of ["orbit-builder", "OR-12", "1h 05m", "model-a", "250K", "$3.40", "feat/handshake-retry", "example/orbit#41 ↗"]) expect(screen.getByText(text)).toBeTruthy();
   });
 
-  it("opens the first turn of the conversation and keeps the rest collapsed", async () => {
+  it("lists the turns in order and starts with the first turn's tool calls open", async () => {
     renderConsole(`#/sessions/${NEWEST}`, recorded());
-    expect(await screen.findByText("Backoff now doubles up to thirty seconds.")).toBeTruthy();
+    const first = await screen.findByText("Backoff now doubles up to thirty seconds.");
+    const second = screen.getByText("Added a retry test.");
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("Read")).toBeTruthy();
-    expect(screen.queryByText("Added a retry test.")).toBeNull();
-    fireEvent.click(screen.getByText("Turn 2"));
-    expect(await screen.findByText("Added a retry test.")).toBeTruthy();
+    expect(screen.queryByText("Edit")).toBeNull();
+    fireEvent.click(within(screen.getAllByRole("article")[1]!).getByRole("button", { name: /^Tool calls/ }));
+    expect(await screen.findByText("Edit")).toBeTruthy();
   });
 
-  it("opens the turn a deep link names", async () => {
+  it("starts the turn a deep link names expanded", async () => {
     renderConsole(`#/sessions/${NEWEST}?turn=1`, recorded());
-    expect(await screen.findByText("Added a retry test.")).toBeTruthy();
-    expect(screen.queryByText("Backoff now doubles up to thirty seconds.")).toBeNull();
+    expect(await screen.findByText("Edit")).toBeTruthy();
+    expect(screen.queryByText("Read")).toBeNull();
+    expect(screen.getByText("Backoff now doubles up to thirty seconds.")).toBeTruthy();
   });
 
   it("links a touched file to its codewatch node and leaves an unmapped one as text", async () => {
     const opened = vi.spyOn(window, "open").mockReturnValue(null);
     renderConsole(`#/sessions/${NEWEST}`, recorded());
     fireEvent.click(await screen.findByText("Files (2)"));
-    fireEvent.click(within(await screen.findByTestId("touched-src/handshake.ts")).getByRole("link"));
-    expect(opened).toHaveBeenCalledWith("http://127.0.0.1:7700/#/node/src%2Fhandshake.ts", "_blank", "noopener");
+    const link = within(await screen.findByTestId("touched-src/handshake.ts")).getByRole("link");
+    expect(link.getAttribute("href")).toBe("http://127.0.0.1:7700/#/node/src%2Fhandshake.ts");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+    fireEvent.click(link);
+    expect(opened).not.toHaveBeenCalled();
     expect(cells("touched-src/handshake.ts")).toEqual(["src/handshake.ts ↗", "readwrite", "3"]);
     expect(within(screen.getByTestId("touched-/scratch/notes.txt")).queryByRole("link")).toBeNull();
     expect(cells("touched-/scratch/notes.txt")).toEqual(["/scratch/notes.txt", "read", "1"]);

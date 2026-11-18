@@ -1,0 +1,43 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "free text is accepted as a quote reference",
+      "file": "packages/pm/src/planning.ts",
+      "find": ".regex(/^[A-Za-z0-9][\\w.:/#-]*$/, {",
+      "replace": ".regex(/^[A-Za-z0-9][\\w.:/# -]*$/, {",
+      "kills": ["planning records refuses an owner-intent reference whose quote is free text"]
+    },
+    {
+      "name": "an id is not tied to its initiative",
+      "file": "packages/pm/src/planning.ts",
+      "find": "record.id.startsWith(`${record.initiative}/`);",
+      "replace": "record.id.length > 0;",
+      "kills": [
+        "planning records 'OutcomeSchema' refuses an id filed under another initiative",
+        "planning records 'OutOfScopeSchema' refuses an id filed under another initiative"
+      ]
+    },
+    {
+      "name": "a bet may name neither tasks nor a selector",
+      "file": "packages/pm/src/planning.ts",
+      "find": "bet.tasks !== undefined || bet.selector !== undefined",
+      "replace": "true",
+      "kills": ["planning records refuses a bet that names neither tasks nor a selector"]
+    },
+    {
+      "name": "a freeze may name both a tag and a selector",
+      "file": "packages/pm/src/planning.ts",
+      "find": "(freeze.tag === undefined) !== (freeze.selector === undefined)",
+      "replace": "freeze.tag !== undefined || freeze.selector !== undefined",
+      "kills": ["planning records refuses a freeze that names both a tag and a selector"]
+    },
+    {
+      "name": "an out-of-scope record drops its quote reference",
+      "file": "packages/pm/src/planning.ts",
+      "find": "    statement: text,\n    ...OwnerIntentRefSchema.shape,",
+      "replace": "    statement: text,\n    intent_ref: intentRef,\n    quote_ref: quoteRef.optional(),",
+      "kills": ["planning records 'OutOfScopeSchema' refuses a record with no quote reference"]
+    }
+  ]
+}

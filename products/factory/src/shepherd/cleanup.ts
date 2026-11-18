@@ -11,12 +11,12 @@ import type { CleanupAgent, CleanupAgents, CleanupPorts, CleanupTasks, TaskClose
 
 
 /** The CC-188 grace clock: a retire waits this long past the agent's exit, so its last writes settle. */
-export const SH_CLEANUP_GRACE_MS = 3 * 60_000;
+const SH_CLEANUP_GRACE_MS = 3 * 60_000;
 export const SH_CLEANUP_RETRY_MS = 10 * 60_000;
 export const SH_CLEANUP_GIVE_UP_MS = 60 * 60_000;
-export const SH_CLEANUP_POLL_MS = 30_000;
+const SH_CLEANUP_POLL_MS = 30_000;
 
-export interface CleanupDeps {
+interface CleanupDeps {
   port: GitHubPort;
   store: ShepherdStoreRef;
   now: () => number;
@@ -64,7 +64,7 @@ export const CleanupResult = z.looseObject({
   caveats: z.array(z.string()),
 });
 
-export type Cleanup = z.infer<typeof CleanupResult>;
+type Cleanup = z.infer<typeof CleanupResult>;
 
 /** What the head-ref part did, kept across its retries: a retarget is recorded once per child, the last attempt winning. */
 interface Done {
@@ -272,7 +272,7 @@ async function retrying<T>(what: string, attempt: () => Promise<T>, wait: Waiter
 
 
 /** Newest successor first, then the implementer, then this PR's fresh reviewers and their panel members; the standing reviewer is never among them. */
-export function retireOrder(registration: Registration, lineageSuccessors: readonly string[], roster: readonly CleanupAgent[], input: CleanupInput): string[] {
+function retireOrder(registration: Registration, lineageSuccessors: readonly string[], roster: readonly CleanupAgent[], input: CleanupInput): string[] {
   const successorName = new RegExp(`^${escapeRegExp(registration.implementer)}-s(\\d+)$`);
   const numbered = roster.flatMap((agent) => {
     const k = successorName.exec(agent.name)?.[1];

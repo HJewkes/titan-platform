@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import { expect, it } from "vitest";
 import { readChecksPolicy } from "./required-checks-policy.js";
@@ -30,4 +30,21 @@ it("lists every main-only test shard in ci.yml as a main-only context, so a red 
 
   expect(shards.length).toBeGreaterThan(0);
   expect(policy.branches.main.mainContexts).toEqual(shards);
+});
+
+/** Job ids of each workflow whose `on:` block names no `push`, so no run of them ever lands on a main sha. */
+function pullRequestOnlyJobs(): string[] {
+  const dir = new URL("../../../.github/workflows/", import.meta.url);
+  return readdirSync(dir)
+    .map((file) => readFileSync(new URL(file, dir), "utf8"))
+    .filter((yaml) => !/\non:\n(?: {2}[^\n]*\n)*? {2}push:/.test(yaml))
+    .flatMap((yaml) => [...(yaml.split(/\njobs:\n/)[1] ?? "").matchAll(/^ {2}([\w-]+):$/gm)].map((match) => match[1]!));
+}
+
+it("lists every required context a pull_request-only workflow runs as PR-only, so main's own CI can read green (TP-5485)", () => {
+  const main = JSON.parse(readFileSync(new URL(`../../../${PATH}`, import.meta.url), "utf8")).branches.main;
+  const prJobs = new Set(pullRequestOnlyJobs());
+
+  expect(prJobs.has("fix-proof-mutants")).toBe(true);
+  expect(main.contexts.filter((name: string) => prJobs.has(name))).toEqual(main.prContexts ?? []);
 });

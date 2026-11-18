@@ -1,5 +1,6 @@
 // Structure checks for the rules in CLAUDE.md that no linter enforces (TP-897 plan S5).
 // Each check takes a repo root and returns one remediation message per violation.
+// Each check's `classes` names the review-finding class keys it catches; scripts/checks-registry.mjs collects them (TP-6483).
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, posix, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -42,6 +43,7 @@ export function checkNoFileDependencies(root) {
       }),
   );
 }
+checkNoFileDependencies.classes = ["release-ordering"];
 
 function tiersRule(root) {
   return findTiersRule(readJson(join(root, ".codewatch", "check.json")));
@@ -53,6 +55,7 @@ export function checkLayersMatchTiers(root) {
   if (JSON.stringify(rule.layers) === JSON.stringify(layersFromTiers(rule.$tiers))) return [];
   return ["`layers` differs from `$tiers`. Edit `$tiers` only, or run `pnpm new:package <name> --tier <t>`."];
 }
+checkLayersMatchTiers.classes = ["hand-written-schema-drift"];
 
 /** R38: every ordered pair of products has a forbid-import rule. */
 export function checkProductIsolation(root) {
@@ -65,6 +68,7 @@ export function checkProductIsolation(root) {
         `\`.codewatch/check.json\` lacks rule \`${r.id}\`. Products talk over a CLI, loopback HTTP or MCP. Register products with \`pnpm new:package <name> --tier product\`, which writes these rules.`,
     );
 }
+checkProductIsolation.classes = ["other:import-boundary"];
 
 /** R43: every package carries the scripts and files the scaffold stamps. */
 export function checkScaffold(root) {
@@ -83,6 +87,7 @@ export function checkScaffold(root) {
     );
   });
 }
+checkScaffold.classes = ["hand-written-schema-drift"];
 
 /** R46: tests live next to source, never in a `__tests__` directory. */
 export function checkNoTestsDirectories(root) {
@@ -96,6 +101,7 @@ export function checkNoTestsDirectories(root) {
     return `Move \`${relative(root, file)}\` next to the source it tests as \`${name}.test.ts\`.`;
   });
 }
+checkNoTestsDirectories.classes = ["other:file-placement"];
 
 /**
  * R47: packages take zod as a peer, never a regular dependency. A package that ships a bin is
@@ -110,6 +116,7 @@ export function checkZodIsPeer(root) {
         `\`${pkg.name}\` lists zod under dependencies. Move it to peerDependencies and devDependencies, unless the package ships a bin.`,
     );
 }
+checkZodIsPeer.classes = ["producer-consumer-mismatch"];
 
 const isYamlComment = (line) => line.trimStart().startsWith("#");
 
@@ -126,6 +133,7 @@ export function checkNoNpmToken(root) {
     )
     .map((file) => `\`${file}\` names an npm token. Publishing uses the trusted publisher. Remove the secret.`);
 }
+checkNoNpmToken.classes = ["visibility-leak"];
 
 /** R51: the pnpm pin stays where release.yml's OIDC publish was tested. */
 export function checkPnpmPin(root) {
@@ -134,6 +142,7 @@ export function checkPnpmPin(root) {
     "The pnpm pin changed. A pnpm major changes how publish does the OIDC exchange. Revert it, or test a real publish and update this test.",
   ];
 }
+checkPnpmPin.classes = ["release-ordering"];
 
 /** R53: `AGENTS.md` is a byte copy of `CLAUDE.md`. */
 export function checkAgentsMatchesClaude(root) {
@@ -141,6 +150,7 @@ export function checkAgentsMatchesClaude(root) {
   if (claude.equals(readFileSync(join(root, "AGENTS.md")))) return [];
   return ["`AGENTS.md` and `CLAUDE.md` differ. Copy `CLAUDE.md` over `AGENTS.md`."];
 }
+checkAgentsMatchesClaude.classes = ["parallel-reader-diverges"];
 
 const BUILD_CONFIGS = ["tsup.config.ts", "vite.config.ts"];
 
@@ -162,6 +172,7 @@ export function checkTurboBuildContract(root) {
   }
   return messages;
 }
+checkTurboBuildContract.classes = ["other:stale-build-cache"];
 
 /**
  * R54: turbo hashes the root's `workspace:` dependencies into every task, so one edit to any of them would miss the
@@ -174,6 +185,7 @@ export function checkRootHasNoWorkspaceDependencies(root) {
     .filter(([, spec]) => spec.startsWith("workspace:"))
     .map(([dep]) => `The root \`package.json\` depends on \`${dep}\`, which keys every turbo task on it. Call its dist by path, or use \`link:\` if something resolves it through the root node_modules.`);
 }
+checkRootHasNoWorkspaceDependencies.classes = ["other:stale-build-cache"];
 
 const isWarn = (setting) => {
   const level = Array.isArray(setting) ? setting[0] : setting;
@@ -196,6 +208,7 @@ export async function checkNoWarnSeverity(root) {
   );
   return found.flat();
 }
+checkNoWarnSeverity.classes = ["swallowed-error"];
 
 function workspaceGlobs(root) {
   return [...readFileSync(join(root, "pnpm-workspace.yaml"), "utf8").matchAll(/^\s*-\s*["']?([^"'\s#]+)["']?/gm)].map((m) => m[1]);
@@ -225,8 +238,9 @@ export function checkRootLintCoversWorkspaces(root) {
         `The root \`lint\` script does not reach \`${dir}\`. Add \`${dir}/src\` to it in \`package.json\`; workspaces have no \`lint\` script of their own.`,
     );
 }
+checkRootLintCoversWorkspaces.classes = ["fail-open-on-missing-or-unreadable-input"];
 
-const WORKSPACE_IMPORT = /(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|^import\s+)["'](@titan-design\/[a-z0-9-]+)/gm;
+const WORKSPACE_IMPORT = /(?:\bfrom\s+|\bimport\s*\(\s*|\brequire\s*\(\s*|\bvi\.(?:mock|doMock)\s*\(\s*|^import\s+)["'`](@titan-design\/[a-z0-9-]+)/gm;
 const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
 const SKIPPED_DIRS = new Set(["node_modules", "dist", "coverage"]);
 
@@ -255,6 +269,7 @@ export function checkWorkspaceImportsDeclared(root) {
   const members = new Set(dirs.map((dir) => readJson(join(root, dir, "package.json")).name));
   return [...new Set(dirs.flatMap((dir) => undeclaredImports(root, dir, members)))];
 }
+checkWorkspaceImportsDeclared.classes = ["fail-open-on-missing-or-unreadable-input"];
 
 const PYTHON_GROUPS = ["packages", "products", "apps"];
 const BOUNDARY_BEFORE = "(?:^|[\\s;&|(=\"'/])";
@@ -308,6 +323,7 @@ export function checkNoPython(root) {
   const scriptViolations = workspaceDirs(root, PYTHON_GROUPS).flatMap((dir) => pythonScripts(root, dir));
   return [...fileViolations, ...scriptViolations];
 }
+checkNoPython.classes = ["other:language-policy"];
 
 const BOT_TOKEN_READER = /\bparseGitHubToken\b|\bBOT_TOKEN_PATH\b|bot-token-path|bot-token-layout|github-bot\.token/;
 // The reader (bot-identity.ts) and the modules that define or pin the path; everything else reaches the bot only through `BotAccess`.
@@ -337,6 +353,7 @@ export function checkBotTokenReaders(root) {
     .filter((path) => readFileSync(join(root, path), "utf8").split("\n").some((line) => !isCommentLine(line) && BOT_TOKEN_READER.test(line)))
     .map((path) => `\`${path}\` reads the bot token file or imports its reader. Only \`products/factory/src/bot-identity.ts\` may; take a \`BotAccess\` from it instead (TP-3412).`);
 }
+checkBotTokenReaders.classes = ["visibility-leak", "approval-or-gate-bypass"];
 
 const STATIC_IMPORT_SPECIFIER = /(?:^|[\n;])\s*(?:import|export)\b[^"'`;]*?\bfrom\s*["']([^"']+)["']|(?:^|[\n;])\s*import\s*["']([^"']+)["']/g;
 const JS_TO_TS = new Map([[".js", ".ts"], [".jsx", ".tsx"], [".mjs", ".mts"], [".cjs", ".cts"]]);
@@ -378,3 +395,4 @@ export async function checkNoCarryImports(root, { compileGlobs: compile } = {}) 
         : targets.map((target) => `\`${path}\` imports \`${target}\`, which \`${CONFIG_PATH}\` lists as a test or carry path. A test-only change could alter it unproved; move the imported file off that path (R60, TP-2737).`);
     });
 }
+checkNoCarryImports.classes = ["approval-or-gate-bypass"];

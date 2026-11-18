@@ -3,8 +3,12 @@
  * The authenticated remote listener is the opposite: it must name one concrete non-loopback
  * address, never a wildcard, which would also expose every bridge and VPN interface.
  */
+import type { ServerType } from "@hono/node-server";
 import { BlockList, isIP, isIPv4, isIPv6 } from "node:net";
 import { networkInterfaces } from "node:os";
+import type { Logger } from "./logger.js";
+import type { RemoteListener } from "./remote-listener.js";
+import { closeServer } from "./server-close.js";
 
 export class NonLoopbackBindError extends Error {
   constructor(readonly host: string) {
@@ -75,4 +79,27 @@ function expandV6(address: string): number[] | null {
   // Anything that is not plain hex (a dotted tail, a zone id) is not understood, so it is refused.
   if (!groupsText.every((g) => /^[0-9a-f]{1,4}$/i.test(g))) return null;
   return groupsText.map((g) => parseInt(g, 16));
+}
+
+interface InheritedAddressPolicy {
+  allowNonLoopback: boolean;
+  remote: RemoteListener | null;
+}
+
+/**
+ * An inherited socket listens wherever its owner bound it, so the host string says nothing about it.
+ * The address it really has is checked after the bind and before the pid file is written.
+ */
+export async function assertInheritedAddress(server: ServerType, policy: InheritedAddressPolicy, graceMs: number, log: Logger): Promise<void> {
+  const address = server.address();
+  if (!address || typeof address !== "object" || isLoopbackHost(address.address)) return;
+  const refusal = refusalFor(address.address, policy);
+  if (!refusal) return;
+  await closeServer(server, graceMs).catch((err: unknown) => log.error({ err }, "error closing an inherited socket that was refused"));
+  throw refusal;
+}
+
+function refusalFor(address: string, { allowNonLoopback, remote }: InheritedAddressPolicy): Error | null {
+  if (!allowNonLoopback) return new NonLoopbackBindError(address);
+  return remote ? new RemoteBindError(remote.options.host, "the inherited socket is already unauthenticated beyond loopback") : null;
 }

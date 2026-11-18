@@ -1,5 +1,5 @@
 import { describeMetric, type CheckRule, type CodeGraphStore, type SnapshotRow } from "@titan-design/code-graph";
-import { deriveFindings, toModelRules } from "./findings-live.js";
+import { deriveFindings, ruleSeverity, toModelRules } from "./findings-live.js";
 import { LruCache } from "./lru.js";
 import { COMMAND_NAMES } from "./query/contract.js";
 import { buildReadModel, type ModelNode, type ReadModel } from "./query/model.js";
@@ -121,7 +121,7 @@ export function createLiveSource(deps: CodeReadDeps): LiveSource {
     dataset: "live",
     commands: COMMAND_NAMES,
     capabilities: liveCapabilities(read !== undefined),
-    rules: rules().map((r) => ({ id: r.id, type: r.type, severity: r.severity ?? "error" })),
+    rules: rules().map((r) => ({ id: r.id, type: r.type, severity: ruleSeverity(r) })),
   });
   return {
     facts,

@@ -85,7 +85,7 @@ function planned(input: PlanInput): FixProofPlan {
 }
 
 /** A plan read from the diff alone, before any spec's sibling test is listed at head. */
-export interface DiffPlan {
+interface DiffPlan {
   input: PlanInput;
   plan: FixProofPlan;
 }
@@ -133,7 +133,7 @@ async function cleanup(ctx: Context): Promise<void> {
   }
 }
 
-export interface ContextOptions {
+interface ContextOptions {
   repo: string;
   base: string;
   head: string;

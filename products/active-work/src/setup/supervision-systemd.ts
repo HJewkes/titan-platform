@@ -10,6 +10,7 @@ import { promises as fsp } from 'node:fs';
 import nodePath from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
+import { renderSystemdUserService } from '@titan-design/service-supervisor';
 import { errorCode } from '@titan-design/rpc-protocol/narrow';
 import { errorText, toError } from './errors.js';
 import { linuxDaemonPath } from './supervision-shared.js';
@@ -52,7 +53,7 @@ export function getUnitPath(homeDir: string): string {
   return nodePath.join(getUnitDir(homeDir), UNIT_NAME);
 }
 
-export interface UnitOptions {
+interface UnitOptions {
   cliEntry: string;
   homeDir: string;
   port?: number;
@@ -74,44 +75,18 @@ export function renderUnit(opts: UnitOptions): string {
   if (opts.port !== undefined) {
     args.push('--port', String(opts.port));
   }
-  // ExecStart must use absolute paths. Quote the node binary and entrypoint
-  // in case they contain spaces (common on macOS dev paths, less so on Linux,
-  // but cheap insurance).
-  const execStart = [quoteIfNeeded(node), quoteIfNeeded(opts.cliEntry), ...args].join(' ');
-  return [
-    '[Unit]',
-    'Description=active-work HTTP daemon (MCP + REST + dashboard)',
-    'After=network.target',
-    '',
-    '[Service]',
-    'Type=simple',
-    `ExecStart=${execStart}`,
-    'Restart=always',
-    'RestartSec=5',
-    'Environment=NODE_ENV=production',
-    quoteEnv('PATH', linuxDaemonPath(node, opts.homeDir)),
-    ...(opts.activeRoot ? [quoteEnv('ACTIVE_ROOT', opts.activeRoot)] : []),
-    `StandardOutput=append:${nodePath.join(logDir, 'daemon.out.log')}`,
-    `StandardError=append:${nodePath.join(logDir, 'daemon.err.log')}`,
-    '',
-    '[Install]',
-    'WantedBy=default.target',
-    '',
-  ].join('\n');
-}
-
-/** `Environment="KEY=value"`; `%` is a unit specifier, so it is doubled. */
-function quoteEnv(key: string, value: string): string {
-  const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%');
-  return `Environment="${key}=${escaped}"`;
-}
-
-function quoteIfNeeded(value: string): string {
-  if (!/\s/.test(value)) return value;
-  // systemd unit files support double-quoted argv elements; escape any embedded
-  // double quotes and backslashes.
-  const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-  return `"${escaped}"`;
+  return renderSystemdUserService({
+    label: 'dev.hjewkes.active-work',
+    description: 'active-work HTTP daemon (MCP + REST + dashboard)',
+    argv: [node, opts.cliEntry, ...args],
+    environment: {
+      NODE_ENV: 'production',
+      PATH: linuxDaemonPath(node, opts.homeDir),
+      ...(opts.activeRoot ? { ACTIVE_ROOT: opts.activeRoot } : {}),
+    },
+    stdoutPath: nodePath.join(logDir, 'daemon.out.log'),
+    stderrPath: nodePath.join(logDir, 'daemon.err.log'),
+  });
 }
 
 /** Spawn a process and capture its exit code + stderr. */
@@ -158,7 +133,7 @@ export async function isUnitActive(deps: SetupDeps = {}): Promise<boolean> {
   return result.code === 0;
 }
 
-export interface InstallSupervisionOptions {
+interface InstallSupervisionOptions {
   /** Override the port baked into the unit's ExecStart. */
   port?: number;
 }

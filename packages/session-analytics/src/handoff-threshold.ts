@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { priceRequest, type RequestTokens } from "./price-request.js";
 import { PRICE_TABLE, findPrice, type PriceRow } from "./prices.js";
+import { groupBy } from "./report-helpers.js";
 import type { ActionCall } from "./turn-action.js";
 
 /** A dispatch or a send; with any file write, the first such request ends a session's boot. */
@@ -300,15 +301,4 @@ function newestCohort(reviewers: readonly (readonly [string, readonly HandoffSes
 
 function meanRequestsAfterBoot(sessions: readonly HandoffSession[]): number {
   return sessions.length === 0 ? 0 : sessions.reduce((sum, s) => sum + s.requests - s.bootRequests, 0) / sessions.length;
-}
-
-function groupBy<T>(rows: readonly T[], keyOf: (row: T) => string): Map<string, T[]> {
-  const groups = new Map<string, T[]>();
-  for (const row of rows) {
-    const key = keyOf(row);
-    const members = groups.get(key);
-    if (members) members.push(row);
-    else groups.set(key, [row]);
-  }
-  return groups;
 }

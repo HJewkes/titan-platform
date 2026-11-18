@@ -38,4 +38,3 @@ export const TemplatesFileSchema = z.object({
 export type Locator = z.infer<typeof LocatorSchema>;
 export type Template = z.infer<typeof TemplateSchema>;
 export type Occurrence = z.infer<typeof OccurrenceSchema>;
-export type TemplatesFile = z.infer<typeof TemplatesFileSchema>;

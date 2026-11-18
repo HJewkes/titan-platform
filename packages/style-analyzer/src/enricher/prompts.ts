@@ -8,14 +8,14 @@ export interface PromptInput {
   distribution?: Record<string, number>;
 }
 
-export interface PromptTemplate {
+interface PromptTemplate {
   featureTypes: string[];
   system: string;
   buildUserMessage: (input: PromptInput) => string;
   maxTokens: number;
 }
 
-export const DESCRIPTION_PROMPT: PromptTemplate = {
+const DESCRIPTION_PROMPT: PromptTemplate = {
   featureTypes: [
     "documentation.comment-placement",
     "documentation.inline-comment",
@@ -56,7 +56,7 @@ export const DESCRIPTION_PROMPT: PromptTemplate = {
   maxTokens: 300,
 };
 
-export const REVIEW_VOICE_PROMPT: PromptTemplate = {
+const REVIEW_VOICE_PROMPT: PromptTemplate = {
   featureTypes: [
     "reviewVoice.topicFrequency",
     "reviewVoice.keyword",

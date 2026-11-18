@@ -1,5 +1,0 @@
----
-"@titan-design/explainer": minor
----
-
-Add `gatherDaily` (TP-2612) and its task-snapshot source (TP-4023) for the daily briefing. `gatherDaily` reads one UTC day: PRs opened and merged per repo through `gh pr list`, top-level Claude Code sessions active in the window through `session-read`, and the day's task deltas (`opened`, `closed`, `moved`, `owner-gated`) from `readTaskSnapshot`, which lists an initiative's tasks read-only through the active-work CLI, stores the day's `task-snapshot/v1` in the explainer's data dir, and diffs board columns against the latest earlier snapshot. Every item id comes from its source (repo and PR number, session id, task id with the change), and items are sorted by id, so two runs write the same `digest.json`. `DigestSchema` items gain an optional `change`. `explainer run --facts-from gatherDaily --type daily-overview [--day --repo --transcripts --initiative]` writes `digest.json` and `facts.md` under `<data dir>/gather/<type>/<day>/` and starts the run from that facts pack; the type's profile must list the adapter in `inputs.adapters`, and `--dry-run` stops before any stage.

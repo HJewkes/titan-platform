@@ -1,25 +1,12 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join, isAbsolute } from 'node:path';
+import { join } from 'node:path';
 import { UsageError } from './errors.js';
+import { profilesRoot } from '@titan-design/anthropic-account/node';
+import { resolveProfileDir } from './utils/profile-dir.js';
 
 export const CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR';
-export const PROFILE_ROOT_ENV = 'CLAUDE_PROFILE_ROOT';
 
-/** Matches the default used by the `claude-profile` shell function. */
-export const DEFAULT_PROFILE_ROOT = '.claude-profiles';
-
-export function profileRoot(env: NodeJS.ProcessEnv = process.env): string {
-  const configured = env[PROFILE_ROOT_ENV];
-  if (configured && isAbsolute(configured)) return configured;
-  return join(homedir(), DEFAULT_PROFILE_ROOT);
-}
-
-export function resolveProfileDir(profile: string, env: NodeJS.ProcessEnv = process.env): string {
-  return join(profileRoot(env), profile);
-}
-
-export interface ProfileEnvResult {
+interface ProfileEnvResult {
   env: NodeJS.ProcessEnv;
   /** Set when the profile could not be applied; the caller should surface it. */
   warning?: string;
@@ -65,7 +52,7 @@ export function launchProfileEnv(
 
 /** Names of the profile directories under the profile root, sorted; empty when the root is absent. */
 export function listProfiles(env: NodeJS.ProcessEnv = process.env): string[] {
-  const root = profileRoot(env);
+  const root = profilesRoot(env);
   if (!existsSync(root)) return [];
   return readdirSync(root)
     .filter((name) => isDirectory(join(root, name)))
@@ -91,6 +78,6 @@ export function requireProfileDir(name: string, env: NodeJS.ProcessEnv = process
   if (known.includes(name)) return resolveProfileDir(name, env);
   const available = known.length > 0 ? known.join(', ') : '(none)';
   throw new UsageError(
-    `unknown profile "${name}": no directory ${resolveProfileDir(name, env)}. Available profiles in ${profileRoot(env)}: ${available}`,
+    `unknown profile "${name}": no directory ${resolveProfileDir(name, env)}. Available profiles in ${profilesRoot(env)}: ${available}`,
   );
 }

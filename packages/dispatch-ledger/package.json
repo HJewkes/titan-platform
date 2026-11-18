@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/dispatch-ledger",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Burndown claim ledger: zod schema, phase edges, and burndown.json parse and export.",
   "type": "module",
   "main": "./dist/index.js",

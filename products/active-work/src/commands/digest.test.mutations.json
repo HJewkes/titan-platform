@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "digest serves every withheld initiative regardless of the caller",
+      "file": "products/active-work/src/commands/digest.ts",
+      "find": "  return (await withheldSlugs(ctx.activeRoot)).filter((slug) => readable.has(slug));\n",
+      "replace": "  void readable;\n  return withheldSlugs(ctx.activeRoot);\n",
+      "kills": ["digest --personal serves an agent caller no row from an owner-only initiative"]
+    },
+    {
+      "name": "digest lists loops before the next-14-day section",
+      "file": "products/active-work/src/commands/digest.ts",
+      "find": "    ...section(`Due in the next ${UPCOMING_DAYS} days`, digest.upcoming.map(itemRow)),\n    ...section('Trigger-met loops', digest.loops.map((loop) => `${loop.slug} ${loop.ref} ${loop.text}`)),\n",
+      "replace": "    ...section('Trigger-met loops', digest.loops.map((loop) => `${loop.slug} ${loop.ref} ${loop.text}`)),\n    ...section(`Due in the next ${UPCOMING_DAYS} days`, digest.upcoming.map(itemRow)),\n",
+      "kills": ["digest --personal lists overdue, next-14-day, trigger-met and stale items in that order"]
+    },
+    {
+      "name": "digest prints every line uncapped",
+      "file": "products/active-work/src/commands/digest.ts",
+      "find": "  if (lines.length <= MAX_LINES) return lines;\n",
+      "replace": "  if (lines.length > 0) return lines;\n",
+      "kills": ["digest --personal caps the listing at 30 lines and keeps only the top five stale items"]
+    },
+    {
+      "name": "digest keeps every stale task",
+      "file": "products/active-work/src/commands/digest.ts",
+      "find": "    .sort(byDate)\n    .slice(0, STALE_LIMIT);\n",
+      "replace": "    .sort(byDate);\n",
+      "kills": ["digest --personal caps the listing at 30 lines and keeps only the top five stale items"]
+    },
+    {
+      "name": "digest prints an empty section as a bare header",
+      "file": "products/active-work/src/commands/digest.ts",
+      "find": "(rows.length > 0 ? rows : ['none'])",
+      "replace": "rows",
+      "kills": ["digest --personal prints every section with a none line when there is nothing to list"]
+    }
+  ]
+}

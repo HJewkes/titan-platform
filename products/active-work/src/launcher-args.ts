@@ -46,7 +46,7 @@ export function buildChannelArgs(channels: string[] | undefined): string[] {
   ];
 }
 
-export interface ClaudeArgsOptions {
+interface ClaudeArgsOptions {
   /** Start the session with Remote Control; defaults to true for `aw` primary sessions. */
   remoteControl?: boolean;
 }
@@ -87,7 +87,7 @@ export function buildResumeArgs(sessionId: string, opts: ClaudeArgsOptions = {})
  * `--adhoc` is the canonical spelling; `--ad-hoc` is accepted as an alias so
  * the natural hyphenated form doesn't trip the unknown-flag guard below.
  */
-export const ADHOC_FLAGS = ['--adhoc', '--ad-hoc'];
+const ADHOC_FLAGS = ['--adhoc', '--ad-hoc'];
 
 /** Opt out of Remote Control for one launch; `--no-remote-control` is the long alias. */
 export const NO_RC_FLAGS = ['--no-rc', '--no-remote-control'];
@@ -109,11 +109,11 @@ export function extractProfileFlag(args: string[]): ProfileFlag {
   let profile: string | undefined;
   let missingValue = false;
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+    const arg = args.at(i) ?? '';
     if (arg.startsWith(`${PROFILE_FLAG}=`)) {
       profile = arg.slice(PROFILE_FLAG.length + 1);
     } else if (arg === PROFILE_FLAG) {
-      profile = args[++i];
+      profile = args.at(++i);
     } else {
       rest.push(arg);
       continue;
@@ -123,7 +123,7 @@ export function extractProfileFlag(args: string[]): ProfileFlag {
   return { profile: missingValue ? undefined : profile, rest, missingValue };
 }
 
-export interface LauncherFlags {
+interface LauncherFlags {
   pick: boolean;
   adhoc: boolean;
   /** False when `--no-rc` (or `--no-remote-control`) was given. */

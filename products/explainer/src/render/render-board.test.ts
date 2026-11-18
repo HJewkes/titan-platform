@@ -76,7 +76,28 @@ function buttonWithoutAction() {
   return pinnedInputs(script, (rows) => rows.map((row) => (row.id === "b2" ? { ...row, beat: "button" } : row)));
 }
 
+/** The fixture with b2 a list of four rows, one more than a heading fits beside. */
+function fourRowList() {
+  const raw = rawFixture();
+  const labels = ["tick Intake", "tick Sort", "tick Scan", "tick Pack"];
+  return pinnedInputs({ ...raw, beats: raw.beats.map((beat) => (beat.id === "b2" ? { ...beat, visual: { ...beat.visual, labels, cues: [] } } : beat)) });
+}
+
 describe("renderBoard under a slots pin", () => {
+  it("keeps the derived page hints of a verdict card and a four-row list", () => {
+    // Arrange
+    const input = fourRowList();
+
+    // Act
+    const { extras, ids } = renderBoard(input);
+
+    // Assert
+    expect(filledBeat(input.atResolve, "b10")).toMatchObject({ spec: "verdict-card", hints: { qaLeadLine: true } });
+    expect(filledBeat(input.atResolve, "b2")).toMatchObject({ spec: "list", hints: { headingYields: true } });
+    expect(extras.get(ids.get("b10")!)?.hints).toMatchObject({ qaLeadLine: true });
+    expect(extras.get(ids.get("b2")!)?.hints).toMatchObject({ headingYields: true });
+  });
+
   it("a beat filled from the generated-slots pin keeps its cue reveals", () => {
     // Arrange
     const input = pinnedInputs();

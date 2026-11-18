@@ -22,6 +22,8 @@ const BUILD_TSCONFIGS = ["tsconfig.build.json", "tsconfig.json"] as const;
 /** The convention `remapDistToSrc` already applies to cross-package imports, for a package whose tsconfig names no dirs. */
 const DIST_TO_SRC: OutputMapping = { outDir: "dist", rootDir: "src" };
 
+const EXTENSIONLESS_SOURCES = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx"] as const;
+
 const MAX_EXTENDS_DEPTH = 8;
 
 /** The source extensions TypeScript resolves an emitted extension back to; longest suffix first. */
@@ -70,7 +72,17 @@ function entriesOf(repoRoot: string, dir: string, ids: ReadonlySet<string>, sour
   const manifest = readJsonObject(source, path.join(repoRoot, dir, "package.json"));
   if (!manifest) return [];
   const mappings = outputMappings(repoRoot, dir, source);
-  return manifestTargets(manifest).flatMap((target) => matchTarget(joinId(dir, target), mappings, ids));
+  const matches = (target: string) =>
+    (target === "." ? packageRootTargets(dir, mappings) : [joinId(dir, target)]).flatMap((t) => matchTarget(t, mappings, ids));
+  return manifestTargets(manifest).flatMap(({ target, excluding }) => {
+    const excluded = new Set(excluding.flatMap(matches));
+    return matches(target).filter((id) => !excluded.has(id));
+  });
+}
+
+/** A `.` target names the package directory; a build that emits elsewhere makes its output dir the entry directory too. */
+function packageRootTargets(dir: string, mappings: readonly OutputMapping[]): string[] {
+  return [dir, ...mappings.map((m) => m.outDir)];
 }
 
 function readJsonObject(source: ManifestSource, abs: string): Record<string, unknown> | null {
@@ -143,11 +155,19 @@ function readTsconfig(source: ManifestSource, abs: string): Record<string, unkno
 function matchTarget(target: string, mappings: readonly OutputMapping[], ids: ReadonlySet<string>): string[] {
   const spellings = [target, ...mappings.flatMap((m) => remapOutput(target, m))];
   if (target.includes("*")) return spellings.flatMap((s) => matchPattern(s, ids));
-  return spellings.flatMap(sourceCandidates).filter((id) => ids.has(id));
+  return spellings.flatMap(targetCandidates).filter((id) => ids.has(id));
+}
+
+/** A target with no extension names a module (`index`) or a directory (`./dist`); resolve both the way Node does. */
+function targetCandidates(spelling: string): string[] {
+  if (path.posix.extname(spelling) !== "") return sourceCandidates(spelling);
+  const bases = [spelling, `${spelling}/index`];
+  return [spelling, ...bases.flatMap((base) => EXTENSIONLESS_SOURCES.map((ext) => base + ext))];
 }
 
 function remapOutput(target: string, mapping: OutputMapping): string[] {
   if (mapping.outDir === mapping.rootDir) return [];
+  if (target === mapping.outDir) return [mapping.rootDir];
   const rest = mapping.outDir === "." ? target : target.startsWith(`${mapping.outDir}/`) ? target.slice(mapping.outDir.length + 1) : null;
   return rest === null ? [] : [joinId(mapping.rootDir, rest)];
 }

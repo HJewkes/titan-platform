@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the wake brief reads only each check's newest run",
+      "file": "products/factory/src/workflows/skip-hidden.ts",
+      "find": "const candidates = latest.some(isSkip) ? [...failing, ...failuresBehindSkips(all)] : failing;",
+      "replace": "const candidates = failing;",
+      "kills": [
+        "a ci-red wake over a failure that a newer skip hides (tp#3329) hands the fixer the push run's failed mutants job, though the PR-edit run's skip is the newest run"
+      ]
+    },
+    {
+      "name": "a run still going behind a newer skip counts as a hidden failure",
+      "file": "products/factory/src/workflows/skip-hidden.ts",
+      "find": "const failed = (run: CheckRun) => isConcluded(run) && ",
+      "replace": "const failed = (run: CheckRun) => ",
+      "kills": [
+        "a ci-red wake over a failure that a newer skip hides (tp#3329) hands over no run still going behind a newer skip, since it has not failed"
+      ]
+    },
+    {
+      "name": "every failure behind a newer skip is handed over, past a rerun still going",
+      "file": "products/factory/src/workflows/skip-hidden.ts",
+      "find": "return newestRanPerCheck(runs).filter((run) => skippedNewest.has",
+      "replace": "return runs.filter((run) => skippedNewest.has",
+      "kills": [
+        "a ci-red wake over a failure that a newer skip hides (tp#3329) hands over nothing while a rerun is still going between the failure and the newer skip"
+      ]
+    },
+    {
+      "name": "a failure a passing rerun replaced is still handed over",
+      "file": "products/factory/src/workflows/skip-hidden.ts",
+      "find": "return candidates.filter((run) => !passed.has(checkKey(run)));",
+      "replace": "return candidates;",
+      "kills": [
+        "does not name a failure that a later passing rerun of its check replaced"
+      ]
+    }
+  ]
+}

@@ -22,3 +22,5 @@ export type { InProcessCall, Invocation, InvokeOptions } from "./invoke.js";
 export { inProcessCaller, invokeCommand } from "./invoke.js";
 export type { McpToolDescriptor, ToolNaming, ToolSchemaOptions } from "./mcp.js";
 export { commandNameToToolName, commandToTool, toolNameToCommandName } from "./mcp.js";
+export type { TruncateOptions, TruncateResult } from "./truncation.js";
+export { truncateOutput } from "./truncation.js";

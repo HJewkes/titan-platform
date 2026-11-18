@@ -397,17 +397,6 @@ declare function createMcpServer<Ctx extends BaseContext>(options: McpServerOpti
 /** Serve MCP over stdio. Resolves when the transport closes (the client disconnected). */
 declare function runMcpStdio<Ctx extends BaseContext>(options: McpServerOptions<Ctx>): Promise<void>;
 
-declare class NonLoopbackBindError extends Error {
-    readonly host: string;
-    constructor(host: string);
-}
-declare class RemoteBindError extends Error {
-    readonly host: string;
-    constructor(host: string, reason: string);
-}
-/** Pure syntax check: names other than `localhost` are never resolved. */
-declare function isLoopbackHost(host: string): boolean;
-
 interface RemoteTlsOptions {
     /** PEM certificate chain. Every name the listener answers to must be on it. */
     certFile: string;
@@ -418,23 +407,6 @@ interface RemoteTlsOptions {
 declare class TlsFileError extends Error {
     readonly file: string;
     constructor(file: string, detail: string, options?: ErrorOptions);
-}
-
-/**
- * A content origin: a second port that serves only product routes, read-only, so untrusted
- * content (a PR's built Storybook, say) runs in an origin that is not the daemon's. Browsers
- * isolate origins by port, so script there cannot read the main origin's pages, and the main
- * listeners' guards refuse its `Origin` on every state-changing request.
- *
- * Cookies ignore port, so the main listener's session cookie reaches this origin too, and the
- * same gate accepts it: there is no second sign-in, and no sign-in route here at all.
- */
-
-interface ContentOriginOptions {
-    /** Its own port on the loopback host and, with `remote`, the remote address. Pass 0 for an ephemeral port. */
-    port: number;
-    /** Product routes, mounted once per listener. Only GET and HEAD ever reach them. */
-    mountRoutes: (app: Hono) => void;
 }
 
 /**
@@ -461,6 +433,40 @@ interface RemoteListenerOptions {
     tlsReloadMs?: number;
     /** How a signed-out browser gets a sign-in link, shown on the sign-in pages; see `DaemonAuthOptions.signInHint`. */
     signInHint?: string;
+}
+
+/**
+ * The main listener has no auth, so a bind beyond loopback is refused unless the caller opts in.
+ * The authenticated remote listener is the opposite: it must name one concrete non-loopback
+ * address, never a wildcard, which would also expose every bridge and VPN interface.
+ */
+
+declare class NonLoopbackBindError extends Error {
+    readonly host: string;
+    constructor(host: string);
+}
+declare class RemoteBindError extends Error {
+    readonly host: string;
+    constructor(host: string, reason: string);
+}
+/** Pure syntax check: names other than `localhost` are never resolved. */
+declare function isLoopbackHost(host: string): boolean;
+
+/**
+ * A content origin: a second port that serves only product routes, read-only, so untrusted
+ * content (a PR's built Storybook, say) runs in an origin that is not the daemon's. Browsers
+ * isolate origins by port, so script there cannot read the main origin's pages, and the main
+ * listeners' guards refuse its `Origin` on every state-changing request.
+ *
+ * Cookies ignore port, so the main listener's session cookie reaches this origin too, and the
+ * same gate accepts it: there is no second sign-in, and no sign-in route here at all.
+ */
+
+interface ContentOriginOptions {
+    /** Its own port on the loopback host and, with `remote`, the remote address. Pass 0 for an ephemeral port. */
+    port: number;
+    /** Product routes, mounted once per listener. Only GET and HEAD ever reach them. */
+    mountRoutes: (app: Hono) => void;
 }
 
 interface StartDaemonOptions<Ctx extends BaseContext = BaseContext> extends SurfaceOptions<Ctx> {
@@ -536,6 +542,12 @@ declare function startDaemon<Ctx extends BaseContext>(options: StartDaemonOption
 /** Start, then run until SIGTERM/SIGINT, then close. Resolves after shutdown completes. */
 declare function runDaemonUntilSignal<Ctx extends BaseContext>(options: StartDaemonOptions<Ctx>): Promise<void>;
 
+interface SignalSource {
+    once(signal: NodeJS.Signals, listener: () => void): unknown;
+}
+/** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */
+declare function closeOnSignal(handle: Pick<DaemonHandle, "close">, onClose?: () => Promise<void>, signals?: SignalSource): void;
+
 /**
  * The systemd socket-activation handoff (sd_listen_fds(3)): a supervisor that owns the
  * listening socket passes it as fd 3 and names the receiving process in `LISTEN_PID`.
@@ -592,4 +604,7 @@ interface FileResponseOptions {
  */
 declare function fileResponse(request: Request, file: string, options: FileResponseOptions): Promise<Response>;
 
-export { type ContainedFile, type ContentOriginOptions, DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type FileResponseOptions, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, type RpcSample, SESSION_COOKIE, SESSION_MAX_AGE_MS, type SecretParser, SecretRejection, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, consoleLogger, consumeLoginCode, containedFile, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, fileResponse, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, parseBase64Secret, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, trackSecretFile, verifySession, watchTree, writePidFile };
+/** The changed paths a build of the closure dirs reads: root inputs, plus runtime files inside a closure dir. */
+declare function touchedPaths(changed: readonly string[], closure: readonly string[]): string[];
+
+export { type ContainedFile, type ContentOriginOptions, DEFAULT_ALLOWED_HOSTS, DEFAULT_DAEMON_PORT, DEFAULT_EVENT_LIMITS, DEFAULT_RPC_BODY_LIMIT, DEFAULT_SIGN_IN_HINT, DaemonAlreadyRunningError, type DaemonAuth, type DaemonAuthOptions, type DaemonHandle, type DaemonMeta, type DaemonPaths, DaemonPortInUseError, EventHub, type EventLimits, type FileResponseOptions, type GuardRefusal, type GuardedRequest, type HealthPayload, type HealthPayloadInput, type HttpAppOptions, LOGIN_CODE_TTL_MS, LOGIN_PATH, LOGOUT_PATH, type Logger, type LoginCodeLedger, type McpServerOptions, NonLoopbackBindError, type PidFileContents, type ProbeHealthOptions, RemoteBindError, type RemoteListenerOptions, type RemoteTlsOptions, type RequestAuth, type RequestGuard, type RequestGuardOptions, type RpcBodyLimit, type RpcSample, SESSION_COOKIE, SESSION_MAX_AGE_MS, type SecretParser, SecretRejection, type StartDaemonOptions, type StaticAppOptions, type Subscriber, type Surface, type SurfaceOptions, TlsFileError, TokenFileError, type TokenFileProblem, type ToolCallOutcome, type TreeWatcher, type WatchTreeOptions, attachHandlers, buildHealthPayload, buildHttpApp, closeOnSignal, consoleLogger, consumeLoginCode, containedFile, createDaemonAuth, createLoginCodeLedger, createMcpServer, createRequestGuard, daemonPaths, ensureTokenFile, fileResponse, getProcessCommand, getProcessStartTime, getRequestAuth, invokeTool, isLoopbackHost, isProcessAlive, listTools, mintLoginCode, mountStaticApp, parseBase64Secret, probeHealth, readPidFile, removePidFile, rotateTokenFile, runDaemonUntilSignal, runMcpStdio, signSession, silentLogger, startDaemon, systemdListenFd, touchedPaths, trackSecretFile, verifySession, watchTree, writePidFile };

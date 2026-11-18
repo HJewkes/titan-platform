@@ -125,7 +125,9 @@ export const activeWorkCli: ActiveWorkPort = {
     return openTasksEnvelope.parse(JSON.parse(stdout)).data.tasks;
   },
   async add(initiative, action) {
-    await execFileAsync("active-work", ["task", "add", initiative, "--title", action.title, "--tags", action.tags.join(","), "--notes", action.body]);
+    // One --tags per tag: active-work refuses a comma inside an array flag value.
+    const tags = action.tags.flatMap((tag) => ["--tags", tag]);
+    await execFileAsync("active-work", ["task", "add", initiative, "--title", action.title, ...tags, "--notes", action.body]);
   },
   async note(initiative, action) {
     await execFileAsync("active-work", ["task", "note", initiative, action.taskId, action.text]);

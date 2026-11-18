@@ -1,4 +1,4 @@
-import type { PullRequest } from "./port.js";
+import type { PullRequest } from "./port-types.js";
 
 /**
  * The open PRs, or `notModified` when they are unchanged since the read that answered `etag`. Rows carry no `behind`

@@ -1,5 +1,5 @@
 import type { OpenPrRequest } from "./pr-list.js";
-import type { GitHubWire, PullRequest, RepoSlug, WriteResult } from "./port.js";
+import type { GitHubWire, PullRequest, RepoSlug, WriteResult } from "./port-types.js";
 
 /** An open PR wins; otherwise the newest closed one, so a crash after a merge still finds its PR. */
 export async function findPr(wire: GitHubWire, repo: RepoSlug, headBranch: string): Promise<PullRequest | null> {

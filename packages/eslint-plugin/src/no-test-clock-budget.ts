@@ -1,5 +1,6 @@
 import type { Rule, Scope, SourceCode } from "eslint";
 import type { CallExpression } from "estree";
+import type { TitanRule } from "./titan-rule.js";
 
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 const CLOCK_CALLEE = /^(?:globalThis\.)?(?:Date\.now|performance\.now|process\.(?:hrtime(?:\.bigint)?|threadCpuUsage|cpuUsage))$/;
@@ -181,10 +182,13 @@ function resolvedNames(source: SourceCode): Map<unknown, Scope.Variable | null> 
   return resolved;
 }
 
-export const noTestClockBudget: Rule.RuleModule = {
+export const noTestClockBudget: TitanRule = {
   meta: {
     type: "problem",
-    docs: { description: "Disallow a test that compares elapsed time, or a ratio of times, with a limit outside a bench gate" },
+    docs: {
+      description: "Disallow a test that compares elapsed time, or a ratio of times, with a limit outside a bench gate",
+      classes: ["real-clock-in-test"],
+    },
     schema: [],
     messages: {
       clockBudget:

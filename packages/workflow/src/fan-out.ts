@@ -1,4 +1,5 @@
-import { StepFailedError, type StepResult, type StepUsage, type WorkflowContext } from "./types.js";
+import { type StepResult, type StepUsage, type WorkflowContext } from "./types.js";
+import { StepFailedError } from "./step-errors.js";
 
 const DEFAULT_MAX_FAILURES = 3;
 

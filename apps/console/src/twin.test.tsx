@@ -3,6 +3,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { act, cleanup, render } from "@testing-library/react";
 import { RpcProvider } from "@titan-design/react-app";
 import { snapshotKey, staticSource, type DataSource, type Snapshot } from "@titan-design/rpc-client";
+import { TWIN_NOW } from "../server/twin/clock.js";
 import { TWIN_ROUTES } from "../server/twin/routes.js";
 import { twinSnapshot } from "../server/twin/snapshot.js";
 import { App } from "./App.js";
@@ -10,6 +11,7 @@ import { VIEW_KEYS } from "./router.js";
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -25,7 +27,12 @@ class SeeEverything {
   disconnect(): void {}
 }
 
-beforeEach(() => vi.stubGlobal("IntersectionObserver", SeeEverything));
+beforeEach(() => {
+  vi.stubGlobal("IntersectionObserver", SeeEverything);
+  // Home names today's UTC date in its video call, so the page must see the twin's clock as the capture does.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(TWIN_NOW);
+});
 
 let snapshot: Snapshot;
 const asked = new Set<string>();

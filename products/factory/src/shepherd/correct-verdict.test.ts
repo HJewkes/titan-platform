@@ -1,7 +1,7 @@
 import { DispatchError } from "@titan-design/agent-dispatch";
 import { describe, expect, it } from "vitest";
 import { correctVerdict, type CorrectTiming, type CorrectVerdictInput } from "./correct-verdict.js";
-import { ReviewerBrokerDown } from "./review-wait.js";
+import { ReviewerAskTimedOut, ReviewerBrokerDown } from "./review-wait.js";
 import { correctionPrompt, type ReviewerAgent, type ReviewerDispatch } from "@titan-design/review-panel";
 
 const HEAD = "c".repeat(40);
@@ -35,6 +35,8 @@ interface Scene {
   showsAfterMs?: number;
   /** Thrown by the first resumes, one each, before they reach the broker. */
   refusals?: Error[];
+  /** The first roster reads that time out, one each, as a slow broker's do. */
+  slowRosterReads?: number;
 }
 
 /** A roster in memory over a fake clock; a resume shows on the roster `showsAfterMs` later. */
@@ -43,8 +45,9 @@ function fake(scene: Scene) {
   const resumes: { name: string; brief: string }[] = [];
   const refusals = [...(scene.refusals ?? [])];
   let shownAt: number | undefined;
+  let slowReads = scene.slowRosterReads ?? 0;
   const dispatch: ReviewerDispatch = {
-    roster: async () => scene.rows.map((row) => (shownAt !== undefined && clock.now >= shownAt ? { ...row, ...(scene.resumed?.(row) ?? { presence: "live" }) } : row)),
+    roster: async () => (slowReads-- > 0 ? Promise.reject(new ReviewerAskTimedOut("roster")) : scene.rows.map((row) => (shownAt !== undefined && clock.now >= shownAt ? { ...row, ...(scene.resumed?.(row) ?? { presence: "live" }) } : row))),
     spawn: async () => Promise.reject(new Error("a correction never spawns")),
     resume: async (name, brief) => {
       const refusal = refusals.shift();
@@ -53,7 +56,7 @@ function fake(scene: Scene) {
       shownAt = clock.now + (scene.showsAfterMs ?? 0);
     },
   };
-  const timing: CorrectTiming = { now: () => clock.now, sleep: async (ms) => void (clock.now += ms), pollMs: 10, timeoutMs: 1_000, busyWaitMs: 60_000 };
+  const timing: CorrectTiming = { now: () => clock.now, sleep: async (ms) => void (clock.now += ms), pollMs: 10, timeoutMs: 1_000, busyWaitMs: 60_000, brokerDownWaitMs: 60_000 };
   const run = (overrides: Partial<CorrectVerdictInput> = {}, repeat = false) => correctVerdict(dispatch, { ...input, ...overrides }, timing, new AbortController().signal, repeat);
   return { run, resumes, clock };
 }
@@ -125,6 +128,20 @@ describe("sh-correct-verdict", () => {
 
     expect(await run()).toMatchObject({ kind: "asked" });
     expect(resumes).toHaveLength(1);
+  });
+
+  it("waits out a roster read that timed out and resumes once it answers", async () => {
+    const { run, resumes } = fake({ rows: [reviewer()], slowRosterReads: 2 });
+
+    expect(await run()).toMatchObject({ kind: "asked" });
+    expect(resumes).toHaveLength(1);
+  });
+
+  it("answers a retryable none, resuming nobody, when the roster stays unread past the budget", async () => {
+    const { run, resumes } = fake({ rows: [reviewer()], slowRosterReads: Infinity });
+
+    expect(await run()).toEqual({ kind: "none", reason: "the reviewer dispatch was refused: ReviewerAskTimedOut (roster unread after 0 min)" });
+    expect(resumes).toEqual([]);
   });
 
   it.each<[string, Partial<ReviewerAgent>]>([

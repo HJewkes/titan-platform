@@ -96,6 +96,20 @@ describe("conventions", () => {
     expect(defaultTargetCount(5000)).toBe(40);
   });
 
+  it("keeps two files linked only by a mocks edge in separate areas, but joins them on an imports link", () => {
+    const pair = (ref: string, kind: "mocks" | "imports"): string[][] => {
+      const snap = store.createSnapshot({ ref, indexVersion: "0.11.0" });
+      store.insertNodes(snap, [
+        { id: "src/a.test.ts", kind: "file", name: "a.test.ts" },
+        { id: "src/b.ts", kind: "file", name: "b.ts" },
+      ]);
+      store.insertEdges(snap, [{ srcId: "src/a.test.ts", dstId: "src/b.ts", kind }]);
+      return buildConventionAreas(store, snap, { minSize: 2 }).areas.map((a) => [...a.files]);
+    };
+    expect(pair("mocks", "mocks")).toEqual([]);
+    expect(pair("imports", "imports")).toEqual([["src/a.test.ts", "src/b.ts"]]);
+  });
+
   it("partitions into labeled areas and leaves small/generated files ungrouped", () => {
     const snap = insertFixture(store);
     const { areas, coverage, prompts } = buildConventionAreas(store, snap);

@@ -13,8 +13,8 @@
     {
       "name": "the diff classification is skipped",
       "file": "products/factory/src/shepherd/no-repro-test-only.ts",
-      "find": "if ((await testOnlyDiff(port, gate.repo, gate.pr, gate.head)).kind === \"test-only\") return true;",
-      "replace": "return true;",
+      "find": "if (diff.kind === \"test-only\") return { proceeds: true };",
+      "replace": "return { proceeds: true };",
       "kills": [
         "proceedsOnNoRepro on a diff of tests and a changeset keeps a correctness registration gated once the diff also changes source"
       ]
@@ -31,8 +31,8 @@
     {
       "name": "security proceeds too",
       "file": "products/factory/src/shepherd/no-repro-test-only.ts",
-      "find": "if (gate.flag !== \"on\" || !TEST_ONLY_PROOF_KINDS.has(gate.kind)) return false;",
-      "replace": "if (gate.flag !== \"on\") return false;",
+      "find": "if (gate.flag !== \"on\" || !TEST_ONLY_PROOF_KINDS.has(gate.kind)) return { proceeds: false };",
+      "replace": "if (gate.flag !== \"on\") return { proceeds: false };",
       "kills": [
         "proceedsOnNoRepro on a diff of tests and a changeset keeps a security registration gated"
       ]

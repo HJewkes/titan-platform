@@ -1,5 +1,0 @@
----
-"@titan-design/explainer": patch
----
-
-A script that passes the script stage no longer dies at resolve on its cue targets. The script stage's template-fill gate now also fails each beat whose cue targets name no single element of the kind the fill draws, a fallback's included. Its row names the beat, the beat spec it chose, why it fell back, the orphaned targets and the elements the drawn kind has, so the script repair fixes it before a paid stage. A sim beat that falls back is left out, since resolve cuts it. At resolve, the emphasis-target gate holds a custom beat's cues to the ids its built layer exposes (listed in `elements` and spelled as a literal in its source), not to template slots, and its row lists every failing cue with its target and reason, plus a hint. A custom-layer build that exposes no element for a cue target is rebuilt once, with a `rebuild` field in its packet naming the missing targets; a rebuild that still misses fails the beat naming them. Stage versions: script x19, rewrite x12, resolve p5c2s2f2s2d.

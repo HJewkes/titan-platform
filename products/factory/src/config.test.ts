@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { configPath, loadConfig, resolveDbPath } from "./config.js";
+import { checkCandidatesMode, configPath, loadConfig, resolveDbPath } from "./config.js";
 import { arConfigFixture } from "./test-support/autoresearch.js";
 
 const dirs: string[] = [];
@@ -196,6 +196,14 @@ describe("loadConfig", () => {
     expect(() => load({ ...reviewCheck, token: "x" })).toThrow(/reviewCheck/);
   });
 
+  it.each(["my-app", " ", "my-app[bot] ", "other app[bot]"])("rejects %j as the review-check App's login, which must be a bot login", (login) => {
+    const reviewCheck = { appId: 101, installationId: 202, privateKeyPath: "/keys/app.pem" };
+    const load = (block: object) => loadConfig(configPath(xdg({ shepherd: { reviewCheck: block } })));
+
+    expect(load({ ...reviewCheck, login: "my-app[bot]" }).shepherd?.reviewCheck?.login).toBe("my-app[bot]");
+    expect(() => load({ ...reviewCheck, login })).toThrow(/reviewCheck/);
+  });
+
   it.each(["https://github.com/acme/dotfiles", "acme/dotfiles.git"])("rejects %s as a hard-stop repo", (repo) => {
     expect(() => loadConfig(configPath(xdg({ shepherd: { charterPath: "/charter.md", hardStopRepos: { "dotfiles-merge": [repo] } } })))).toThrow(/hardStopRepos/);
   });
@@ -292,6 +300,19 @@ describe("loadConfig", () => {
   it("leaves review.panel unset when the config names none, and rejects a misspelt mode", () => {
     expect(loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv" } } }))).shepherd?.review?.panel).toBeUndefined();
     expect(() => loadConfig(configPath(xdg({ shepherd: { agentChatBin: "/opt/bin/agent-chat", review: { profile: "rv", panel: "shaddow" } } })))).toThrow(/panel/);
+  });
+
+  it("checkCandidates defaults to record", () => {
+    const load = (shepherd: object) => checkCandidatesMode(loadConfig(configPath(xdg({ shepherd }))));
+
+    expect(checkCandidatesMode({})).toBe("record");
+    expect(load({})).toBe("record");
+    expect(load({ checkCandidates: "off" })).toBe("off");
+    expect(load({ checkCandidates: "propose" })).toBe("propose");
+  });
+
+  it("rejects an unknown checkCandidates mode", () => {
+    expect(() => loadConfig(configPath(xdg({ shepherd: { checkCandidates: "shadow" } })))).toThrow(/checkCandidates/);
   });
 
   it("rejects a role table naming a class that does not exist", () => {

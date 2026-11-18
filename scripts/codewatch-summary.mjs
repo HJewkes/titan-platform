@@ -54,7 +54,7 @@ function readReport(file) {
 }
 
 /** A missing or unreadable report has no size either, so it annotates as unknown. */
-export function annotateFile(file) {
+function annotateFile(file) {
   let report;
   try {
     report = readReport(file);

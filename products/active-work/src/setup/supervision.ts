@@ -25,7 +25,7 @@ import {
 import os from 'node:os';
 import type { SetupDeps, StepResult } from './steps.js';
 
-export interface Supervisor {
+interface Supervisor {
   readonly kind: 'systemd' | 'launchd';
   /** One-line prompt shown when offering to install supervision. */
   readonly installPrompt: string;

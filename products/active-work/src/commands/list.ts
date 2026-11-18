@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { BriefFrontmatter } from '../schemas/brief.js';
 import { getActiveRoot } from '../utils/paths.js';
-import { scanInitiatives } from './audit.js';
+import { scanInitiativesForCaller } from './audit.js';
 import { defineCommand } from '../registry/index.js';
 
 const argsSchema = z.object({}).strict();
@@ -61,9 +61,9 @@ export default defineCommand({
   cli: {
     usage: 'list',
   },
-  async run() {
+  async run(_args, ctx) {
     const activeRoot = getActiveRoot();
-    const { entries, errors } = await scanInitiatives(activeRoot);
+    const { entries, errors } = await scanInitiativesForCaller(activeRoot, ctx);
 
     const focused: Item[] = [];
     const backburner: Item[] = [];

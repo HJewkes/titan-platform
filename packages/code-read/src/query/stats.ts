@@ -1,7 +1,7 @@
 import type { Column } from "./rollup.js";
 import type { Tree, TreeNode } from "./tree.js";
 
-export interface PeerStats {
+interface PeerStats {
   /** Share of same-kind nodes in the snapshot whose value is at most this one, 0 to 100. */
   percentile: number | null;
   siblingMedian: number | null;

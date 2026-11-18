@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { TS_FUNCTION_DECLARATION } from "@titan-design/code-parser/node-kinds";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 
 const JSDOC_TAG_PATTERN = /@(param|returns?|throws?|example|deprecated|see|since|type|typedef|template|callback|async)\b/g;
@@ -49,7 +50,7 @@ export class DocumentationExtractor implements StyleExtractor {
       );
     }
     return (
-      node.type === "function_declaration" ||
+      node.type === TS_FUNCTION_DECLARATION ||
       node.type === "method_definition" ||
       node.type === "class_declaration" ||
       node.type === "interface_declaration" ||

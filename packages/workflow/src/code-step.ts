@@ -13,6 +13,8 @@ export interface CodeRouteOptions {
   envelope?: CodeStepEnvelope;
   /** Rewrites a thrown message before the runtime records it, so a secret in an error never reaches the store. */
   errorText?: (message: string) => string;
+  /** The host's class for a thrown error, read from the error itself and carried on the failed outcome; undefined records none. */
+  errorClass?: (error: unknown) => string | undefined;
 }
 
 /** Code steps take their input as JSON and answer with one record whose `result` the workflow reads. */
@@ -55,7 +57,8 @@ export function codeRecordRoute<I>(match: string, fn: (input: I, step: RoutedSte
       return { ok: true as const, output: JSON.stringify(envelope(record, step)), ...(usage ? { usage } : {}) };
     } catch (error) {
       const usage = error instanceof CodeStepFailure ? { usage: error.usage } : {};
-      return { ok: false as const, error: errorText(error instanceof Error ? error.message : String(error)), retryable: false, ...usage };
+      const errorClass = options.errorClass?.(error);
+      return { ok: false as const, error: errorText(error instanceof Error ? error.message : String(error)), retryable: false, ...usage, ...(errorClass === undefined ? {} : { errorClass }) };
     }
   };
   return { match, onRestart: "repeat", runner: { run } };

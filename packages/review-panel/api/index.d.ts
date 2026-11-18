@@ -372,6 +372,9 @@ interface ReviewScope {
 /** Any doubt means a full review: a scope that fails here, or has no open finding to check, leaves the brief unscoped. */
 declare function usableScope(scope: ReviewScope | undefined, openFindings: number): scope is ReviewScope;
 
+/** One shared vocabulary is what lets Shepherd count a class across PRs; reviewer free text gave a new phrasing almost every time. */
+declare const CHECK_CANDIDATES_RULE: string;
+
 type RepoSlug = string;
 /** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
 declare const MAX_OWNER_BRIEF_CHARS = 2000;
@@ -380,7 +383,7 @@ declare const OWNER_BRIEF_END = "END-OWNER-BRIEF";
 /** A scoped fix-round FIX_FIRST that broke the unchanged-line or no-repeat rule (TP-3735); Shepherd's scope check finds these, not the parser. */
 type ScopeRefusal = "scope_untagged" | "repeated_finding";
 /** Why a reviewer's final message was no verdict: the parser refused its block, the block named another repo, PR or head, or a MERGE's CI-policy line was off-format. */
-type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "ci_policy_prose" | "probes_missing" | ScopeRefusal;
+type MalformedRefusal = VerdictBlockRefusal | "wrong_target" | "ci_policy_malformed" | "ci_policy_prose" | "probes_missing" | "authority_missing" | ScopeRefusal;
 /** The name a reviewer extracts into: `review-<pr>-<first 12 hex of the head sha>`. */
 declare function reviewCheckoutName(pr: number, head: string): string;
 declare const MAX_REVIEWER_QUESTIONS = 8;
@@ -400,9 +403,9 @@ interface ReviewerBriefInput extends WorkflowCiInput {
     fixFirsts?: number;
     /** True when this run's verdict will reach the owner; the brief then also asks for an OWNER-BRIEF block. */
     ownerBrief?: boolean;
-    /** The reviewer test rule for the host serve runs on; absent means `CI_REVIEWER_TEST_RULE`, and `ciChecks` replaces it. */
+    /** The reviewer test rule for the host serve runs on; absent means `CI_REVIEWER_TEST_RULE`. `ciChecks` replaces it unless it hides a required row, when the rule still applies (TP-3478). */
     testRule?: string;
-    /** The check-runs Shepherd read at this head; when set they replace `testRule`, so the reviewer judges CI from them and reads none itself. */
+    /** The check-runs Shepherd read at this head; when set they replace `testRule`, so the reviewer judges CI from them and reads none itself. When they hide a required row, `testRule` still applies and the reviewer reads CI itself (TP-3478). */
     ciChecks?: readonly CiCheckRow[];
     /** The raw `fix-proof/v1` result line; it is parsed and checked against the head, and only counts and the verdict reach the prompt. */
     fixProof?: string;
@@ -454,6 +457,65 @@ interface CorrectionPromptInput {
 /** Built only from code-chosen strings, since it travels in argv; the verdict line is a placeholder, so it never parses as a verdict. */
 declare function correctionPrompt(input: CorrectionPromptInput): string;
 
+/** The line an adversary verdict must carry above its block; a verdict without it is malformed. */
+declare const PROBES_HEADING = "Probes:";
+/** The labelled line an adversary verdict carries above its block: whether the change widens what any agent, account or path may do. */
+declare const AUTHORITY_HEADING = "Authority:";
+/** The closed value set of the Authority line; the same three values the Shepherd risk tier reads. */
+type AuthorityLine = "unchanged" | "tightened" | "widened";
+/** Why a hold asked for an adversary, as the host knows it; every field is text other agents wrote, so it is rendered as data. */
+interface AdversaryHoldContext {
+    holdReason?: string;
+    matchedFiles?: readonly string[];
+    doneWhen?: string;
+    lastReport?: string;
+}
+/** A line starting `Probes:` above the verdict block. */
+declare function hasProbesLine(text: string): boolean;
+/**
+ * Every raw line, fenced or not, that carries the Authority label is a reading, as every CI-policy labelled line is, so a
+ * hidden or decorated `widened` still counts. Several readings read the strictest. No labelled line reads undefined.
+ */
+declare function authorityLine(text: string): AuthorityLine | "malformed" | undefined;
+
+declare const CHECK_CANDIDATES_HEADING = "Check-candidates:";
+declare const MAX_CHECK_CANDIDATES = 5;
+declare const MAX_CHECK_SKETCH_CHARS = 160;
+/** The audit's routes without `none`: a reviewer writes no line for a one-off rather than a line routed nowhere. */
+declare const CHECK_ROUTES: readonly ["lint", "type", "structure", "test", "analysis", "design", "prompt", "docs"];
+type CheckRoute = (typeof CHECK_ROUTES)[number];
+/** A standard class's default route; `none` marks the classes that never become a check. */
+type CheckClassRoute = CheckRoute | "none";
+/** The review audit's fixed vocabulary of 45 class keys, so the same class counts as one across PRs whatever the reviewer's wording. */
+declare const CHECK_CLASSES: readonly {
+    readonly key: string;
+    readonly route: CheckClassRoute;
+}[];
+/** One finding a reviewer thinks a check could have caught; it never decides the verdict. */
+interface CheckCandidate {
+    /** A standard key, or `other:<slug>` for a key the reviewer coined. */
+    classKey: string;
+    route: CheckRoute;
+    sketch: string;
+}
+declare const CHECK_CANDIDATES_WARNINGS: readonly ["multiple_blocks", "bad_item", "bad_route", "too_many", "too_long"];
+/** Why a Check-candidates block was dropped whole; a closed set, so no reviewer text travels with it. */
+type CheckCandidatesWarning = (typeof CHECK_CANDIDATES_WARNINGS)[number];
+interface ParsedCheckCandidates {
+    items: CheckCandidate[];
+    warning?: CheckCandidatesWarning;
+}
+/**
+ * The one `Check-candidates:` block anywhere in a reviewer's visible text, before or after the verdict lines. Any fault drops
+ * the whole block with one named warning rather than recording part of it, and nothing here can change the verdict.
+ */
+declare function parseCheckCandidates(text: string): ParsedCheckCandidates;
+/** The fields an accepted verdict carries: both absent when the reviewer named no candidate and wrote nothing malformed. */
+declare function checkCandidatesFields(text: string): {
+    checkCandidates?: CheckCandidate[];
+    checkCandidatesWarning?: CheckCandidatesWarning;
+};
+
 declare const FOLLOW_UPS_HEADING = "Follow-ups:";
 declare const MAX_FOLLOW_UPS = 5;
 declare const MAX_FOLLOW_UP_TITLE_CHARS = 120;
@@ -465,9 +527,9 @@ declare const FollowUpSchema: z.ZodObject<{
     title: z.ZodString;
     doneWhen: z.ZodString;
     severity: z.ZodEnum<{
+        high: "high";
         low: "low";
         medium: "medium";
-        high: "high";
     }>;
 }, z.core.$strict>;
 type FollowUp = z.infer<typeof FollowUpSchema>;
@@ -496,8 +558,8 @@ declare const OwnerBriefSchema: z.ZodObject<{
     pros: z.ZodArray<z.ZodString>;
     cons: z.ZodArray<z.ZodString>;
     doorType: z.ZodEnum<{
-        "two-way": "two-way";
         "one-way": "one-way";
+        "two-way": "two-way";
     }>;
 }, z.core.$strict>;
 type OwnerBrief = z.infer<typeof OwnerBriefSchema>;
@@ -533,6 +595,10 @@ interface AcceptedVerdict {
     followUps?: FollowUp[];
     /** Why the reviewer's Follow-ups block was dropped whole; the verdict still counts. */
     followUpsWarning?: FollowUpsWarning;
+    /** Findings the reviewer thinks a check could have caught, on MERGE and FIX_FIRST alike; never read by the verdict. */
+    checkCandidates?: CheckCandidate[];
+    /** Why the reviewer's Check-candidates block was dropped whole; the verdict still counts. */
+    checkCandidatesWarning?: CheckCandidatesWarning;
     /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
     reviewerProfile?: string;
 }
@@ -545,6 +611,7 @@ type AwaitVerdictResult = (AcceptedVerdict & {
     verdict: "MERGE";
     ciPolicy?: CiPolicy;
     attests?: string[];
+    authority?: AuthorityLine;
 }) | (AcceptedVerdict & {
     verdict: "FIX_FIRST";
     text: string;
@@ -572,7 +639,7 @@ declare const isUsageLimit: (result: {
  * made no investigative call is `none` with the depth-floor reason; a message the reader did not count is judged as before.
  * A MERGE whose CI-policy line reads malformed is refused for one correction, unless the only other labelled lines are
  * harmless prose (see `mergeCiPolicy`); a weakened reading wins over malformed in the parser, so a weakening is never
- * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too.
+ * corrected away. An adversary verdict with no `Probes:` line is refused for one correction too, and so is an adversary MERGE whose `authorityLine` reading is absent or malformed.
  */
 declare function acceptVerdict(input: AwaitVerdictInput, messages: readonly ReviewerMessage[]): AwaitVerdictResult;
 
@@ -669,18 +736,6 @@ declare function fixProofNeedsTests(input: Pick<AggregateInput, "head" | "fixPro
 /** The panel verdict for one head from its members' results. Every path it cannot classify ends short of MERGE. Pure. */
 declare function aggregate(plan: PanelPlan, results: readonly MemberResult[], input: AggregateInput): PanelVerdict;
 
-/** The line an adversary verdict must carry above its block; a verdict without it is malformed. */
-declare const PROBES_HEADING = "Probes:";
-/** Why a hold asked for an adversary, as the host knows it; every field is text other agents wrote, so it is rendered as data. */
-interface AdversaryHoldContext {
-    holdReason?: string;
-    matchedFiles?: readonly string[];
-    doneWhen?: string;
-    lastReport?: string;
-}
-/** A line starting `Probes:` above the verdict block. */
-declare function hasProbesLine(text: string): boolean;
-
 /** The shapes that carry an overlay; correctness is the base brief itself. */
 type OverlayShape = Exclude<ReviewShape, "correctness">;
 declare const OVERLAY_SHAPES: readonly OverlayShape[];
@@ -745,4 +800,4 @@ declare function memberName(target: ReviewTarget, shape: ReviewShape, attempt?: 
  */
 declare function reviewPullRequest(request: ReviewRequest, ports: ReviewPorts, opts?: ReviewOptions): Promise<PanelVerdict>;
 
-export { ATTESTS_HEADING, type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AttestClaim, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, CLASS_TAG, CONVERGENCE_HEADING, type ChangedFile, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, IMPORTANT_TAG, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_ATTEST_CLAIMS, MAX_CI_CHECK_ROWS, MAX_CLAIM_FILES, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, MAX_SCOPE_PATHS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, type NoReproProceed, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewScope, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ScopeHunk, type ScopeRefusal, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, UninstalledProfileError, type WorkflowCiInput, type WorkflowCiProof, acceptVerdict, aggregate, attestRule, attestTokens, boundedFindings, changedLineCount, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, fixProofNeedsTests, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, noReproProceedOf, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, usableScope, validOwnerPicks };
+export { ATTESTS_HEADING, AUTHORITY_HEADING, type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AttestClaim, type AuthorityLine, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CHECK_CANDIDATES_HEADING, CHECK_CANDIDATES_RULE, CHECK_CANDIDATES_WARNINGS, CHECK_CLASSES, CHECK_ROUTES, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, CLASS_TAG, CONVERGENCE_HEADING, type ChangedFile, type CheckCandidate, type CheckCandidatesWarning, type CheckClassRoute, type CheckRoute, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, IMPORTANT_TAG, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_ATTEST_CLAIMS, MAX_CHECK_CANDIDATES, MAX_CHECK_SKETCH_CHARS, MAX_CI_CHECK_ROWS, MAX_CLAIM_FILES, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, MAX_SCOPE_PATHS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, type NoReproProceed, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedCheckCandidates, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewScope, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ScopeHunk, type ScopeRefusal, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, UninstalledProfileError, type WorkflowCiInput, type WorkflowCiProof, acceptVerdict, aggregate, attestRule, attestTokens, authorityLine, boundedFindings, changedLineCount, checkCandidatesFields, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, fixProofNeedsTests, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, noReproProceedOf, parseCheckCandidates, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, usableScope, validOwnerPicks };

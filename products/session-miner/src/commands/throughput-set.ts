@@ -1,8 +1,7 @@
-import { existsSync, readdirSync } from "node:fs";
-import path from "node:path";
 import { readEdges, type Task } from "@titan-design/pm";
+import { readInitiativeTasks } from "@titan-design/pm/node";
 import type { SetTask } from "@titan-design/throughput";
-import { kindTags, parseTask, type UnparsedTask } from "./throughput-rows.js";
+import { kindTags, type UnparsedTask } from "./throughput-rows.js";
 
 const MILESTONE_TAG = "milestone:";
 // Live tags carry stray punctuation from prose edits (`milestone:M4,`).
@@ -33,8 +32,8 @@ interface TaskIndex {
 }
 
 /** The open tasks a selector names across the allowlisted initiatives, read from `<root>/<initiative>/tasks/*.yml`. */
-export function selectSetTasks(root: string, initiatives: readonly string[], selector: SetSelector): SetSelection {
-  const index = loadTaskIndex(root, initiatives);
+export async function selectSetTasks(root: string, initiatives: readonly string[], selector: SetSelector): Promise<SetSelection> {
+  const index = await loadTaskIndex(root, initiatives);
   const { located, notFound } = resolveSelector(index, selector);
   const selection: SetSelection = { tasks: [], notFound, skippedDone: [], unparsed: index.unparsed };
   for (const { task, initiative } of located) {
@@ -50,16 +49,12 @@ function resolveSelector(index: TaskIndex, selector: SetSelector): { located: Lo
   return { located: byMilestone(index, selector.milestone, selector.initiative), notFound: [] };
 }
 
-function loadTaskIndex(root: string, initiatives: readonly string[]): TaskIndex {
+async function loadTaskIndex(root: string, initiatives: readonly string[]): Promise<TaskIndex> {
   const index: TaskIndex = { byId: new Map(), unparsed: [] };
   for (const initiative of initiatives) {
-    const dir = path.join(root, initiative, "tasks");
-    if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir).filter((file) => file.endsWith(".yml")).sort()) {
-      const task = parseTask(path.join(dir, name));
-      if (typeof task === "string") index.unparsed.push({ file: path.join(initiative, "tasks", name), reason: task });
-      else addTask(index, task, initiative);
-    }
+    const read = await readInitiativeTasks(root, initiative);
+    index.unparsed.push(...read.unparsed.map(({ file, reason }) => ({ file, reason })));
+    for (const { task } of read.tasks) addTask(index, task, initiative);
   }
   return index;
 }

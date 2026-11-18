@@ -31,9 +31,19 @@ time_open() {
   awk -v s="$start" -v e="$end" 'BEGIN { printf "%.2fs", e - s }'
 }
 
+# Explicit `corepack pnpm@<pin>` runs the version the staged tree pins whatever pnpm leads PATH, with no host install,
+# and does not depend on cwd (corepack reads packageManager from cwd, but the unit's cwd is not the stage).
+pinned_pnpm() {
+  local pm
+  pm=$(git -C "$REPO" show origin/main:package.json 2>/dev/null | sed -n 's/.*"packageManager": *"\(pnpm@[^"+]*\).*/\1/p' | head -n 1)
+  if [ -n "$pm" ]; then echo "$pm"; elif [ "$DRY" = 1 ]; then echo "pnpm@<packageManager pin>"; else echo "no pnpm packageManager pin in origin/main" >&2; return 1; fi
+}
+
 note_open
 before=$(time_open)
 step git -C "$REPO" fetch origin main
+PNPM=$(pinned_pnpm)
+echo "pnpm: corepack $PNPM"
 if [ "$DRY" = 1 ]; then sha="<origin/main sha>"; else sha=$(git -C "$REPO" rev-parse --verify origin/main); fi
 stage="$STAGE_ROOT/$sha"
 echo "stage: $stage"
@@ -43,8 +53,8 @@ if [ "$DRY" = 1 ]; then
 else
   git -C "$REPO" archive "$sha" | tar -x -C "$stage"
 fi
-step pnpm --dir "$stage" install --frozen-lockfile
-step pnpm --dir "$stage" --filter "@titan-design/active-work..." build
+step corepack "$PNPM" --dir "$stage" install --frozen-lockfile
+step corepack "$PNPM" --dir "$stage" --filter "@titan-design/active-work..." build
 step chmod +x "$stage/$PRODUCT/dist/cli.js" "$stage/$PRODUCT/dist/aw.js"
 step mkdir -p "$BIN_DIR"
 step ln -sfn "$stage/$PRODUCT/dist/cli.js" "$BIN_DIR/active-work"

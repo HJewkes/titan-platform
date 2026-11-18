@@ -3,7 +3,8 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import { fileFollowUps, type FollowUpTasks } from "./follow-ups-file.js";
+import type { DigestEntry } from "./follow-up-digest.js";
+import { fileFollowUps, type FollowUpSinks, type FollowUpTasks } from "./follow-ups-file.js";
 import type { Awaited } from "./review-schemas.js";
 
 type AwaitedResult = z.infer<typeof Awaited>;
@@ -15,8 +16,8 @@ export const FOLLOW_UPS_STEPS: readonly StepDeclaration[] = [{ id: FOLLOW_UPS_ST
 const FOLLOW_UPS_RPC_TIMEOUT_MS = 10_000;
 
 export interface FollowUpsWiring {
-  /** Where a verdict's follow-ups are filed; absent records each block as `skipped: "unwired"`. */
-  followUps?: FollowUpTasks;
+  /** Where a verdict's follow-ups are filed or digested; absent records each block as `skipped: "unwired"`. */
+  followUps?: FollowUpSinks;
 }
 
 const Warning = z.enum(FOLLOW_UPS_WARNINGS);
@@ -24,7 +25,13 @@ const Where = { runId: z.string(), task: z.string().optional(), repo: z.string()
 const FollowUpsInput = z.looseObject({ ...Where, followUps: z.array(FollowUpSchema).optional(), followUpsWarning: Warning.optional() });
 type FollowUpsInput = z.infer<typeof FollowUpsInput>;
 const FiledSchema = z.object({ title: z.string(), id: z.string(), deduped: z.boolean() });
-const FollowUpsResult = z.looseObject({ filed: z.array(FiledSchema), warning: z.string().optional(), skipped: z.string().optional(), error: z.string().optional() });
+const FollowUpsResult = z.looseObject({
+  filed: z.array(FiledSchema),
+  digested: z.array(z.string()).optional(),
+  warning: z.string().optional(),
+  skipped: z.string().optional(),
+  error: z.string().optional(),
+});
 type FollowUpsResult = z.infer<typeof FollowUpsResult>;
 
 function errorOf(error: unknown): string {
@@ -46,6 +53,7 @@ function bounded<T>(work: Promise<T>, signal: AbortSignal, ms: number): Promise<
 function boundedTasks(tasks: FollowUpTasks, signal: AbortSignal, ms: number): FollowUpTasks {
   return {
     openTasks: (initiative) => bounded(tasks.openTasks(initiative), signal, ms),
+    classOf: (initiative, id) => bounded(tasks.classOf(initiative, id), signal, ms),
     add: (initiative, fields) => bounded(tasks.add(initiative, fields), signal, ms),
     appendNote: (initiative, id, line) => bounded(tasks.appendNote(initiative, id, line), signal, ms),
   };
@@ -58,25 +66,26 @@ function taskRef(task: string | undefined): { initiative: string; parent: string
 }
 
 /** Never throws: the step sits between a verdict and its next step, so a filing that fails is recorded and the verdict goes on. */
-export async function followUpsBody(tasks: FollowUpTasks | undefined, input: FollowUpsInput, signal: AbortSignal, timeoutMs = FOLLOW_UPS_RPC_TIMEOUT_MS): Promise<FollowUpsResult> {
+export async function followUpsBody(sinks: FollowUpSinks | undefined, input: FollowUpsInput, signal: AbortSignal, timeoutMs = FOLLOW_UPS_RPC_TIMEOUT_MS): Promise<FollowUpsResult> {
   const warning: { warning?: FollowUpsWarning } = input.followUpsWarning === undefined ? {} : { warning: input.followUpsWarning };
   const items = input.followUps ?? [];
   if (items.length === 0) return { filed: [], ...warning };
-  if (!tasks) return { filed: [], ...warning, skipped: "unwired" };
+  if (!sinks) return { filed: [], ...warning, skipped: "unwired" };
   const ref = taskRef(input.task);
   if (!ref) return { filed: [], ...warning, skipped: "no-task" };
   try {
     const where = { ...ref, repo: input.repo, pr: input.pr, head: input.head, reviewer: input.reviewer };
-    return { ...(await fileFollowUps(boundedTasks(tasks, signal, timeoutMs), where, items)), ...warning };
+    const digest = { append: (initiative: string, entries: readonly DigestEntry[]) => bounded(sinks.digest.append(initiative, entries), signal, timeoutMs) };
+    return { ...(await fileFollowUps({ tasks: boundedTasks(sinks.tasks, signal, timeoutMs), digest }, where, items)), ...warning };
   } catch (error) {
     return { filed: [], ...warning, error: errorOf(error) };
   }
 }
 
-export function followUpsRoute(now: () => number, tasks: FollowUpTasks | undefined, timeoutMs?: number): StepRoute {
+export function followUpsRoute(now: () => number, sinks: FollowUpSinks | undefined, timeoutMs?: number): StepRoute {
   return codeRoute(FOLLOW_UPS_STEP, now, async (raw: unknown, signal) => {
     const input = FollowUpsInput.safeParse(raw);
-    return input.success ? followUpsBody(tasks, input.data, signal, timeoutMs) : { filed: [], error: "unreadable sh-follow-ups input" };
+    return input.success ? followUpsBody(sinks, input.data, signal, timeoutMs) : { filed: [], error: "unreadable sh-follow-ups input" };
   });
 }
 

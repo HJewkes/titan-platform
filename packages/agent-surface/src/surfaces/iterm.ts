@@ -76,11 +76,11 @@ async function probeSession(run: AppleScriptRunner, uuid: string): Promise<boole
  * Asked without launching it: `is running` is false for an app that is not up,
  * where a `tell` would start iTerm2 and drop a window on an unsuspecting desktop.
  */
-const itermRunning = async (run: AppleScriptRunner): Promise<boolean> => {
+const itermRunning = async (run: AppleScriptRunner): Promise<boolean | undefined> => {
   try {
     return (await run('application "iTerm2" is running')) === "true";
   } catch {
-    return false;
+    return undefined;
   }
 };
 
@@ -88,7 +88,12 @@ async function requireIterm(options: SurfaceOptions, run: AppleScriptRunner): Pr
   const platform = options.platform ?? process.platform;
   if (platform !== "darwin")
     throw new SurfaceRefused(`iTerm2 surfaces need macOS (this is ${platform}); use surface 'headless'`);
-  if (!(await itermRunning(run))) throw new SurfaceRefused("iTerm2 is not running; use surface 'headless'");
+  const running = await itermRunning(run);
+  if (running === undefined)
+    throw new SurfaceRefused(
+      `could not ask iTerm2 whether it is running: osascript failed or gave no answer within ${OSASCRIPT_TIMEOUT_MS / 1000}s (an Automation prompt or a wedged iTerm2?); use surface 'headless'`,
+    );
+  if (!running) throw new SurfaceRefused("iTerm2 is not running; use surface 'headless'");
 }
 
 const paneReader = (run: AppleScriptRunner, uuid: string): PaneReader => ({

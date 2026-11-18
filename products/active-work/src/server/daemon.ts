@@ -23,14 +23,24 @@ import { BUILD_VERSION } from '../version.js';
 import { resolveDaemonPort } from './lifecycle.js';
 import { getLogger } from './logger.js';
 import { mcpOptions } from './mcp.js';
+import { startPrecedentWatch } from './precedent-watch.js';
 import {
   startSessionIndexWatch,
+  type SessionIndexWatchOptions,
   type SessionIndexWatcher,
   type WatcherStatus,
 } from './session-index-watch.js';
 
-export interface RunDaemonOptions {
+interface DaemonDeps {
+  getLogger: () => Logger;
+  start: typeof startActiveWorkDaemon;
+  /** Forwarded to the session index watcher. */
+  watch: SessionIndexWatchOptions;
+}
+
+interface RunDaemonOptions {
   port?: number;
+  deps?: Partial<DaemonDeps>;
 }
 
 function resolvePort(options: RunDaemonOptions): number {
@@ -48,10 +58,13 @@ export function toHealthIndexState(status: WatcherStatus | undefined): HealthInd
     lastDurationMs: status.last?.durationMs ?? null,
     consecutiveErrors: status.consecutiveErrors,
     lastMaxLoopStallMs: status.lastMaxLoopStallMs,
+    held: status.held,
+    holdReason: status.holdReason,
+    heldSince: status.heldSince,
   };
 }
 
-export interface ActiveWorkDaemonSetup {
+interface ActiveWorkDaemonSetup {
   port: number;
   stateDir: string;
   logger: Logger;
@@ -64,8 +77,12 @@ export interface ActiveWorkDaemonSetup {
  * Origin in all three spellings, with and without the bound port.
  */
 export async function startActiveWorkDaemon(setup: ActiveWorkDaemonSetup): Promise<DaemonHandle> {
+  const options = mcpOptions();
   return startDaemon({
-    ...mcpOptions(),
+    ...options,
+    // Every daemon request runs in the daemon's process, whose environment says nothing about the caller. Stdio MCP
+    // shares mcpOptions() but runs as the caller's child, so only the daemon marks its context remote.
+    createContext: (surface, auth) => ({ ...options.createContext(surface, auth), remote: true as const }),
     stateDir: setup.stateDir,
     port: setup.port,
     watchRoot: getActiveRoot(),
@@ -85,7 +102,7 @@ export async function startActiveWorkDaemon(setup: ActiveWorkDaemonSetup): Promi
 }
 
 /** How long shutdown waits on the session index watcher; `AW_SHUTDOWN_INDEX_MS` overrides. */
-export const DEFAULT_SHUTDOWN_INDEX_MS = 10_000;
+const DEFAULT_SHUTDOWN_INDEX_MS = 10_000;
 
 function shutdownIndexMs(): number {
   const value = Number(process.env.AW_SHUTDOWN_INDEX_MS);
@@ -120,35 +137,53 @@ export async function runDaemon(options: RunDaemonOptions = {}): Promise<void> {
   // Before the logger, the socket or any watcher: a refused host touches nothing (TP-1777).
   const refusal = hostLeaseRefusal();
   if (refusal) throw new DaemonError(refusal);
-  const log = getLogger();
+  const deps: DaemonDeps = {
+    getLogger,
+    start: startActiveWorkDaemon,
+    watch: {},
+    ...options.deps,
+  };
+  const log = deps.getLogger();
   // Read through a closure: the watcher only starts once the port is bound.
   let indexWatch: SessionIndexWatcher | null = null;
 
-  const handle = await startActiveWorkDaemon({
+  const handle = await deps.start({
     stateDir: getStateRoot(),
     port: resolvePort(options),
     logger: log,
     health: () => ({ index: toHealthIndexState(indexWatch?.status()) }),
   });
 
-  indexWatch = startSessionIndexWatch(log);
+  indexWatch = startSessionIndexWatch(log, deps.watch);
+  const precedentWatch = startPrecedentWatch(log);
 
-  await new Promise<void>((resolve) => {
+  await untilSignalled(log, async () => {
+    await precedentWatch?.close();
+    await closeIndexWatch(indexWatch, log);
+    await closeHandle(handle, log);
+  });
+}
+
+async function closeHandle(handle: DaemonHandle, log: Logger): Promise<void> {
+  try {
+    await handle.close();
+  } catch (err) {
+    log.error({ err }, 'error closing daemon');
+  }
+}
+
+/** Resolves once SIGTERM or SIGINT has run `close` to completion. */
+function untilSignalled(log: Logger, close: () => Promise<void>): Promise<void> {
+  return new Promise<void>((resolve) => {
     let shuttingDown = false;
     const shutdown = (signal: NodeJS.Signals): void => {
       if (shuttingDown) return;
       shuttingDown = true;
       log.info({ signal }, 'shutting down');
-      void (async () => {
-        await closeIndexWatch(indexWatch, log);
-        try {
-          await handle.close();
-        } catch (err) {
-          log.error({ err }, 'error closing daemon');
-        }
-        log.info('stopped');
+      void close().then(() => {
+        log.info({}, 'stopped');
         resolve();
-      })();
+      });
     };
 
     process.once('SIGTERM', shutdown);

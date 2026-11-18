@@ -17,7 +17,7 @@ import { initiativeRef } from './refs.js';
  * write nothing here.
  */
 
-export const RELATIONS = {
+const RELATIONS = {
   HOLDS: 'holds',
   MENTIONS: 'mentions',
   SHARES_TAG: 'shares_tag',
@@ -35,12 +35,19 @@ export const RELATIONS = {
  * live corpus — about 70% of the edge table, the same share brain's cosine
  * edges held. Both filters bring it to 369.
  */
-export const SHARES_TAG_MAX_NOTES = 10;
+const SHARES_TAG_MAX_NOTES = 10;
 
 export interface NoteFacts {
   ref: string;
   initiative: string;
   tags: string[];
+  body: string;
+}
+
+/** Prose owned by a source or a task, scanned for mentions but never tagged. */
+export interface MentionText {
+  ref: string;
+  initiative: string;
   body: string;
 }
 
@@ -80,12 +87,16 @@ interface CurrentEdge extends DerivedEdge {
  * write is a diff. Deleting and re-asserting every row each pass grew
  * `edge_id` with no workspace change, so an unchanged corpus now writes no row.
  */
-export function rebuildEdges(graph: WorkspaceGraph, notes: readonly NoteFacts[]): EdgeCounts {
+export function rebuildEdges(
+  graph: WorkspaceGraph,
+  notes: readonly NoteFacts[],
+  otherTexts: readonly MentionText[] = [],
+): EdgeCounts {
   return graph.db.transaction(() => {
     const wanted = new Map<string, DerivedEdge>();
     for (const edge of [
       ...wantedHolds(graph),
-      ...wantedMentions(graph, notes),
+      ...wantedMentions(graph, [...notes, ...otherTexts]),
       ...wantedSharesTag(notes),
     ]) {
       wanted.set(edgeKey(edge), edge);
@@ -157,7 +168,7 @@ function wantedHolds(graph: WorkspaceGraph): DerivedEdge[] {
  * this incrementally would let a full rebuild and an incremental sequence
  * disagree, which is the one property this index has to guarantee.
  */
-function wantedMentions(graph: WorkspaceGraph, notes: readonly NoteFacts[]): DerivedEdge[] {
+function wantedMentions(graph: WorkspaceGraph, notes: readonly MentionText[]): DerivedEdge[] {
   const index = buildRefIndex(graph);
   const edges: DerivedEdge[] = [];
   for (const note of notes) {
@@ -222,9 +233,9 @@ function qualifyingTagGroups(notes: readonly NoteFacts[]): NoteFacts[][] {
 function crossInitiativePairs(group: NoteFacts[]): [NoteFacts, NoteFacts][] {
   const sorted = [...group].sort((a, b) => a.ref.localeCompare(b.ref));
   const pairs: [NoteFacts, NoteFacts][] = [];
-  for (let i = 0; i < sorted.length; i++) {
-    for (let j = i + 1; j < sorted.length; j++) {
-      if (sorted[i].initiative !== sorted[j].initiative) pairs.push([sorted[i], sorted[j]]);
+  for (const [i, first] of sorted.entries()) {
+    for (const second of sorted.slice(i + 1)) {
+      if (first.initiative !== second.initiative) pairs.push([first, second]);
     }
   }
   return pairs;

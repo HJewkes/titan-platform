@@ -45,7 +45,7 @@ export const severityColor: Record<string, string> = {
   low: palette.blue,
 };
 
-export const spacing = {
+const spacing = {
   1: 2,
   2: 4,
   3: 6,

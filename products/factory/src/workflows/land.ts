@@ -58,7 +58,7 @@ export interface LandInput {
 }
 
 /** What an `allowEvidence` hook learns about the merge the policy allowed. */
-export interface MergeAllowContext {
+interface MergeAllowContext {
   repo: RepoSlug;
   pr: number;
   headSha: string;

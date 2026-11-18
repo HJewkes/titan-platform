@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { TS_FUNCTION_DECLARATION } from "@titan-design/code-parser/node-kinds";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 
 const RESULT_TYPE_NAMES = new Set([
@@ -82,13 +83,13 @@ export class ErrorHandlingExtractor implements StyleExtractor {
     observations: Observation[],
   ): void {
     if (
-      node.type === "function_declaration" ||
+      node.type === TS_FUNCTION_DECLARATION ||
       node.type === "method_definition"
     ) {
       this.detectResultReturnType(node, file, observations);
     }
 
-    if (node.type === "function_declaration") {
+    if (node.type === TS_FUNCTION_DECLARATION) {
       this.detectAssertNever(node, file, observations);
     }
 

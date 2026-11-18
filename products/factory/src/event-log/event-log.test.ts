@@ -182,6 +182,20 @@ describe("headSeq and readEvents", () => {
     expect(readEvents(log, { subject: `o/r@${SHA_A}`, sinceSeq: 0, kind: "HeadPushed" }).map((row) => row.seq)).toEqual([4]);
   });
 
+  it.each([0, -1, 1.5, Number.NaN])("rejects a limit of %s instead of reading nothing or everything", (limit) => {
+    const log = db();
+    appendEvent(log, ci());
+
+    expect(() => readEvents(log, { repo: "o/r", sinceSeq: 0, limit })).toThrow(/limit must be a positive integer/);
+  });
+
+  it("applies the default limit of 500 when none is given", () => {
+    const log = db();
+    for (let i = 0; i < 501; i++) appendEvent(log, ci({ occurrenceKey: `k${i}` }));
+
+    expect(readEvents(log, { repo: "o/r", sinceSeq: 0 })).toHaveLength(500);
+  });
+
   it("returns a row's stored fields parsed", () => {
     const log = db();
     appendEvent(log, ci({ deliveryId: "webhook:d1", sourceAt: "2026-10-17T11:59:00Z" }));

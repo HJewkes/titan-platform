@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { appDirs } from "@titan-design/app-paths";
+import { appDirs, consoleInboxDir } from "@titan-design/app-paths";
 import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { JudgeConfigSchema } from "../eval-harness.js";
 import { MAX_REWRITE_ROUNDS } from "../rewrite-plan.js";
 import { DEFAULT_BUDGET_USD, DEFAULT_SCRIPT_MODEL, resumeVideo, runVideo, writeReport, type RunHost, type RunOutcome } from "./host.js";
-import { ownerInboxDir, REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "../reflection-export.js";
+import { REFLECTION_MODES, type ReflectionConfig, type ReflectionMode } from "../reflection-export.js";
 import { STAGES, type StageName } from "./records.js";
 import { compareReports, renderCompare } from "./report.js";
+import { failureLines } from "./run-failure.js";
+import { foldVideoReport } from "./video-report.js";
 import { CLI_FACT_ADAPTERS, gatherFacts, gatherRequest, type GatherDeps, type GatherFlags, type GatherRequest } from "./run-gather.js";
 
 const EXIT = { OK: 0, FAILED: 1, USAGE: 2 } as const;
@@ -55,6 +57,8 @@ export interface RunCliDeps {
   gather?: GatherDeps;
   out?: (text: string) => void;
   err?: (text: string) => void;
+  /** Sees the outcome of a `run` that reached its stages, so a wrapping command can read the run id, status and spend. */
+  onOutcome?: (outcome: RunOutcome) => void;
 }
 
 type Io = Required<Pick<RunCliDeps, "out" | "err">>;
@@ -110,19 +114,25 @@ export const dataDirOption = () => new Option("--data-dir <dir>", "run state, ar
 export const hostFor = (flags: { dataDir?: string }, deps: RunCliDeps): RunHost =>
   ({ bridgeHome: appDirs("explainer").data, ...deps.host, dataDir: flags.dataDir ?? appDirs("explainer").data });
 
-function summary(result: RunOutcome, io: Io): number {
+function summary(result: RunOutcome, io: Io, deps: RunCliDeps): number {
+  deps.onOutcome?.(result);
   const t = result.report.totals;
   io.out(`run ${result.runId}: ${result.status}; $${t.usd.toFixed(4)} over ${t.calls} model calls; ${(result.report.runWallMs / 1000).toFixed(1)} s\n`);
   io.out(`report: ${result.reportPath}\n`);
   if (result.error) io.err(`${result.error}\n`);
+  if (result.status !== "completed") for (const line of failureLines(result.report)) io.err(`${line}\n`);
   if (result.status !== "completed") io.err(`continue with: explainer run resume ${result.runId}\n`);
   return result.status === "completed" ? EXIT.OK : EXIT.FAILED;
 }
 
 const collect = (value: string, acc: string[] = []): string[] => [...acc, value];
 
+const utcDate = (at: Date): string => at.toISOString().slice(0, 10);
+
+/** `yesterday` resolves at parse time, so an unattended timer just after midnight UTC gathers the day that has closed. */
 function isDay(text: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new InvalidArgumentError(`--day takes YYYY-MM-DD, got "${text}"`);
+  if (text === "yesterday") return utcDate(new Date(Date.now() - 86_400_000));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new InvalidArgumentError(`--day takes YYYY-MM-DD or yesterday, got "${text}"`);
   return text;
 }
 
@@ -140,6 +150,7 @@ async function inputsFor(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<Run
   const lanes = flags.lanes ?? deps.gather?.lanesFile;
   const { dataDir } = hostFor(flags, deps);
   const request = gatherRequest({ ...flags, factsFrom: flags.factsFrom, ...(lanes ? { lanes } : {}) }, dataDir);
+  if (request.adapter === "gatherDaily" && request.day === utcDate(new Date())) io.err(`note: ${request.day} is the current UTC day; its window is not closed, so the gather reads a partial day\n`);
   if (flags.from === "gather") return { gather: request };
   const gathered = await gatherFacts(request, dataDir, deps.gather);
   io.out(`gathered ${gathered.items} facts for ${gathered.type} ${request.day}: ${gathered.facts}${gathered.record ? ` (record ${gathered.record})` : ""}\n`);
@@ -151,12 +162,12 @@ function addGatherOptions(command: Command): Command {
   return command
     .addOption(new Option("--facts-from <adapter>", "gather the facts pack with the type's facts adapter instead of --facts; as the gather stage with --from gather").choices(CLI_FACT_ADAPTERS).conflicts("facts"))
     .option("--type <type>", "the video type whose profile lists the --facts-from adapter (daily-overview for gatherDaily, paper-summary for gatherArticle)")
-    .option("--day <date>", "the UTC day gatherDaily covers, and the day a gather directory is named for, YYYY-MM-DD (default: today)", isDay)
-    .option("--repo <owner/name>", "a repo whose PRs gatherDaily reads (repeatable)", collect, [])
+    .option("--day <date>", "the UTC day gatherDaily covers, and the day a gather directory is named for, YYYY-MM-DD or yesterday (default: today)", isDay)
+    .option("--repo <owner/name>", "a repo whose PRs gatherDaily reads (repeatable; default: the repos in <data dir>/daily/sources.yaml)", collect, [])
     .option("--transcripts <dir>", "a Claude Code transcript root for gatherDaily (repeatable; default: every local profile)", collect, [])
     .option("--initiative <slug>", "the active-work initiative gatherDaily snapshots, read-only", "titan-platform")
     .option("--lanes <file>", "the lanes rule file gatherDaily places merged PRs with (default: daily/lanes.yaml under the data dir, else the doctrine default)")
-    .option("--decisions <file>", "the owner's decisions log; gatherDaily turns its entries stamped inside the day into decision facts")
+    .option("--decisions <file>", "the owner's decisions log; gatherDaily turns its entries stamped inside the day into decision facts (default: the decisions path in <data dir>/daily/sources.yaml)")
     .option("--article <path>", "the article or paper as markdown, for gatherArticle")
     .option("--claims <path>", "a JSON array of proposed claims, each with its verbatim quote, for gatherArticle")
     .option("--label <text>", "the source chip's label for gatherArticle (default: the article's file name)")
@@ -177,11 +188,11 @@ async function runAction(flags: RunFlags, deps: RunCliDeps, io: Io): Promise<num
     ...(flags.profile ? { profile: flags.profile } : {}), ...(gather ? { gather } : {}), ...(flags.theater ? { theater: path.resolve(flags.theater) } : {}),
     ...(flags.edit ? { edit: flags.edit } : {}),
   }, withListener({ ...hostFor(flags, deps), ...(deps.gather ? { gather: deps.gather } : {}), reflection: deps.host?.reflection ?? reflectionFor(flags) }, flags));
-  return summary(result, io);
+  return summary(result, io, deps);
 }
 
 function reflectionFor(flags: RunFlags): ReflectionConfig {
-  return { mode: flags.reflection, asker: flags.asker, spoolDir: ownerInboxDir(process.env), ...(flags.retroDir ? { retroDir: path.resolve(flags.retroDir) } : {}) };
+  return { mode: flags.reflection, asker: flags.asker, spoolDir: consoleInboxDir({ env: process.env }), ...(flags.retroDir ? { retroDir: path.resolve(flags.retroDir) } : {}) };
 }
 
 function threshold(text: string): number {
@@ -226,14 +237,21 @@ function runCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void):
 
 function reportCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => void): Command {
   return new Command("report")
-    .description("Fold a run's stage records into run-report.md and run-report.json in its run directory")
-    .argument("<runId>")
+    .description("Fold a run's stage records into run-report.md and run-report.json in its run directory, or with --video every run of a video into one cost report")
+    .argument("[runId]")
     .addOption(dataDirOption())
     .option("--json", "print the report JSON instead of the markdown")
     .option("--compare <runId>", "also print each stage's spend and wall time delta, cache hits and changed output shas against this run")
+    .option("--video <videoId>", "fold every run of this video into one cost report by run, stage and step, printed as JSON; writes no file")
     .exitOverride()
-    .action((runId: string, flags: { dataDir?: string; json?: boolean; compare?: string }) => {
+    .action((runId: string | undefined, flags: { dataDir?: string; json?: boolean; compare?: string; video?: string }) => {
       const host = hostFor(flags, deps);
+      if (flags.video !== undefined) {
+        if (runId !== undefined || flags.compare !== undefined) throw new InvalidArgumentError("--video takes no <runId> and no --compare");
+        io.out(`${JSON.stringify(foldVideoReport(flags.video, host), null, 2)}\n`);
+        return onResult(EXIT.OK);
+      }
+      if (runId === undefined) throw new InvalidArgumentError("report needs a <runId> or --video <videoId>");
       const { report, reportPath } = writeReport(runId, host);
       const other = flags.compare ? writeReport(flags.compare, host).report : undefined;
       if (flags.json) io.out(`${JSON.stringify(other ? { ...report, compare: compareReports(other, report) } : report, null, 2)}\n`);
@@ -250,7 +268,7 @@ function resumeCommand(deps: RunCliDeps, io: Io, onResult: (code: number) => voi
     .option("--budget-usd <usd>", "a new spend cap for the resumed run", budget)
     .exitOverride()
     .action(async (runId: string, flags: { dataDir?: string; budgetUsd?: number }) => {
-      onResult(summary(await resumeVideo(runId, hostFor(flags, deps), flags.budgetUsd === undefined ? {} : { budgetUsd: flags.budgetUsd }), io));
+      onResult(summary(await resumeVideo(runId, hostFor(flags, deps), flags.budgetUsd === undefined ? {} : { budgetUsd: flags.budgetUsd }), io, deps));
     });
 }
 

@@ -40,9 +40,9 @@ import type { WorkspaceGraph } from './graph.js';
  * back always wins. `merge` writes named columns onto a row derivation already
  * produced, for a value that is about the row rather than in it.
  */
-export type PreserveMode = 'insert' | 'merge';
+type PreserveMode = 'insert' | 'merge';
 
-export interface PreservedRow {
+interface PreservedRow {
   table: string;
   /**
    * The columns that identify one row of `table`, spelled out rather than left
@@ -123,15 +123,6 @@ function parseJsonColumn<S extends z.ZodType>(text: string, schema: S): z.output
   } catch {
     return null;
   }
-}
-
-/** Stop preserving a row — for one recovered by mistake, or superseded by a real source. */
-export function forgetPreserved(graph: WorkspaceGraph, table: string, key: string): boolean {
-  return (
-    graph.db
-      .prepare('DELETE FROM preserved_row WHERE table_name = ? AND row_key = ?')
-      .run(table, key).changes > 0
-  );
 }
 
 /**

@@ -99,7 +99,6 @@ export const ProposalSchema = z
   });
 
 export type ProposalInitiative = z.infer<typeof ProposalSchema>['initiatives'][number];
-export type ProposalNextStep = z.infer<typeof ProposalNextStepSchema>;
 export type Proposal = z.infer<typeof ProposalSchema>;
 
 /** Env var pointing at a JSON proposal, overriding the bundled default. */

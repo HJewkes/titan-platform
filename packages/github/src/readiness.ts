@@ -1,6 +1,6 @@
 import type { ApprovedHeadWalk } from "./approved-head-walk.js";
 import { isConcluded, isPassing, isSucceeded } from "./checks.js";
-import type { CheckRun, PullRequest, RequiredChecks } from "./port.js";
+import type { CheckRun, PullRequest, RequiredChecks } from "./port-types.js";
 
 /** The GitHub Actions app; on this owner's repos every required check comes from it. */
 export const GITHUB_ACTIONS_APP_ID = 15368;

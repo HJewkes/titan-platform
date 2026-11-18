@@ -4,7 +4,7 @@ import { consoleLogger, mountStaticApp, startDaemon, type DaemonHandle } from "@
 import { DAEMON_PORT } from "./paths.js";
 import { createContext, createReportRegistry } from "./registry.js";
 
-export interface ReportDaemonOptions {
+interface ReportDaemonOptions {
   /** A built app to serve at `/`; the dev server serves the app itself and leaves this out. */
   staticRoot?: string;
 }
@@ -24,13 +24,4 @@ export async function startReportDaemon(options: ReportDaemonOptions = {}): Prom
     mountRoutes: staticRoot ? (app) => mountStaticApp(app, { root: staticRoot }) : undefined,
     logger: consoleLogger,
   });
-}
-
-/** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */
-export function closeOnSignal(handle: DaemonHandle, onClose: () => Promise<void> = async () => {}): void {
-  const stop = (): void => {
-    void onClose().finally(() => handle.close());
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
 }

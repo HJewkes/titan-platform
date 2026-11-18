@@ -1,4 +1,4 @@
-import type { GitHubWire, PrFile, RepoSlug } from "./port.js";
+import type { GitHubWire, PrFile, RepoSlug } from "./port-types.js";
 
 /** The list came back shorter than the PR's own count, so a path may be missing. */
 export class FileListTruncatedError extends Error {

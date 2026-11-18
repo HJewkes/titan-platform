@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Typography, VStack } from "@titan-design/react-ui";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { EvidenceFacts } from "./InboxEvidence.js";
+import { PlanFacts } from "./InboxPlanFacts.js";
 
 type Prepared = ConsoleCommands["inbox.prepare"]["result"];
 export type InboxReady = Extract<Prepared, { status: "ready" }>;
@@ -17,7 +18,7 @@ type EndorseReadBack = Extract<InboxReady["readBack"], { kind: "endorse" }>;
 
 const secondsSince = (at: string, now: number = Date.now()): number => Math.max(0, Math.round((now - Date.parse(at)) / 1000));
 
-/** What an inbox tap will do, as `inbox.prepare` read it back: a PR's live head and gate, an agent to retire, a deploy pause, or an agent's question. */
+/** What an inbox tap will do, as `inbox.prepare` read it back: a PR's live head and gate, an agent to retire, a deploy pause, a planning op, or an agent's question. */
 export function InboxReadBack({ prepared }: { prepared: InboxReady }): ReactNode {
   const { readBack } = prepared;
   return (
@@ -34,6 +35,7 @@ function ReadBackFacts({ prepared }: { prepared: InboxReady }): ReactNode {
   if ("repo" in readBack) return <PrFacts readBack={readBack} readAt={prepared.readAt} />;
   if ("agent" in readBack) return <AgentFacts readBack={readBack} readAt={prepared.readAt} />;
   if ("pausedAt" in readBack) return <PauseFacts readBack={readBack} readAt={prepared.readAt} />;
+  if ("planOp" in readBack) return <PlanFacts readBack={readBack} />;
   if ("kind" in readBack) return readBack.kind === "permission" ? <PermissionFacts readBack={readBack} /> : <EndorseFacts readBack={readBack} />;
   return (
     <>

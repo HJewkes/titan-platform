@@ -96,25 +96,45 @@ export function gitChildEnv(
 }
 
 /** Throws on a non-zero exit; `stderr` and `code` ride on the error. */
-export async function gitText(args: readonly string[], cwd: string, timeout?: number): Promise<string> {
+export async function gitText(
+  args: readonly string[],
+  cwd: string,
+  timeout?: number,
+  killSignal?: NodeJS.Signals
+): Promise<string> {
   const { stdout } = await execFileAsync("git", [...args], {
     cwd,
     encoding: "utf8",
     env: gitChildEnv(),
     ...(timeout === undefined ? {} : { timeout }),
+    ...(killSignal === undefined ? {} : { killSignal }),
   });
   return stdout.trim();
 }
 
-export async function gitOrNull(args: readonly string[], cwd: string, timeout?: number): Promise<string | null> {
+export async function gitOrNull(
+  args: readonly string[],
+  cwd: string,
+  timeout?: number,
+  killSignal?: NodeJS.Signals
+): Promise<string | null> {
   try {
-    return await gitText(args, cwd, timeout);
+    return await gitText(args, cwd, timeout, killSignal);
   } catch {
     return null;
   }
 }
 
-export const runGit: GitRunner = (args, cwd) => gitOrNull(args, cwd);
+/** A git that has not answered by now is hung (a stalled lock or remote); a miss is the honest answer. */
+export const DEFAULT_GIT_TIMEOUT_MS = 60_000;
+
+/** A runner that SIGKILLs each call after `timeoutMs`, since a hung git may ignore SIGTERM; injectable so a test need not wait a minute. */
+export const gitRunnerWithDeadline =
+  (timeoutMs: number): GitRunner =>
+  (args, cwd) =>
+    gitOrNull(args, cwd, timeoutMs, "SIGKILL");
+
+export const runGit: GitRunner = gitRunnerWithDeadline(DEFAULT_GIT_TIMEOUT_MS);
 
 /**
  * The true repository root, resolved through worktrees.

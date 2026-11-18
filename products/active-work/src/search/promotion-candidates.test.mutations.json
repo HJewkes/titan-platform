@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the render threshold is lowered",
+      "file": "products/active-work/src/search/promotion-candidates.ts",
+      "find": "const MIN_RENDERS = 3;",
+      "replace": "const MIN_RENDERS = 2;",
+      "kills": [
+        "promotionCandidates lists a note surfaced in 3 renders across 2 initiatives and skips one under the threshold"
+      ]
+    },
+    {
+      "name": "the initiative threshold is dropped",
+      "file": "products/active-work/src/search/promotion-candidates.ts",
+      "find": "const MIN_INITIATIVES = 2;",
+      "replace": "const MIN_INITIATIVES = 1;",
+      "kills": [
+        "promotionCandidates lists a note surfaced in 3 renders across 2 initiatives and skips one under the threshold"
+      ]
+    },
+    {
+      "name": "every ref is kept, not only notes",
+      "file": "products/active-work/src/search/promotion-candidates.ts",
+      "find": "return parsed.success && parsed.data.ref.startsWith(NOTE_PREFIX) ? parsed.data : null;",
+      "replace": "return parsed.success ? parsed.data : null;",
+      "kills": ["promotionCandidates ignores refs that are not notes"]
+    },
+    {
+      "name": "renders count hits rather than distinct renders",
+      "file": "products/active-work/src/search/promotion-candidates.ts",
+      "find": "tally.renders.add(`${hit.slug}\\u0000${hit.ts}`);",
+      "replace": "tally.renders.add(`${hit.slug}\\u0000${hit.ts}${tally.renders.size}`);",
+      "kills": [
+        "promotionCandidates counts one render for the several hits a single session render logged"
+      ]
+    },
+    {
+      "name": "ties sort by render count only, not ref",
+      "file": "products/active-work/src/search/promotion-candidates.ts",
+      "find": "b.renders - a.renders || a.ref.localeCompare(b.ref)",
+      "replace": "b.renders - a.renders",
+      "kills": ["promotionCandidates sorts by render count, then ref"]
+    }
+  ]
+}

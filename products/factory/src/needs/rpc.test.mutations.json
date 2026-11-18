@@ -9,6 +9,36 @@
       "kills": [
         "needs.list over the daemon with fyi count, sends every ask whole and only the number of fyi items"
       ]
+    },
+    {
+      "name": "MCP runs as the owner",
+      "file": "products/factory/src/caller.ts",
+      "find": "  return surface === \"http\" ? \"owner\" : \"agent\";",
+      "replace": "  return surface === \"http\" || surface === \"mcp\" ? \"owner\" : \"agent\";",
+      "kills": [
+        "needs.list for an initiative withheld from agents (TP-5556) serves a withheld needs-decision task over /rpc and hides it over MCP",
+        "needs.list for an initiative withheld from agents (TP-5556) hides an agent-chat ask whose initiative meta is withheld over MCP and shows it over /rpc",
+        "needs.list for an initiative withheld from agents (TP-5556) hides a Morning item tagged with a withheld initiative over MCP"
+      ]
+    },
+    {
+      "name": "an unreadable inventory shows every initiative",
+      "file": "products/factory/src/needs/merged.ts",
+      "find": "    return { shows: shownFrom(new Set()), gap: ",
+      "replace": "    return { shows: () => true, gap: ",
+      "kills": [
+        "needs.list for an initiative withheld from agents (TP-5556) gives an agent no initiative-tagged item when inventory is down, but keeps the untagged gates"
+      ]
+    },
+    {
+      "name": "the filter checks only active-work items",
+      "file": "products/factory/src/needs/merged.ts",
+      "find": "(item: OwnerItem) => item.initiative === undefined || names.has(item.initiative);",
+      "replace": "(item: OwnerItem) => item.initiative === undefined || item.sources[0]!.system !== \"active-work\" || names.has(item.initiative);",
+      "kills": [
+        "needs.list for an initiative withheld from agents (TP-5556) hides an agent-chat ask whose initiative meta is withheld over MCP and shows it over /rpc",
+        "needs.list for an initiative withheld from agents (TP-5556) hides a Morning item tagged with a withheld initiative over MCP"
+      ]
     }
   ]
 }

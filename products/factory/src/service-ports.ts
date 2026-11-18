@@ -5,6 +5,7 @@ import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { getProcessStartTime, isProcessAlive, probeHealth } from "@titan-design/daemon";
 import { bundleBuildSha, distBuildSha } from "./dist-build.js";
 import { deployedBinPath } from "./deploy-checkout.js";
+import { runningDeployer } from "./deploy-lock.js";
 import { configPath, loadConfig } from "./config.js";
 import type { Listener, PortOwnerReaders, ProcessInfo } from "./port-owner.js";
 import type { CheckPorts } from "./service-check.js";
@@ -203,7 +204,7 @@ async function checkoutHead(checkout: string): Promise<string | undefined> {
 }
 
 /** `checkout` is the service checkout whose index.lock blocks deploys and whose built dist a restart loads. */
-export function systemCheckPorts(checkout: string): CheckPorts {
+export function systemCheckPorts(checkout: string, stateDir: string): CheckPorts {
   return {
     ...systemServicePorts(),
     isAlive: isProcessAlive,
@@ -212,6 +213,7 @@ export function systemCheckPorts(checkout: string): CheckPorts {
     isAncestor: (ancestor, descendant) => checkoutHasAncestor(checkout, ancestor, descendant),
     tickStatus: tickStatusRead,
     indexLock: () => inspectIndexLock(checkout, nodeLockProbe),
+    deployer: () => runningDeployer({ readFile: readIfPresent, isAlive: isProcessAlive }, stateDir),
     hubSeat: () => configuredHubSeat(process.env),
     installedCli: async () => installedCli(),
     checkoutHead: () => checkoutHead(checkout),

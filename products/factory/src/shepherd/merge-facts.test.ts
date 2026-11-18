@@ -62,7 +62,7 @@ function world(files: PrFile[] = [{ path: "src/a.ts", status: "modified" }]): Fa
 }
 
 async function collect(fake: FakeGitHub, overrides: Partial<MergeEvidenceInput> = {}, kind: string | null = "correctness") {
-  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, kind === null ? {} : { kind });
+  return mergeEvidence(githubPort(fake.wire), { ...input, ...overrides }, noFreezeStoreUntilTp523, kind === null ? {} : { kind }, undefined, { ownerTier: "off" });
 }
 
 afterEach(() => vi.mocked(evaluate).mockReset());
@@ -488,7 +488,7 @@ interface HostSetup {
 function shepherdHost(fake: FakeGitHub, beforeLand: () => void = () => undefined, setup: HostSetup = {}): FactoryHost {
   const port = githubPort(fake.wire, { sleep: async () => undefined });
   let clock = 0;
-  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port, store: setup.store ?? shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat" };
+  const deps: ShepherdDeps = { gitCache: hostCarryPorts, port, store: setup.store ?? shepherdStoreRef(), now: () => clock, sleep: async (ms) => void (clock += ms), agentChatBin: "agent-chat", ownerTier: "off" };
   const run = async (ctx: Parameters<typeof mergeVerdict>[0]) => {
     const reviews = new Map<string, Verdict>([[HEAD, await mergeVerdict(ctx, setup.request ?? input)]]);
     beforeLand();
@@ -831,7 +831,7 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
     const fake = manyFiles(300);
     const port = { ...githubPort(fake.wire), getFile: vi.fn(githubPort(fake.wire).getFile) };
 
-    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { ownerTier: "off" });
 
     expect(port.getFile).toHaveBeenCalledTimes(20);
     expect(evidence.unreadFacts).toEqual(["the CI-policy lines of 290 more .github/ files were not read", "the head blobs of the changed files are unread: 300 changed files, more than the 20 a plan approval pins"]);
@@ -855,7 +855,7 @@ describe("the D21 card's lines on a weakened CI-policy line (TP-2407 c)", () => 
   it("still gates when a file read fails, naming the unread file in unreadFacts and not the error's text", async () => {
     const port = { ...githubPort(seeded().wire), getFile: async () => Promise.reject(Object.assign(new Error("server error at /internal"), { status: 502 })) };
 
-    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" });
+    const evidence = await mergeEvidence(port, { ...input, ...WEAKENED }, noFreezeStoreUntilTp523, { kind: "correctness" }, undefined, { ownerTier: "off" });
 
     expect(evidence.unreadFacts).toEqual([`the CI-policy lines of ${CI} are unreadable: HTTP 502`, "the head blobs of the changed files are unread: HTTP 502"]);
     expect(evidence.record).not.toHaveProperty("headBlobs");
@@ -1017,12 +1017,12 @@ describe("the attestation guard", () => {
   });
 
   it("an adversary-class head needs the adversary member's Attests line too", async () => {
-    const adversary = (attests: string[]) => byReviewer("rev-1", [TOKEN], { attest: { attests: [TOKEN], adversary: { reviewer: as("adv-1"), head: HEAD, attests }, adversaryPlanned: true } });
+    const adversary = (attests: string[]) => byReviewer("rev-1", [TOKEN], { attest: { attests: [TOKEN], adversary: { reviewer: as("adv-1"), head: HEAD, attests, authority: "unchanged" }, adversaryPlanned: true } });
 
     const silent = await judged(claiming(), adversary([]));
     const attested = await judged(claiming(), adversary([TOKEN]));
 
-    expect(silent.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: adversary-missing" });
+    expect(silent.record.decision).toMatchObject({ outcome: "gate", rule: { rowId: "attest-unmet" }, reason: "attestation unmet: ci-wait: adversary-declined" });
     expect(attested.record.decision).toMatchObject({ outcome: "allow", rule: { rowId: "MRG-AU-RV" } });
   });
 
@@ -1083,16 +1083,19 @@ describe("the attestation guard", () => {
       expect(evidence?.data).toMatchObject({ result: { record: { decision: { outcome: "allow", rule: { rowId: "MRG-AU-RV" } }, attested: [{ step: "ci-wait" }] } } });
     });
 
-    it("a read still timed out past the budget fails the run as infrastructure and opens no owner gate", async () => {
+    it("TP-5086: a roster still timed out past the budget is read again with the MERGE in hand, and the run merges rather than fails", async () => {
       const fake = claiming();
-      const host = slowBroker(fake, Number.POSITIVE_INFINITY);
+      const readsPerBudget = 3;
+      const host = slowBroker(fake, 4 * readsPerBudget);
 
       const run = await host.runtime.wait(host.runtime.start("shepherd-merge"));
 
-      expect(run.status).toBe("failed");
-      expect(fake.effects.merge).toBe(0);
-      expect(run.error).toMatch(new RegExp(`step ${MERGE_EVIDENCE_STEP}:\\w+ \\(iteration 0\\) failed: ReviewerAskTimedOut \\(roster unread after 1 min\\)`));
+      expect(run.status).toBe("completed");
+      expect(run.error).toBeNull();
+      expect(fake.effects.merge).toBe(1);
       expect(host.gates.listPending()).toEqual([]);
+      const evidence = Object.values(run.stepResults).find((result) => result.stepId === `${MERGE_EVIDENCE_STEP}:${HEAD}`);
+      expect(evidence?.data).toMatchObject({ result: { record: { decision: { outcome: "allow", rule: { rowId: "MRG-AU-RV" } }, attested: [{ step: "ci-wait" }] } } });
     });
   });
 

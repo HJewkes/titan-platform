@@ -8,20 +8,18 @@ import { deadline, type DeadlineTiming } from "../workflows/deadline.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { failureOf } from "./error-class.js";
 import { FIX_PROOF_CHECK, harnessTouch } from "./fix-proof-harness.js";
-import { mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
+import { FIX_PROOF_EXEC_CHECKS } from "./fix-proof-jobs.js";
+import { codeFreeNoRepro, mayProceedLine, proceedsOnNoRepro } from "./no-repro-test-only.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import { FIX_PROOF_KINDS } from "./task-kind.js";
 import { sourceFreeDiff } from "./test-only-diff.js";
 import { workflowCiProof, WorkflowCiReadSchema, type WorkflowCiRead } from "./workflow-ci-proof.js";
 
-export { FIX_PROOF_CHECK };
-export type { FixProofUnverified };
+export { FIX_PROOF_CHECK, type FixProofUnverified };
 
 const FIX_PROOF_STEP = "sh-fix-proof";
 export const FIX_PROOF_STEPS: readonly StepDeclaration[] = [{ id: FIX_PROOF_STEP, kind: "dispatch" }];
-/** The judge sits behind `needs:` on these jobs, so GitHub creates it only after all of them have finished. */
-const FIX_PROOF_EXEC_CHECKS: ReadonlySet<string> = new Set(["fix-proof-base", "fix-proof-head", "fix-proof-mutants"]);
 /**
  * Above the four-job run's worst case: the 15-minute exec jobs, then the 8-minute judge created only after them, plus
  * queue gaps. A judge that runs to its limit is still read.
@@ -43,7 +41,7 @@ type Parsed = { line: string; verdict: FixProofResult["verdict"] };
 type Bound = { boundBase?: string };
 /** `nonSourceProceed` marks a NO_REPRO on a diff with no source path that `nonSourceNoRepro: record-fact` sends on to review. */
 type FixProofRead = (
-  | ({ kind: "result"; testOnlyProceed?: true } & Parsed & Bound)
+  | ({ kind: "result"; testOnlyProceed?: true; unreadDiff?: string } & Parsed & Bound)
   | ({ kind: "untrusted"; reason: string } & Parsed & Bound)
   | ({ kind: "skipped" | "missing" | "error"; reason: string } & Bound)
   | WorkflowCiRead
@@ -53,7 +51,7 @@ type FixProofRead = (
 export const FixProofReadSchema = z.discriminatedUnion("kind", [
   z.looseObject({
     kind: z.literal("result"), line: z.string(), verdict: z.string(), boundBase: z.string().optional(),
-    testOnlyProceed: z.literal(true).optional(), nonSourceProceed: z.literal(true).optional(),
+    testOnlyProceed: z.literal(true).optional(), unreadDiff: z.string().optional(), nonSourceProceed: z.literal(true).optional(),
   }),
   z.looseObject({ kind: z.literal("untrusted"), line: z.string(), verdict: z.string(), reason: z.string(), boundBase: z.string().optional() }),
   z.looseObject({ kind: z.enum(["skipped", "missing", "error"]), reason: z.string(), boundBase: z.string().optional() }),
@@ -106,8 +104,7 @@ async function headBranchOf(port: GitHubPort, registration: Registration): Promi
 const isFixProofRun = (head: string) => (run: CheckRun) =>
   run.name === FIX_PROOF_CHECK && run.appId === GITHUB_ACTIONS_APP_ID && run.headSha === head && run.conclusion !== "skipped";
 
-const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined =>
-  runs.reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
+const newestOf = (runs: readonly CheckRun[]): CheckRun | undefined => runs.reduce<CheckRun | undefined>((newest, run) => (newest === undefined || run.id > newest.id ? run : newest), undefined);
 
 /** The PR and base branch the registration names; a run is bound to it only if GitHub ties the run to that very pair. */
 type Binding = { pr: number; baseRef: string } | { unbound: string };
@@ -153,9 +150,9 @@ const newestSeen = (candidates: readonly Seen[]): Seen | undefined => candidates
 type Chosen = Seen & { distrust?: string };
 
 /**
- * Another PR opened from the same head sha onto a base of its own runs its own workflow file, whose run shares the name, app and head
- * sha. Exactly one run bound to this PR and judged on its base is trusted; none or several are not, and the newest is still read so
- * the reason is reported. A bound log that cannot be read is chosen as it is, so the poll reads it again.
+ * Another PR opened from the same head sha onto a base of its own runs its own workflow, under the same name, app and head sha. Exactly
+ * one run bound to this PR and judged on its base is trusted, as is the newest of several that all read NO_REPRO, as a PR reopened at one
+ * head has (TP-4788); otherwise the newest is read so the reason is reported. A bound log that cannot be read is chosen as it is.
  */
 async function chooseRun(port: GitHubPort, repo: RepoSlug, head: string, candidates: readonly CheckRun[], binding: Binding): Promise<Chosen | undefined> {
   const bound = await Promise.all(candidates.filter(isBoundTo(binding)).map((run) => seen(port, repo, head, run)));
@@ -163,6 +160,7 @@ async function chooseRun(port: GitHubPort, repo: RepoSlug, head: string, candida
   if (unreadable !== undefined) return unreadable;
   const judged = bound.filter(judgedOn(binding));
   if (judged.length === 1) return judged[0];
+  if (judged.length > 1 && judged.every(({ line }) => line !== undefined && proofStanding({ kind: "result", line }, head).kind === "no-repro")) return newestSeen(judged);
   const why = "unbound" in binding ? binding.unbound : `${judged.length} ${FIX_PROOF_CHECK} runs at this head belong to PR #${binding.pr} and judged ${binding.baseRef}, not exactly one`;
   const elsewhere = candidates.filter((run) => !bound.some((candidate) => candidate.run === run));
   const newest = newestSeen(judged) ?? (await seenNewest(port, repo, head, elsewhere));
@@ -338,7 +336,9 @@ async function gatedRead(deps: GatedDeps, input: FixProofInput, gate: OpenGate, 
   if (ci !== undefined) return ci;
   const read = await readResult(deps.port, input, gate.pr, binding, timing, signal);
   const gated = { flag: deps.noReproProceed, kind: gate.kind, repo: input.repo, pr: gate.pr, head: input.head };
-  return read.kind === "result" && (await proceedsOnNoRepro(deps.port, gated, read.line)) ? { ...read, testOnlyProceed: true } : read;
+  if (read.kind !== "result") return read;
+  const { proceeds, unreadReason } = await proceedsOnNoRepro(deps.port, gated, read.line);
+  return { ...read, ...(proceeds && { testOnlyProceed: true as const }), ...(unreadReason !== undefined && { unreadDiff: unreadReason }) };
 }
 
 /**
@@ -348,6 +348,7 @@ async function gatedRead(deps: GatedDeps, input: FixProofInput, gate: OpenGate, 
  * and a result line proceeds only on a diff the fix-proof plan reads with no source path under the trusted configs.
  */
 async function nonSourceProceeds(deps: Pick<ShepherdDeps, "port" | "nonSourceNoRepro">, input: FixProofInput, gate: OpenGate, read: FixProofRead): Promise<boolean> {
+  if (read.kind === "result" && !read.testOnlyProceed && (await codeFreeNoRepro(deps.port, { repo: input.repo, pr: gate.pr, head: input.head }, read.line))) return true;
   if (deps.nonSourceNoRepro !== "record-fact" || gate.kind === "security" || fixProofVerdict(read, input.head) === undefined) return false;
   if (read.kind === "workflow-ci") return true;
   if (read.kind !== "result" || read.testOnlyProceed === true || !mayProceedLine(read.line)) return false;

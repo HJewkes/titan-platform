@@ -50,6 +50,8 @@ interface World {
   /** Evidence collections per head, the first one included. */
   collections: Map<string, number>;
   mergeTreeProbes: string[];
+  /** Observe steps so far. */
+  observations: () => number;
   /** Seat notices sent, as seat and text. */
   notices: { seat: string; text: string }[];
 }
@@ -113,7 +115,7 @@ function world(evidenceState: EvidenceState, observeState: ObserveState = () => 
   );
   fake.addPr({ headSha: H1, mergeSha: fakeSha("test-merge") });
   fake.prFiles.set(1, [{ path: "src/a.ts", status: "modified" }]);
-  return { fake, routes, store, clock, collections, mergeTreeProbes, notices };
+  return { fake, routes, store, clock, collections, mergeTreeProbes, observations: () => observations, notices };
 }
 
 function open(w: World, dbPath = ":memory:"): FactoryHost {
@@ -186,6 +188,20 @@ describe("a MERGE whose evidence reads mergeable_state unknown on every read", (
     expect(new Set(settles.map((settle) => settle.since)).size).toBe(1);
     expect(settles.at(-1)).toMatchObject({ headSha: H1, spent: true });
     expect(w.collections.get(H1)).toBe(settles.length);
+    expect(w.fake.effects.merge).toBe(0);
+  });
+
+  it("gates with a reason naming the unknown observe reads when every observe read stays unknown at one head", async () => {
+    const w = world(() => "unknown", (observation) => (observation > 30 ? "clean" : "unknown"));
+    const host = open(w);
+    const runId = start(host, w);
+
+    const pendingGate = () => host.pendingGates().find((pending) => pending.runId === runId);
+    await vi.waitFor(() => expect(pendingGate()).toBeDefined());
+
+    const prompt = pendingGate()!.gate.prompt;
+    expect(prompt).toContain("observe read left mergeable_state unknown");
+    expect(w.observations()).toBeLessThan(30);
     expect(w.fake.effects.merge).toBe(0);
   });
 

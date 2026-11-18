@@ -1,4 +1,5 @@
-import { TASK_ID_REGEX, type Task } from "./task.js";
+import { TASK_ID_REGEX } from "./ids.js";
+import type { Task } from "./task.js";
 
 export interface Edges {
   parent: string | null;

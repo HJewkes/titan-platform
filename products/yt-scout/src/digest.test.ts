@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { digestVideo, type DigestDeps } from "./digest.js";
 import type { Retrieval } from "./digest-retrieval.js";
-import { cliRetriever, keyword } from "./digest-retrieval.js";
 import { tempTree, type TempTree } from "./fixtures.test-helpers.js";
 import type { ScoreCard } from "./score-card.js";
 import type { DigestRunner, ScoreCall } from "./seams.js";
@@ -110,6 +109,26 @@ describe("digest step", () => {
     expect(next.status).toBe("written");
   });
 
+  it("counts the cap day in UTC, so a late-evening UTC run and an early-morning UTC run are different days", async () => {
+    for (const id of ["v1", "v2", "v3"]) await digestVideo(deps({ now: () => new Date("2026-10-29T23:59:00Z") }), video(id));
+
+    const next = await digestVideo(deps({ now: () => new Date("2026-10-30T00:01:00Z") }), video("v4"));
+    const sameDay = await digestVideo(deps({ now: () => new Date("2026-10-29T12:00:00Z") }), video("v5"));
+
+    expect(next.status).toBe("written");
+    expect(sameDay).toEqual({ status: "capped" });
+  });
+
+  it("skips a malformed row line when counting the cap instead of throwing", async () => {
+    await digestVideo(deps(), video("v1"));
+    const file = path.join(tree.root, "rows", "steps-2026-10.jsonl");
+    appendFileSync(file, '{"step":"digest"}\nnot json\n');
+
+    const result = await digestVideo(deps(), video("v2"));
+
+    expect(result.status).toBe("written");
+  });
+
   it("makes no call for a card under the threshold with no axis at 5", async () => {
     const result = await digestVideo(deps(), video("v1", LOW_CARD));
 
@@ -142,44 +161,5 @@ describe("digest step", () => {
 
     expect(result).toEqual({ status: "failed", errorClass: "budget", costUsd: 0.75 });
     expect(rows()[0]).toMatchObject({ outcome: "deferred", cost_usd: 0.75, input_tokens: 9000, output_tokens: 1200 });
-  });
-});
-
-describe("cli retriever", () => {
-  it("queries corpus-query per technique and active-work once, keeping only task hits", async () => {
-    const seen: string[][] = [];
-    const exec = async (file: string, args: string[]) => {
-      seen.push([file, ...args]);
-      if (file === "corpus-query") return "vidAAAAAAAA | p1-2 | passage\n";
-      return JSON.stringify({ hits: [{ class: "notes", ref: "note:x", title: "N" }, { class: "tasks", ref: "task:TP-100", title: "First task" }] });
-    };
-
-    const r = await cliRetriever({ exec, corpusRoot: "/corpus" })(CARD);
-
-    expect(r).toEqual({ priorDigests: ["vidAAAAAAAA | p1-2 | passage"], tasks: [{ id: "TP-100", title: "First task" }] });
-    expect(seen[0]).toEqual(["corpus-query", "hits", "/corpus", "--phrase", "directory", "--window", "1"]);
-    expect(seen[1]![0]).toBe("active-work");
-  });
-
-  it("keeps task hits when another hit has a null title", async () => {
-    const exec = async (file: string) =>
-      file === "corpus-query" ? "" : JSON.stringify({ hits: [{ class: "notes", ref: "note:y", title: null }, { class: "tasks", ref: "task:TP-100", title: "First task" }] });
-
-    const r = await cliRetriever({ exec, corpusRoot: "/corpus" })(CARD);
-
-    expect(r.tasks).toEqual([{ id: "TP-100", title: "First task" }]);
-  });
-
-  it("degrades to empty retrieval when both CLIs fail", async () => {
-    const exec = async () => {
-      throw new Error("not installed");
-    };
-
-    expect(await cliRetriever({ exec, corpusRoot: "/corpus" })(CARD)).toEqual({ priorDigests: [], tasks: [] });
-  });
-
-  it("picks the longest non-stop word as the keyword", () => {
-    expect(keyword("Use the spool directory")).toBe("directory");
-    expect(keyword("a b")).toBeUndefined();
   });
 });

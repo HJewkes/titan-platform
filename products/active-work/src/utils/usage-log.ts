@@ -9,17 +9,18 @@ import { getStateRoot } from './paths.js';
  * later self-reflection. Failures to write must never break the user's
  * command, so `appendUsage` swallows all errors.
  */
-export interface UsageRecord {
+interface UsageRecord {
   ts: string; // ISO 8601
   command: string; // registry name
   args?: Record<string, unknown>;
   duration_ms?: number;
+  timings_ms?: Record<string, number>;
   success: boolean;
   exit_code: number;
 }
 
 /** Resolve the on-disk path of the usage log. */
-export function usageLogPath(): string {
+function usageLogPath(): string {
   return path.join(getStateRoot(), 'usage.jsonl');
 }
 

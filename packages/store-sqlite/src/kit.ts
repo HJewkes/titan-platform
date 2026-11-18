@@ -13,10 +13,12 @@ export interface KitSelection {
   edge?: string | true;
   cacheBlob?: string | true;
   spanFts?: string | true;
+  /** Add the trigram twin to the `spanFts` tables; needs `spanFts`. */
+  spanFtsTrigram?: true;
   watermark?: string | true;
 }
 
-type Factory = (options: { name?: string }) => string;
+type Factory = (options: { name?: string; trigram?: boolean }) => string;
 
 const FACTORIES: [keyof KitSelection, Factory][] = [
   ["snapshot", snapshotTableDdl],
@@ -30,10 +32,14 @@ const FACTORIES: [keyof KitSelection, Factory][] = [
 
 /** The DDL for a selection of kit tables, in dependency-safe order. Every statement is `IF NOT EXISTS`. */
 export function kitDdl(selection: KitSelection): string {
+  if (selection.spanFtsTrigram !== undefined && selection.spanFts === undefined) {
+    throw new Error("spanFtsTrigram needs spanFts: the trigram twin attaches to the span FTS tables");
+  }
   return FACTORIES.filter(([key]) => selection[key] !== undefined)
     .map(([key, factory]) => {
       const choice = selection[key];
-      return factory(typeof choice === "string" ? { name: choice } : {});
+      const options = typeof choice === "string" ? { name: choice } : {};
+      return factory(key === "spanFts" && selection.spanFtsTrigram !== undefined ? { ...options, trigram: true } : options);
     })
     .join("\n");
 }

@@ -7,6 +7,7 @@ import { readRounds } from "../shepherd/round-ship-sweep.js";
 import { readAllGates } from "../shepherd/owner-friction-read.js";
 import { loadSeatBook } from "../shepherd/seats.js";
 import type { PlannerRun } from "./inputs.js";
+import { isIsoTime } from "./iso-time.js";
 import type { RoundAnswer, WindowGitHub, WindowSources } from "./window-probes.js";
 
 /** One page: a planner window is hours long, and a probe only needs to know whether anything happened. */
@@ -30,33 +31,47 @@ async function redRunsConcluded(run: PlannerRun, repo: string, since: string, co
   return runs.map((r) => ({ id: r.databaseId, workflow: r.workflowName, createdAt: r.createdAt }));
 }
 
+/** GitHub search qualifiers take second-precision times; a fractional `.000Z` is not a documented form. */
+const toSecondPrecision = (since: string): string => since.replace(/\.\d+(?=Z|[+-]\d{2}:?\d{2}$)/, "");
+
 export function ghWindow(run: PlannerRun): WindowGitHub {
   return {
-    mergedPrs: (repo, since) =>
-      ghJson(run, ["pr", "list", "--repo", repo, "--state", "merged", "--search", `merged:>=${since}`, "--json", "number,mergedAt", "--limit", PAGE], MergedPrs),
+    mergedPrs: (repo, since) => {
+      const from = toSecondPrecision(since);
+      return ghJson(run, ["pr", "list", "--repo", repo, "--state", "merged", "--search", `merged:>=${from}`, "--json", "number,mergedAt", "--limit", PAGE], MergedPrs);
+    },
     redMainRuns: async (repo, since) => {
-      const perConclusion = await Promise.all(RED_CONCLUSIONS.map((conclusion) => redRunsConcluded(run, repo, since, conclusion)));
+      const from = toSecondPrecision(since);
+      const perConclusion = await Promise.all(RED_CONCLUSIONS.map((conclusion) => redRunsConcluded(run, repo, from, conclusion)));
       return perConclusion.flat();
     },
   };
 }
 
-/** A round whose feedback does not parse is no owner answer this probe can date, so it is left out. */
-async function roundAnswers(roundsDir: string | undefined): Promise<RoundAnswer[]> {
+/** A round that cannot be dated is kept with the reason, so the probe reports it rather than losing the owner's answer. */
+export async function roundAnswers(roundsDir: string | undefined): Promise<RoundAnswer[]> {
   if (roundsDir === undefined) return [];
   const rounds = await readRounds(roundsDir);
-  return rounds.flatMap((round) => {
-    const submittedAt = round.feedback === undefined ? undefined : submittedAtOf(round.feedback);
-    return submittedAt === undefined ? [] : [{ id: round.id, submittedAt }];
-  });
+  return rounds.flatMap((round) => (round.feedback === undefined ? [] : [answerOf(round.id, round.feedback)]));
 }
 
-function submittedAtOf(feedback: Uint8Array): string | undefined {
+function failingFields(error: z.ZodError): string {
+  const fields = [...new Set(error.issues.map((issue) => issue.path.join(".") || "(root)"))];
+  return `${fields.length === 1 ? "field" : "fields"} ${fields.join(", ")}`;
+}
+
+function answerOf(id: string, feedback: Uint8Array): RoundAnswer {
+  let json: unknown;
   try {
-    return RoundFeedbackSchema.safeParse(JSON.parse(Buffer.from(feedback).toString("utf8"))).data?.submittedAt;
+    json = JSON.parse(Buffer.from(feedback).toString("utf8"));
   } catch {
-    return undefined;
+    return { id, submittedAt: undefined, why: "feedback.json is not valid JSON" };
   }
+  const parsed = RoundFeedbackSchema.safeParse(json);
+  if (!parsed.success) return { id, submittedAt: undefined, why: `feedback.json has invalid ${failingFields(parsed.error)}` };
+  const { submittedAt } = parsed.data;
+  if (!isIsoTime(submittedAt)) return { id, submittedAt: undefined, why: "submittedAt is not an ISO time" };
+  return { id, submittedAt };
 }
 
 /** Read-only, so a running serve is never disturbed; a missing store throws, which the wake reads as "run the review". */

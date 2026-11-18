@@ -149,6 +149,24 @@ interface LabelMetrics {
  */
 declare function labelBoxSizing(labels: ReadonlyMap<string, string>, metrics: LabelMetrics): Map<string, NodeSize>;
 
+/** A named box outside the packages: a person or system that talks to the system. */
+interface ContextNode {
+    id: string;
+    label: string;
+}
+/** A labelled arrow between the system box, a package box, an actor or an external. */
+interface ContextLink {
+    from: string;
+    to: string;
+    label: string;
+}
+/** The L0 context pass: who uses the system, what it depends on, and the arrows between them. */
+interface RepoMapContext {
+    actors: readonly ContextNode[];
+    externals: readonly ContextNode[];
+    links: readonly ContextLink[];
+}
+
 /** An axis-aligned box in the layout's one absolute frame, in px; `x` and `y` are its top-left. */
 interface MapBox {
     x: number;
@@ -240,6 +258,8 @@ interface RepoMapOptions {
      * list labels the container import arrows "imports only"; leaving it out draws neither.
      */
     protocolEdges?: readonly ProtocolEdge[];
+    /** Adds a level-0 context: a `sys` box around every package, with these actors and externals outside it. */
+    context?: RepoMapContext;
 }
 /**
  * Lay a file-level snapshot out as one repo-map/v1: packages hold directories, directories
@@ -318,6 +338,11 @@ declare function placePills(scene: PillScene, pins: readonly PinSpec[], config: 
  * `apps/<name>` for a file inside one, else the first path segment.
  */
 declare function packageOf(id: string): string;
+/**
+ * The repo-relative directory of the package {@link packageOf} names for this file: `packages/<name>`,
+ * `products/<name>` or `apps/<name>`, else the first path segment (the file itself when it sits at the root).
+ */
+declare function packageRootOf(id: string): string;
 
 /** ELK options for a flat package-level graph. */
 declare const ELK_LAYOUT_OPTIONS: Record<string, string>;
@@ -332,4 +357,4 @@ declare const FOCUS_LAYOUT_OPTIONS: Record<string, string>;
 /** ELK options for a nested graph: `INCLUDE_CHILDREN` lays the whole hierarchy out in one pass. */
 declare const COMPOUND_LAYOUT_OPTIONS: Record<string, string>;
 
-export { COMPOUND_LAYOUT_OPTIONS, type CompoundLayoutResult, type CompoundLayoutSpec, type DroppedPill, ELK_LAYOUT_OPTIONS, ELK_VERSION, FOCUS_LAYOUT_OPTIONS, type FocusOptions, type GraphInput, type GroupOf, type LabelMetrics, type LaidOutGroup, type LaidOutNode, type LayoutResult, MAP_LABEL_METRICS, type MapBox, type MapCardRef, type MapEdge, type MapEdgeSource, type MapFlow, type MapFlowHop, type MapLayout, type MapLevel, type MapNode, type MapPoint, type NodeSize, type NodeSizing, type PillConfig, type PillPlacement, type PillScene, type PinSpec, type PlacedPill, type Point, type Rect, type RepoMapOptions, type SceneRect, collapseToDirectories, collapseToPackages, computeCompoundLayout, computeCompoundLayoutStrict, computeLayout, emitRepoMap, focusPackage, labelBoxSizing, packageOf, packagesInSnapshot, placePills, routeOf, routeToPathD };
+export { COMPOUND_LAYOUT_OPTIONS, type CompoundLayoutResult, type CompoundLayoutSpec, type ContextLink, type ContextNode, type DroppedPill, ELK_LAYOUT_OPTIONS, ELK_VERSION, FOCUS_LAYOUT_OPTIONS, type FocusOptions, type GraphInput, type GroupOf, type LabelMetrics, type LaidOutGroup, type LaidOutNode, type LayoutResult, MAP_LABEL_METRICS, type MapBox, type MapCardRef, type MapEdge, type MapEdgeSource, type MapFlow, type MapFlowHop, type MapLayout, type MapLevel, type MapNode, type MapPoint, type NodeSize, type NodeSizing, type PillConfig, type PillPlacement, type PillScene, type PinSpec, type PlacedPill, type Point, type Rect, type RepoMapContext, type RepoMapOptions, type SceneRect, collapseToDirectories, collapseToPackages, computeCompoundLayout, computeCompoundLayoutStrict, computeLayout, emitRepoMap, focusPackage, labelBoxSizing, packageOf, packageRootOf, packagesInSnapshot, placePills, routeOf, routeToPathD };

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the merge commit's first parent is ignored",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "argv[0] || env.CLOSURE_BASE || mergeBase || prBase",
+      "replace": "argv[0] || env.CLOSURE_BASE || prBase",
+      "kills": [
+        "closure check compares a pull request merge commit against its first parent"
+      ]
+    }
+  ]
+}

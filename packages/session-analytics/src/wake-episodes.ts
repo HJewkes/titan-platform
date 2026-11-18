@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AgentNameRow, WakeEventRow } from "./cost-report-queries.js";
+import { groupBy } from "./report-helpers.js";
 import { roleFromProfile } from "./roles.js";
 import { ACTION_CLASSES, type ActionClass } from "./turn-action.js";
 
@@ -15,7 +16,7 @@ export const DEFAULT_EPISODE_ROLES: readonly string[] = ["coordinator", "worker:
 export const DEFAULT_NO_ACTION_CLASSES: readonly ActionClass[] = ["read-investigate", "text-only", "other"];
 
 /** agent-chat's own name on the notices it writes, such as the agent lifecycle notice. */
-export const BROKER_SENDER = "agent-chat";
+const BROKER_SENDER = "agent-chat";
 export const AGENT_LIFECYCLE = "agent_lifecycle";
 const UNNAMED = "unnamed";
 
@@ -82,7 +83,7 @@ export function episodeNames(rows: readonly AgentNameRow[]): EpisodeNames {
 }
 
 /** The lifecycle notice is session-read's `channel_system`; every other cause keeps its name. */
-export function episodeCause(cause: string): string {
+function episodeCause(cause: string): string {
   return cause === "channel_system" ? AGENT_LIFECYCLE : cause;
 }
 
@@ -179,17 +180,6 @@ function pairBuckets(episodes: readonly WakeEpisode[]): WakePair[] {
       return { from, fromKind, to, ...costOf(members) };
     })
     .sort((a, b) => b.costUsd - a.costUsd || a.from.localeCompare(b.from) || a.to.localeCompare(b.to) || a.fromKind.localeCompare(b.fromKind));
-}
-
-function groupBy<T>(rows: readonly T[], keyOf: (row: T) => string): Map<string, T[]> {
-  const groups = new Map<string, T[]>();
-  for (const row of rows) {
-    const key = keyOf(row);
-    const members = groups.get(key);
-    if (members) members.push(row);
-    else groups.set(key, [row]);
-  }
-  return groups;
 }
 
 function byCostThenKey(a: { key: string; costUsd: number }, b: { key: string; costUsd: number }): number {

@@ -27,11 +27,15 @@ const EXCLUDED_PATTERNS = [
   /yarn\.lock$/,
 ];
 
-const LANGUAGE_EXTENSIONS: Record<string, string[]> = {
+export type FilterLanguage = "typescript" | "python";
+
+const LANGUAGE_EXTENSIONS: Record<FilterLanguage, string[]> = {
   // `.mjs`/`.cjs` hold no JSX, so the typescript grammar parses them (TP-4161).
   typescript: [".ts", ".tsx", ".mjs", ".cjs"],
   python: [".py"],
 };
+
+const FILTER_LANGUAGES: readonly FilterLanguage[] = ["typescript", "python"];
 
 /**
  * True when a directory NAME should be pruned from a recursive source walk
@@ -47,7 +51,7 @@ export function isExcludedDir(dirName: string): boolean {
 
 export function shouldIncludeFile(
   filePath: string,
-  languages: string[],
+  languages: FilterLanguage[],
 ): boolean {
   const segments = filePath.split("/");
   if (segments.some((s) => EXCLUDED_DIRS.includes(s))) {
@@ -60,18 +64,16 @@ export function shouldIncludeFile(
 
   const ext = path.extname(filePath);
   const allowedExtensions = languages.flatMap(
-    (lang) => LANGUAGE_EXTENSIONS[lang] ?? [],
+    (lang) => LANGUAGE_EXTENSIONS[lang],
   );
 
   return allowedExtensions.includes(ext);
 }
 
-export function getLanguageFromPath(filePath: string): string | null {
+export function getLanguageFromPath(filePath: string): FilterLanguage | null {
   const ext = path.extname(filePath);
-  for (const [language, extensions] of Object.entries(LANGUAGE_EXTENSIONS)) {
-    if (extensions.includes(ext)) {
-      return language;
-    }
+  for (const language of FILTER_LANGUAGES) {
+    if (LANGUAGE_EXTENSIONS[language].includes(ext)) return language;
   }
   return null;
 }

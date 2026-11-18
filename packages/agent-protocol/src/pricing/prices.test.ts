@@ -28,6 +28,22 @@ describe("published 2026 rates", () => {
   });
 });
 
+describe("Fable 5.2", () => {
+  it("reproduces a Claude CLI costUSD sample of 0.0294458 for 2 input, 2914 cache write, 649 cache read, 4 output", () => {
+    const priced = priceRequest(
+      { inputTokens: 2, outputTokens: 4, cacheReadTokens: 649, cacheCreation5mTokens: 2914, cacheCreation1hTokens: 0 },
+      "claude-fable-5-2",
+      TS,
+    );
+    expect(priced.priced).toBe(true);
+    expect(priced.costUsd).toBeCloseTo(0.0294458, 10);
+  });
+
+  it("prices claude-fable-5-2 at its published rates, not claude-fable-5-1 rates", () => {
+    expect(findPrice("claude-fable-5-2", TS)).toMatchObject(rates(8, 10, 16, 0.2, 40));
+  });
+});
+
 describe("Sonnet 5.5 cache read cut on 2026-10-07", () => {
   it("charges 0.20 for a cache read the moment before the cut", () => {
     expect(findPrice("claude-sonnet-5-5", "2026-10-06T23:59:59.999Z")).toMatchObject({ cacheRead: 0.2, input: 2 });

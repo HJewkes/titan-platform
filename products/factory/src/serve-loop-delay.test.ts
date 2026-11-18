@@ -1,6 +1,10 @@
+import { partialFake } from "@titan-design/test-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Logger } from "@titan-design/daemon";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { startLoopDelayWatch, type LoopDelayHistogram } from "./serve-loop-delay.js";
+
+vi.mock("node:perf_hooks", () => ({ monitorEventLoopDelay: vi.fn() }));
 
 const WINDOW_MS = 60_000;
 
@@ -76,15 +80,45 @@ describe("startLoopDelayWatch", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 
-  it("warns on a real busy-wait that blocks the loop past the threshold", async () => {
+  it("honours custom thresholdMs and windowMs when the histogram records a stall mid-window", () => {
+    vi.useFakeTimers();
     const log = fakeLog();
-    const watch = startLoopDelayWatch({ log, thresholdMs: 100, windowMs: 400 });
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const blockedUntil = Date.now() + 300;
-    while (Date.now() < blockedUntil);
+    const histogram = fakeHistogram(0);
+    const watch = startLoopDelayWatch({ log, histogram, thresholdMs: 100, windowMs: 400 });
 
-    await vi.waitFor(() => expect(log.warn).toHaveBeenCalled(), { timeout: 2_000, interval: 50 });
+    vi.advanceTimersByTime(399);
+    histogram.max = 300e6;
+    vi.advanceTimersByTime(1);
 
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn).toHaveBeenCalledWith({ p99Ms: 10, maxMs: 300, windowMs: 400 }, "event loop stalled");
     watch.stop();
+  });
+
+  it("warns when a block spans a window boundary and the reset drops the histogram's sample", () => {
+    vi.useFakeTimers();
+    const log = fakeLog();
+    const watch = startLoopDelayWatch({ log, histogram: fakeHistogram(0) });
+    vi.advanceTimersByTime(WINDOW_MS - 1_000);
+
+    vi.setSystemTime(Date.now() + 6_000);
+    vi.advanceTimersByTime(1_000);
+
+    expect(log.warn).toHaveBeenCalledWith(expect.objectContaining({ maxMs: 6_000 }), "event loop stalled");
+    watch.stop();
+  });
+
+  it("builds the default histogram at 20 ms resolution, enabling it on start and disabling it on stop", () => {
+    vi.useFakeTimers();
+    const histogram = fakeHistogram(0);
+    vi.mocked(monitorEventLoopDelay).mockReturnValue(partialFake<ReturnType<typeof monitorEventLoopDelay>>(histogram));
+
+    const watch = startLoopDelayWatch({ log: fakeLog() });
+
+    expect(monitorEventLoopDelay).toHaveBeenCalledWith({ resolution: 20 });
+    expect(histogram.enable).toHaveBeenCalledTimes(1);
+    expect(histogram.disable).not.toHaveBeenCalled();
+    watch.stop();
+    expect(histogram.disable).toHaveBeenCalledTimes(1);
   });
 });

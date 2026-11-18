@@ -42,8 +42,19 @@ describe("explicit known observation factory", () => {
   it("binds written_at to the attested time rather than allowing a later refresh by mutation", () => {
     const result = observed();
     if (result.status !== "known") throw new Error("fixture not known");
-    result.reading.written_at = now + 10;
-    expect(quotaAdmission(result, now + 10)).toEqual({ allowed: false, reason: "inconsistent" });
+    expect(() => { result.reading.written_at = now + 10; }).toThrow(TypeError);
+    expect(quotaAdmission(result, now + 10)).toEqual({ allowed: true, ageSeconds: 10 });
+  });
+  it("deeply freezes the reading so mutating five_hour after construction cannot flip a refusal", () => {
+    const input = supplied(); input.rate_limits.five_hour.used_percentage = 100;
+    const result = knownObservation({ source: "synthetic-independent-observation", observedAt: now, reading: input });
+    if (result.status !== "known") throw new Error("fixture not known");
+    const { reading } = result;
+    expect([reading, reading.rate_limits, reading.rate_limits.five_hour, reading.rate_limits.seven_day].map(Object.isFrozen))
+      .toEqual([true, true, true, true]);
+    expect(() => { reading.rate_limits.five_hour.used_percentage = 0; }).toThrow(TypeError);
+    expect(() => { reading.rate_limits.five_hour = { used_percentage: 0, resets_at: now + 1000 }; }).toThrow(TypeError);
+    expect(quotaAdmission(result, now)).toMatchObject({ allowed: false, reason: "five-hour-ceiling" });
   });
   it("refuses an unknown status even when its reading has valid provenance", () => {
     const result = observed();

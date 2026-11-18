@@ -524,6 +524,60 @@ The env file sets `CLAUDE_CONFIG_DIR` (a pool account's profile, never the owner
 `claude -p --model sonnet --max-turns 1 "reply ok"`, then
 `titan-factory owner-gates audit --dry-run`.
 
+## Review stats: daily refresh
+
+`titan-factory shepherd stats --reviews` refreshes `review-stats.sqlite3` beside the ledger, then prints the report. A round
+whose run recorded no own-diff id takes one from the git-cache, read-only: a head the cache lacks stays without an id and the
+refresh line counts it.
+
+The 05:00 timer is `ops/systemd/titan-review-stats.{service,timer}`. It runs from the deploy checkout and reads the same env
+file as the owner-gates unit. Install it once per host:
+
+```sh
+cp ops/systemd/titan-review-stats.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now titan-review-stats.timer
+```
+
+## Dispatcher shadow
+
+`titan-factory dispatch shadow-tick` runs the dispatcher's eligibility and admission checks and writes shadow rows. It
+dispatches nothing and spawns nothing. The tick is inert unless the rule file sets `shadow.enabled: true`.
+
+The timer is `ops/systemd/titan-dispatch-shadow.{service,timer}`. It fires at :07 and :37 of each hour and reads the same
+env file as the owner-gates unit. The unit carries no path and no flag, because the tick reads its rule file from the
+default place, `~/.config/titan-factory/dispatcher.json`. For a one-off run, the verb takes `--rule-file <path>`. The shadow directory has a space in its path, so it lives in that
+file and never in the unit.
+
+Two owner-only steps install it:
+
+1. Write `~/.config/titan-factory/dispatcher.json` with `"shadow": {"enabled": true, "dir": "<shadow dir>"}`. This is the
+   shadow flag flip. Set it back to `false`, or delete the file, to turn shadow off.
+2. Link and enable the timer:
+
+```sh
+systemctl --user link ~/projects/titan-platform/ops/systemd/titan-dispatch-shadow.service ~/projects/titan-platform/ops/systemd/titan-dispatch-shadow.timer && systemctl --user enable --now titan-dispatch-shadow.timer
+```
+
+The tick needs the active-work daemon. Without it a lane cannot be read, so the tick writes a `refused` row with code
+`signal-unreadable` and exits 69.
+
+### Ready-stock floors
+
+A lane may set `floor`, its ready-stock floor, and `coordinator`, the agent-chat peer that refills it:
+
+```json
+"lanes": [{ "initiative": "<slug>", "tag": "<lane tag>", "floor": 20, "coordinator": "<peer name>" }]
+```
+
+After writing its rows, each tick counts a floored lane's dispatchable tasks by the work-supply census rule: an open task
+tagged `brief:ready` with no owner, needs-decision, parked or held, blocked, plan-first or superseded class
+(`src/eligibility/shadow/census.ts`). Under the floor, the tick sends one refill request naming the count and the floor
+to the lane's `coordinator`, or to `compare.operator` (default `tp-operator`) when the lane names none. It sends at most
+one per lane per UTC day, recorded in `<shadow dir>/refill/<YYYY-MM-DD>.jsonl`. A failed send is reported on stderr and
+not recorded, so the next tick tries again. The request goes over `shepherd.agentChatBin`; with none configured the tick
+reports the lane and sends nothing. Floors are absent by default, and a lane with no floor is never counted.
+
 ## Owner-queue sources
 
 `src/needs/` holds the factory's `QueueSource` adapters for `@titan-design/owner-queue`. Each
@@ -559,6 +613,22 @@ stderr and the command exits 69 after printing the rest.
 
 `titan-factory digest run` reads its "Needs you" section from this same list, minus `know`
 items, which are news and not asks.
+
+### Who sees which needs items
+
+Every needs read names its caller, `owner` or `agent`, and `src/caller.ts` resolves it once.
+Serve's HTTP route (the console) is the owner; MCP is an agent. The `needs` and `digest run`
+verbs are the owner only in a shell where none of `AGENT_CHAT_NAME`, `AGENT_CHAT_AGENT_ID` or
+`CLAUDECODE` is set, so the owner running them inside Claude Code gets the agent view, and so
+does `digest run --dry-run` in an agent shell.
+
+The owner gets every item. For an agent, `collectNeeds` drops every item whose `initiative` is
+not on the allow list it reads from active-work's `inventory`: the rows whose
+`withheld_from_agents` is `false`. That holds for every source (tasks, agent-chat asks whose
+meta names an initiative, Morning items, gates). Items with no initiative stay. A row without the
+field, a slug inventory does not list, and an unreachable daemon all withhold, and an unreachable
+daemon also adds a gap line. `needs-caller-boundary.test.ts` keeps the agent env reads in
+`caller.ts` and the caller decision in `needs/merged.ts`.
 
 ## Measurement audit
 
@@ -975,6 +1045,7 @@ Two keys under `shepherd` in the config file turn the review phase on. Both are 
 | `shepherd.review.minFreeInodesPct` | Optional, default 15. The spawn gate defers a reviewer while that filesystem's free inodes are under this percent of its total, or under twice the inodes the last measured checkout took, whichever is more. A filesystem with no fixed inode table has no inode floor |
 | `shepherd.review.maxConcurrent` | Optional, default 3. The spawn gate defers a reviewer while this many reviewers run |
 | `shepherd.taskClose` | Optional, `keep` (default) or `last-slice-only`, read live. When a merged PR closes its `--task`; see `sh-cleanup` above |
+| `shepherd.checkCandidates` | Optional, `off`, `record` (default) or `propose`. Whether the reviewers' check candidates are kept in the `check_candidates` table (`src/shepherd/check-candidates-store.ts`): one row per repo, PR, head and class key, with each member's own verdict. `propose` records as `record` does; filing check-proposal tasks from the rows is not built yet. Any other value fails the load |
 | `shepherd.fixer.configDir` | Optional. The Claude config directory of the fixer a red main spawns; absent means agent-chat's default. Same rules as `review.configDir`. A red main's fixer and a fix-round successor start here (or on `review.configDir` when absent) and moves through `review.fallbackConfigDirs` while the account is out of usage |
 
 The load fails, with `invalid config <path>: <reason>`, on any of these:
@@ -1300,6 +1371,8 @@ Add the gate to `gate-brief.test.ts`, which runs every brief through `snapshotBr
 `factoryRegistry` (`src/registry/steps/index.ts`) holds one entry per step id the factory workflows declare, split by family in `src/registry/steps/{core,shepherd,audit,build-surface,gates}.ts`. An entry names the step's op, its kind (software, AGENT or OWNER) and its effect class. The host's `abandonsOrphan` is `abandonsOrphan(stepId)`: a restart drops the orphan of a step whose entry is `read`, and parks every other class. `restart-contract.test.ts` checks the registry's parking and dropped steps against the independent lists in `restart-contract.fixture.ts`. `census.test.ts` fails when a declared step has no entry.
 
 A fact entry's `body` module is hashed with everything it imports, workspace sources included, into `src/registry/closure.lock.json`. CI's `pnpm registry:closure` fails when that lock is stale, or when a step's closure changed against `origin/main` with neither a new schema hash, a new `version.bump`, nor an attestation row naming the new closure. After a change, run `pnpm build`, then `pnpm registry:closure --write`.
+
+To bump a step, add `src/registry/bumps/<pr>.json`, an array of `{ step, pr }` whose `pr` is the file's own number, rather than editing `version.bump` in `steps/`. A fact step's bump is its declared `version.bump` plus one per distinct PR whose row names it, read at load from the checkout the build runs from. Two concurrent PRs that bump one step each write their own file, so when one lands the other's row still moves the sum: the merged lock carries both, and only `pnpm registry:closure --write` is needed, never a re-bump (TP-5705). A row already on the base counts on both sides, so it never covers a later PR's change. The check fails an added row naming another PR (stacked parents aside), a row naming no fact step, and a base row removed from the tree, since a lower sum would pass as a version change.
 
 Attestation rows live one file per PR, `src/registry/attestations/<pr>.json`, an array of `{ step, closure, pr }` whose `pr` is the file's own number, so two PRs that each add rows never touch the same file. Shepherd's `readClaims` and the closure check read the directory as the union at the base and at the head; a ref from before the directory falls back to the retired single `attestations.json`, which the check refuses in a working tree. `closure.lock.json` merges through the `closure-lock` git driver (`.gitattributes`, registered by `pnpm install`): rows that only one side moved merge cleanly, and a step both sides moved keeps ours, which the stale-lock failure then sends to `pnpm registry:closure --write`. GitHub's own merge runs no custom driver, so a PR that moves the same step as a newer main still shows a conflict there; that PR's merged closure is new and needs a fresh attestation anyway.
 

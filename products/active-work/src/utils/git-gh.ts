@@ -104,7 +104,7 @@ export function getGhRunner(): CommandRunner {
  * `~/code/sample` has a tilde, `./foo/bar` has a dot, `/abs/path` starts with
  * `/` — all of those are treated as paths.
  */
-export function looksLikeOrgRepo(repo: string): boolean {
+function looksLikeOrgRepo(repo: string): boolean {
   if (!repo) return false;
   if (repo.startsWith('/') || repo.startsWith('~') || repo.startsWith('.')) return false;
   if (/\s/.test(repo)) return false;
@@ -127,7 +127,7 @@ export function resolveLocalRepoPath(repo: string): string | null {
  * the URL. Supports https, ssh, and git:// URLs. Returns null if the URL
  * can't be parsed or the call fails.
  */
-export async function deriveOrgRepoFromPath(repoPath: string): Promise<string | null> {
+async function deriveOrgRepoFromPath(repoPath: string): Promise<string | null> {
   try {
     const res = await gitRunner('git', ['-C', repoPath, 'remote', 'get-url', 'origin']);
     if (res.code !== 0) return null;
@@ -138,7 +138,7 @@ export async function deriveOrgRepoFromPath(repoPath: string): Promise<string | 
 }
 
 /** Parse `org/repo` out of a git remote URL. Exported for testing. */
-export function parseOrgRepoFromRemoteUrl(url: string): string | null {
+function parseOrgRepoFromRemoteUrl(url: string): string | null {
   // https://github.com/org/repo(.git)?
   // git@github.com:org/repo(.git)?
   // ssh://git@github.com/org/repo(.git)?

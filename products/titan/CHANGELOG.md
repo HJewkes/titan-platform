@@ -1,5 +1,31 @@
 # @titan-design/titan
 
+## 0.5.0
+
+### Minor Changes
+
+- 16f4b2a: titan versions the nightly restic backup as `scripts/host-backup.sh`, configured by `~/.config/titan/backup.env` (`RESTIC_REPOSITORY`, `RESTIC_PASSWORD_FILE`, `BACKUP_PATHS`, `BACKUP_EXCLUDES`, optional `BACKUP_MOUNT`), and renders its `titan-host-backup.service` and `.timer` (02:30, Persistent=true). Nothing installs them yet.
+- 5d60052: `titan host services list [--json]` and `titan host services install --dry-run` print every host-owned scheduled job for this platform (backup, health sampler, usage refresh, memory sampler) with its source: rendered here, delegated to another installer, owned by chezmoi, or deferred to a named host-job task. On linux the dry run prints the backup service and timer with their target paths, any legacy `restic-nightly` unit found, and the `systemctl --user` commands; darwin renders nothing. `install` without `--dry-run` exits 2 and writes nothing.
+
+### Patch Changes
+
+- 12f75a6: Health target merging and the cost report build their results without type assertions. No behaviour change.
+- 5390a34: titan imports the systemd escaping, PATH, unit-directory and node-path helpers from `@titan-design/daemon/service` and deletes its own copies. Rendered unit files are byte-identical, except that a node directory containing ":" now throws instead of writing a broken PATH.
+- 6c8b003: `titan host services install` without `--dry-run` now installs the rendered backup units: it disables the legacy restic timer first, writes the units, reloads systemd and enables the titan backup timer, stopping at the first failing step.
+- Updated dependencies [1ac0fa2]
+- Updated dependencies [c8c02da]
+- Updated dependencies [24f1577]
+- Updated dependencies [6554538]
+- Updated dependencies [c525f57]
+- Updated dependencies [e52ea15]
+- Updated dependencies [9dd8d1c]
+- Updated dependencies [9b42150]
+- Updated dependencies [90c93cf]
+- Updated dependencies [00fb3ee]
+- Updated dependencies [147ff5d]
+  - @titan-design/daemon@0.9.0
+  - @titan-design/health@0.2.1
+
 ## 0.4.0
 
 ### Minor Changes

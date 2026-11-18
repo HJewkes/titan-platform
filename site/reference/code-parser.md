@@ -11,8 +11,16 @@ npm install @titan-design/code-parser web-tree-sitter@^0.26.6
 Tree-sitter parsing in Node needs three fiddly things done once: initialise the WASM
 runtime, find each grammar's `.wasm` file inside an installed package, and cache one parser
 per language. Code analyzers also need to agree on which files count as source and on the
-shape of a parsed file. This package owns those four pieces: `parseFile`, the file filter,
-`ParsedFile`, and the `Extractor<T>` contract.
+shape of a parsed file. They also need to count complexity the same way. This package owns
+those five pieces: `parseFile`, the file filter, `ParsedFile`, the `Extractor<T>` contract,
+and the complexity kinds.
+
+The complexity kinds are `cyclomaticOf(body, language)`, which returns McCabe complexity (one
+plus every branch node and boolean operator under `body`), and `nestingDepthOf(node, language,
+depth?, options?)`, which returns the deepest nesting level under `node`. Four node-type sets
+drive them: `TS_BRANCH_TYPES`, `PY_BRANCH_TYPES`, `TS_NESTING_TYPES` and `PY_NESTING_TYPES`.
+`nestingDepthOf` takes `NestingOptions`; with `flattenElseIf: true` an `else if` chain stays at
+its `if`'s depth, as ESLint max-depth and Sonar count it.
 
 ## When to reach for it
 

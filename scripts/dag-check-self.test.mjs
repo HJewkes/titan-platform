@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { forgetSeedCommits, keepDb, keptDbPath, seedDbPath, workDirFor } from "./dag-check-self.mjs";
+import { forgetSeedCommits } from "./dag-check-seed.mjs";
+import { keepDb, keptDbPath, seedDbPath, workDirFor } from "./dag-check-self.mjs";
 import { DEFAULT_LOCK_DIR } from "./dag-check-lock.mjs";
 import { graphFromDb } from "./dead-code-check.mjs";
 

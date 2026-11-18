@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeGitHub, githubPort } from "@titan-design/github";
 import { runGit, type GitRunner } from "@titan-design/worktree";
+import type { UpstreamSample } from "./perf/recorder.js";
 import { gitEvidenceReader } from "./repo-evidence.js";
 
 let dir: string;
@@ -120,6 +121,33 @@ describe("repository evidence", () => {
 
     expect(served).toBe(first);
     await vi.waitFor(() => expect(fake.calls.filter((call) => call === "listOpenPrs")).toHaveLength(2));
+  });
+
+  it("serves evidence idle sixteen minutes kept, so the tasks page's first read after a gap waits on no git or GitHub", async () => {
+    seedRepository();
+    const clock = { at: 0 };
+    const fake = fakeGitHub({ repo: "example/orbit" });
+    const read = gitEvidenceReader({ github: githubPort(fake.wire, { login: "t" }), now: () => clock.at });
+    const [first] = await read([clone]);
+
+    clock.at = 16 * 60_000;
+    const [served] = await read([clone]);
+
+    expect(served).toBe(first);
+    await vi.waitFor(() => expect(fake.calls.filter((call) => call === "listOpenPrs")).toHaveLength(2));
+  });
+
+  it("leaves an upstream row in the perf log for each git and GitHub call, named by command only", async () => {
+    seedRepository();
+    const samples: UpstreamSample[] = [];
+    const recorder = { recordUpstream: (sample: UpstreamSample) => void samples.push(sample) };
+    const read = gitEvidenceReader({ github: { listOpenPrs: async () => [] }, now: () => 0, recorder });
+
+    await read([clone]);
+
+    const names = new Set(samples.map((sample) => sample.name));
+    expect([...names].sort()).toEqual(["git:for-each-ref", "git:log", "git:remote", "git:rev-parse", "git:worktree", "github:listOpenPrs"]);
+    expect(samples.every((sample) => sample.outcome === "ok" && sample.ms >= 0)).toBe(true);
   });
 
   it("marks pull requests unread when GitHub fails, and keeps the git evidence", async () => {

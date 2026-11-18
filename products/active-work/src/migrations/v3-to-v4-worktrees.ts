@@ -211,5 +211,3 @@ export const v3ToV4Worktrees: Migration = {
     );
   },
 };
-
-export default v3ToV4Worktrees;

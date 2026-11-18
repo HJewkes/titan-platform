@@ -131,7 +131,7 @@ describe("attest smoke: carrying a MERGE onto a head that claims a row", () => {
 
   /** A context whose claims step is the real route reading the fake GitHub; every other step answers as a clean merge-up. */
   function carryCtx(fake: FakeGitHub): { ctx: WorkflowContext; asked: string[] } {
-    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, port: githubPort(fake.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
+    const route = carryRoutes({ gitCache: hostCarryPorts, now: () => 0, sleep: async () => undefined, port: githubPort(fake.wire), store: partialFake<ShepherdStoreRef>() }, undefined).find((r) => r.match === "sh-carry-claims")!;
     const asked: string[] = [];
     const answer = async (stepId: string, input: Record<string, unknown>): Promise<object> => {
       if (stepId.startsWith("sh-carry-scope")) return { kind: "correctness", baseRef: "main" };

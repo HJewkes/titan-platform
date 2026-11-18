@@ -3,7 +3,7 @@
 # titan-platform
 
 A multi-agent software factory, and the shared packages it is built from. The repo holds
-<!-- generated:package-count start -->62<!-- generated:package-count end --> reusable `@titan-design/*` packages arranged as a strict acyclic DAG, plus the products
+<!-- generated:package-count start -->65<!-- generated:package-count end --> reusable `@titan-design/*` packages arranged as a strict acyclic DAG, plus the products
 composed thinly on top of them. Shared concerns that grew independently in brain, active-work,
 codewatch, and the session-miner get extracted here one package at a time, and each old repo
 keeps running on the published packages until its capability is rebuilt here.
@@ -44,7 +44,7 @@ products/     runnable compositions of the tiers (private)
 apps/         front ends composed from the tiers (private)
 deploy/       deployable stacks (private): hub, the shared Matrix homeserver
 templates/    the uniform per-package scaffold that scripts/new-package.mjs stamps
-scripts/      new-package.mjs, dag-check-self.mjs, gen-docs-reference.mjs, gen-capabilities.mjs
+scripts/      entry points include new-package.mjs, dag-check-self.mjs, gen-docs-reference.mjs, gen-capabilities.mjs (see package.json scripts for the rest)
 site/         the documentation site (VitePress)
 metrics/      the metrics registry: one titan.metrics/v1 entry per area, checked by pnpm metrics:check
 .codewatch/   check.json: the DAG and fitness rules codewatch enforces

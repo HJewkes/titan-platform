@@ -11,7 +11,7 @@
 // list (initiatives grouped by state)
 // ---------------------------------------------------------------------------
 
-export type InitiativeState = 'focused' | 'backburner' | 'paused' | 'done';
+type InitiativeState = 'focused' | 'backburner' | 'paused' | 'done';
 
 export interface InitiativeItem {
   slug: string;
@@ -23,7 +23,7 @@ export interface InitiativeItem {
   updated: string;
 }
 
-export interface InitiativeSection {
+interface InitiativeSection {
   heading: string;
   items: InitiativeItem[];
 }
@@ -37,8 +37,8 @@ export interface InitiativesResult {
 // task.list (cross-initiative tasks)
 // ---------------------------------------------------------------------------
 
-export type TaskSeverity = 'critical' | 'high' | 'medium' | 'low';
-export type TaskStatus = 'open' | 'done';
+type TaskSeverity = 'critical' | 'high' | 'medium' | 'low';
+type TaskStatus = 'open' | 'done';
 
 export interface TaskItem {
   id: string;
@@ -65,7 +65,7 @@ export interface TasksResult {
 /** Result of task.done / task.edit — a single task, no `slug` (caller already knows it). */
 export type TaskDoneResult = Omit<TaskItem, 'slug'>;
 
-export interface TaskReorderShift {
+interface TaskReorderShift {
   id: string;
   from: number;
   to: number;
@@ -98,12 +98,12 @@ export interface StashEntry {
   sha?: string;
 }
 
-export interface ArtifactsBundle {
+interface ArtifactsBundle {
   branches: BranchEntry[];
   stashes: StashEntry[];
 }
 
-export interface ArtifactItem {
+interface ArtifactItem {
   slug: string;
   artifacts: ArtifactsBundle;
 }

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the owner-validate tag check is inverted",
+      "file": "products/factory/src/shepherd/g10-owner-validate.ts",
+      "find": "if (!task.tags.includes(OWNER_VALIDATE_TAG)) return undefined;",
+      "replace": "if (task.tags.includes(OWNER_VALIDATE_TAG)) return undefined;",
+      "kills": [
+        "owner-validate refusal an owner-validate task with no approval is refused"
+      ]
+    },
+    {
+      "name": "the done_when compare is dropped",
+      "file": "products/factory/src/shepherd/g10-owner-validate.ts",
+      "find": "return approval.scope.doneWhen === collapsedDoneWhen(task.doneWhen) ? undefined : \"done-when-changed\";",
+      "replace": "return undefined;",
+      "kills": [
+        "owner-validate refusal an approval for an older done_when is refused"
+      ]
+    },
+    {
+      "name": "an unread task reads as clear",
+      "file": "products/factory/src/shepherd/g10-owner-validate.ts",
+      "find": "if (\"unread\" in task) return \"task-unread\";",
+      "replace": "if (\"unread\" in task) return undefined;",
+      "kills": [
+        "owner-validate refusal an unread task is refused"
+      ]
+    },
+    {
+      "name": "an unwired mode reads as shadow",
+      "file": "products/factory/src/shepherd/g10-owner-validate.ts",
+      "find": "const live = mode ?? \"on\";",
+      "replace": "const live = mode ?? \"shadow\";",
+      "kills": [
+        "the owner-validate merge stamp a route that lost its mode wiring stamps on"
+      ]
+    },
+    {
+      "name": "the config reader leaves an absent key unset",
+      "file": "products/factory/src/config-ref.ts",
+      "find": "s.gateReset?.ownerValidate ?? \"shadow\",",
+      "replace": "s.gateReset?.ownerValidate,",
+      "kills": [
+        "the owner-validate merge stamp an absent config key reads as shadow at the config reader"
+      ]
+    }
+  ]
+}

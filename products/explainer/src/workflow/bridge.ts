@@ -29,7 +29,7 @@ const PORTED_STAGES: Readonly<Record<string, string>> = {
 const PortedStagesSchema = z.object({ stages: z.record(z.string(), z.unknown()) });
 
 /** A bridge a profile names, kept once per host so a run in any data dir uses it without a per-run copy. */
-export interface NamedBridge {
+interface NamedBridge {
   /** The host's own explainer data dir, which holds `bridges/<name>.json`. */
   home: string;
   name: string;
@@ -48,19 +48,26 @@ export function readBridgeFile(dataDir: string, named?: NamedBridge): BridgeFile
   return BridgeFileSchema.parse(raw);
 }
 
-export interface RunBridgeChoice {
+interface RunBridgeChoice {
   /** Where a named bridge lives; the data dir by default. */
   home?: string | undefined;
   profile?: string | undefined;
   /** Replaces the bridge's `theater.dir`. */
   theater?: string | undefined;
+  /** The run's gather day, which a literal `{day}` in the bridge's `theater.dir` becomes. */
+  day?: string | undefined;
 }
+
+const DAY_TOKEN = "{day}";
 
 /** A run's bridge: the one its profile names, else the data dir's, linking into the theater folder the run asked for. */
 export function runBridgeFile(dataDir: string, choice: RunBridgeChoice): BridgeFile {
   const name = choice.profile === undefined ? undefined : profileFor(loadProfiles(), choice.profile).bridge;
   const file = readBridgeFile(dataDir, name === undefined ? undefined : { home: choice.home ?? dataDir, name });
-  return choice.theater ? { ...file, theater: { ...file.theater, dir: choice.theater } } : file;
+  if (choice.theater) return { ...file, theater: { ...file.theater, dir: choice.theater } };
+  if (!file.theater.dir.includes(DAY_TOKEN)) return file;
+  if (choice.day === undefined) throw new Error(`the bridge's theater.dir ${file.theater.dir} holds ${DAY_TOKEN}, but this run has no gather day; pass --theater <dir>`);
+  return { ...file, theater: { ...file.theater, dir: file.theater.dir.replaceAll(DAY_TOKEN, choice.day) } };
 }
 
 export interface ExecResult {

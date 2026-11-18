@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { StructureExtractor } from "./structure.js";
-import { parseFile } from "@titan-design/code-parser";
+import { parseFile, type GrammarLanguage } from "@titan-design/code-parser";
 import type { ParsedFile } from "./types.js";
 import type { Observation } from "./types.js";
 import * as fs from "node:fs";
@@ -11,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function loadFixture(
   filename: string,
-  language: string,
+  language: GrammarLanguage,
 ): Promise<ParsedFile> {
   const fixturePath = path.join(__dirname, "../../fixtures", filename);
   const content = fs.readFileSync(fixturePath, "utf-8");
@@ -135,7 +135,7 @@ describe("StructureExtractor", () => {
   });
 
   describe("builtin module lists", () => {
-    async function importGroups(source: string, language: string): Promise<unknown[]> {
+    async function importGroups(source: string, language: GrammarLanguage): Promise<unknown[]> {
       const ext = language === "python" ? "py" : "ts";
       const parsed = await parseFile(source, `inline.${ext}`, language);
       return extractor

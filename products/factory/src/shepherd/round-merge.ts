@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
+import { ownerAtHeadRow } from "../coordinator-evidence.js";
 import type { PendingGate } from "../host.js";
 import { authorityGate, seatPolicyHead, visualPathHead } from "./head-moved.js";
 import { gateHead } from "./stale-gates.js";
@@ -37,7 +38,7 @@ export const RoundFeedbackSchema = z.object({
   round: z.number().int(),
   manifestSha256: z.string(),
   submittedAt: z.string(),
-  answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional(), revisionRequested: z.boolean().optional() })),
+  answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional(), revisionRequested: z.boolean().optional(), text: z.string().optional() })),
 });
 
 export type RoundFeedback = z.infer<typeof RoundFeedbackSchema>;
@@ -75,9 +76,22 @@ function parseRound(roundBytes: string | Uint8Array): z.infer<typeof RoundManife
   }
 }
 
-function refusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback, now: Date, maxAgeMs: number): string | undefined {
+/** Whether feedback.json answers this exact round.json: the manifest hash, unit and round all match. Undefined when it does. */
+function answerBindingRefusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback): string | undefined {
   if (createHash("sha256").update(roundBytes).digest("hex") !== feedback.manifestSha256) return "the feedback was not written against this round.json (manifest hash differs)";
   if (feedback.unit !== round.unit || feedback.round !== round.round) return `the feedback is for ${feedback.unit} r${feedback.round}, the round is ${round.unit} r${round.round}`;
+  return undefined;
+}
+
+/** The binding check on raw round bytes, for a reader that has no use for the manifest's questions. */
+export function boundAnswerRefusal(roundBytes: string | Uint8Array, feedback: RoundFeedback): string | undefined {
+  const round = parseRound(roundBytes);
+  return round ? answerBindingRefusal(round, roundBytes, feedback) : "round.json does not read as a round";
+}
+
+function refusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback, now: Date, maxAgeMs: number): string | undefined {
+  const unbound = answerBindingRefusal(round, roundBytes, feedback);
+  if (unbound !== undefined) return unbound;
   const age = now.getTime() - Date.parse(feedback.submittedAt);
   return Number.isNaN(age) || age > maxAgeMs ? "the submit is stale or has no valid time" : undefined;
 }
@@ -127,9 +141,20 @@ function kindOf(gate: PendingGate): string {
   return policy ? `${policy[1]}/${policy[2]}` : "unrecognised";
 }
 
+/** A D21 row on any gate for the PR keeps the Ship off it, as every other remote merge path refuses (TP-5988). */
+function ownerAtHeadRefusal(gates: PendingGate[]): string | undefined {
+  for (const { gate } of gates) {
+    const row = ownerAtHeadRow(gate);
+    if (row !== undefined) return `${gate.id} is a ${row} gate, which no Ship answer gives`;
+  }
+  return undefined;
+}
+
 function decide(round: z.infer<typeof RoundManifest>, bound: Bound, feedback: RoundFeedback, gates: PendingGate[], runs: Map<string, WorkflowRun>): RoundMergeOutcome {
   const mine = gates.filter((gate) => targets(gate, bound));
   if (mine.length === 0) return { kind: "no-gate" };
+  const marked = ownerAtHeadRefusal(mine);
+  if (marked !== undefined) return { kind: "pending", reason: marked };
   const plain = mine.filter((gate) => answerable(gate, runs.get(gate.runId)));
   if (plain.length === 0) return { kind: "pending", reason: `the gate is a ${kindOf(mine[0]!)} gate; the round showed the render, not that decision` };
   const blocked = blockingQuestion(round, bound, feedback);

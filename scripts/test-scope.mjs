@@ -2,7 +2,8 @@
 // CI's test step: on a pull request, run only the packages its diff reaches through the workspace graph; on main and
 // the release PR, run everything, so main stays the authority. Not vitest --changed: packages import each other's
 // dist, which no import graph from a changed src file reaches.
-// Usage: node scripts/test-scope.mjs [--run]   (reads EVENT_NAME, HEAD_REF, BASE_SHA and HEAD_SHA)
+// Usage: node scripts/test-scope.mjs [--plan] [--run [--skip-sharded] [--shard=i/n]]
+//   (reads EVENT_NAME, HEAD_REF, BASE_SHA and HEAD_SHA; --plan writes placement=none|validate|shards to GITHUB_OUTPUT)
 import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync, globSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -176,20 +177,53 @@ export function vitestArgs(scope, env = {}) {
   return [...args, ...projects.flatMap((project) => ["--project", project]), ...scope.dirs];
 }
 
+// A scope with more test files than this runs across CI's test-shard matrix instead of in validate's single job
+// (TP-4730). Over 30 pull request runs, scopes of about 750 files took 125-185 s, about 1800 took 480-680 s and the
+// full 2900 took 750-1245 s, against a 600 s budget for the whole validate job.
+export const SHARD_ABOVE_FILES = 1000;
+
+/** Where CI runs a scope: nowhere, in validate's single job, or across the test-shard matrix. */
+export function placement(scope, countFiles) {
+  if (scope.mode === "none") return "none";
+  if (scope.mode === "full") return "shards";
+  return countFiles(scope.dirs) > SHARD_ABOVE_FILES ? "shards" : "validate";
+}
+
+/** Test files under the dirs, by the suffixes vitest's projects include: an estimate that only places the run. */
+export function countTestFiles(dirs, root = ROOT) {
+  const patterns = dirs.map((dir) => `${dir}**/*.test.{ts,tsx,mjs}`);
+  return globSync(patterns, { cwd: root, exclude: (path) => path.endsWith("node_modules") }).length;
+}
+
+/** Vitest's arguments for this invocation, or null when it runs nothing: no --run, no tests, or a run placed elsewhere. */
+export function runRequest(scope, where, argv, env = {}) {
+  if (!argv.includes("--run") || where === "none") return null;
+  if (argv.includes("--skip-sharded") && where === "shards") return null;
+  const shard = argv.find((arg) => arg.startsWith("--shard="));
+  return shard ? [...vitestArgs(scope, env), shard] : vitestArgs(scope, env);
+}
+
 function describeScope(scope) {
   if (scope.mode === "scoped") return `test scope: scoped to ${scope.dirs.join(" ")}`;
   if (scope.mode === "none") return "test scope: none (no changed path is read by a test)";
   return `test scope: full (${scope.reason})`;
 }
 
-function main() {
-  const scope = scopeForEvent(process.env, changedFiles, readWorkspace);
-  const line = describeScope(scope);
+function report(scope, where) {
+  const line = `${describeScope(scope)}; runs in ${where === "shards" ? "the test-shard matrix" : where}`;
   console.log(line);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${line}\n`);
-  if (!process.argv.includes("--run") || scope.mode === "none") return;
+  if (process.argv.includes("--plan") && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `placement=${where}\n`);
+}
+
+function main() {
+  const scope = scopeForEvent(process.env, changedFiles, readWorkspace);
+  const where = placement(scope, countTestFiles);
+  report(scope, where);
+  const args = runRequest(scope, where, process.argv, process.env);
+  if (args === null) return;
   const vitest = join(ROOT, "node_modules", "vitest", "vitest.mjs");
-  const result = spawnSync(process.execPath, [vitest, ...vitestArgs(scope, process.env)], { cwd: ROOT, stdio: "inherit" });
+  const result = spawnSync(process.execPath, [vitest, ...args], { cwd: ROOT, stdio: "inherit" });
   process.exitCode = result.status ?? 1;
 }
 

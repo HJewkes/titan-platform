@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AnnotationSchema, VerdictSchema } from "../../server/review-schema-0.3/schema.js";
+import { AnnotationSchema, VerdictSchema } from "@titan-design/review-schema";
 import type { FrameDraft } from "./frame-feedback.js";
 
 /**

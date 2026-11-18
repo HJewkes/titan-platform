@@ -13,15 +13,19 @@ registerHooks({ resolve: (s, c, next) => next(c.parentURL?.endsWith(".ts") && s.
 
 export const scratch = (): string => mkdtempSync(join(tmpdir(), "run-command-"));
 
-/** A killed process whose parent has not reaped it yet is a zombie: dead, though signal 0 still finds it. `read` is injectable so the exit-between-check-and-read race can be simulated. */
-export const alive = (pid: number, read: (path: string) => string = (path) => readFileSync(path, "utf8")): boolean => {
+/** A killed process whose parent has not reaped it yet is a zombie: dead, though signal 0 still finds it. `exists` and `read` are injectable so the exit-between-check-and-read race can be simulated on hosts without /proc. */
+export const alive = (
+  pid: number,
+  read: (path: string) => string = (path) => readFileSync(path, "utf8"),
+  exists: (path: string) => boolean = existsSync,
+): boolean => {
   try {
     process.kill(pid, 0);
   } catch {
     return false;
   }
   const stat = `/proc/${pid}/stat`;
-  if (!existsSync(stat)) return true;
+  if (!exists(stat)) return true;
   try {
     return read(stat).split(") ").at(-1)?.[0] !== "Z";
   } catch (error) {

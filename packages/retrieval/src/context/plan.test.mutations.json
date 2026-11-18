@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "deepening walks entries in ascending score order",
+      "file": "packages/retrieval/src/context/plan.ts",
+      "find": "for (const w of kept) {\n    for (let next",
+      "replace": "for (const w of [...kept].reverse()) {\n    for (let next",
+      "kills": [
+        "planContext deepening spends leftover on the best hit first"
+      ]
+    },
+    {
+      "name": "deepening skips a tier that does not fit instead of stopping",
+      "file": "packages/retrieval/src/context/plan.ts",
+      "find": "  if (cost > cap || cost - w.tokens > leftover) return null;",
+      "replace": "  if (cost > cap || cost - w.tokens > leftover) return promote({ ...w, tier: next }, cap, leftover, r);",
+      "kills": [
+        "planContext deepening deepens one tier at a time and stops at the first tier that does not fit"
+      ]
+    },
+    {
+      "name": "the deepen cap check is strict",
+      "file": "packages/retrieval/src/context/plan.ts",
+      "find": "if (cost > cap ||",
+      "replace": "if (cost >= cap ||",
+      "kills": [
+        "planContext deepening stops deepening at exactly twice the mean share",
+        "planContext deepening keeps the cap computed from the breadth count after an over-cap drop"
+      ]
+    },
+    {
+      "name": "the deepen pass applies the category quota",
+      "file": "packages/retrieval/src/context/plan.ts",
+      "find": "if (cost > cap ||",
+      "replace": "if (cost > cap || cost - w.tokens > leftover * 0 + (r.quotaOf(w.candidate.category) * r.tokens - w.tokens) ||",
+      "kills": [
+        "planContext deepening ignores quotas while deepening"
+      ]
+    },
+    {
+      "name": "deepening costs through the default estimator",
+      "file": "packages/retrieval/src/context/plan.ts",
+      "find": "const tokens = r.cost(w.candidate, next);\n      leftover",
+      "replace": "const tokens = estimateTokens(w.candidate.tiers[next] ?? \"\");\n      leftover",
+      "kills": [
+        "planContext deepening uses the injected estimator for every cost"
+      ]
+    }
+  ]
+}

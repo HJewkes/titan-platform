@@ -164,11 +164,6 @@
       "count": 1
     }
   },
-  "products/factory/src/shepherd/merge-facts.ts": {
-    "titan/max-line-length": {
-      "count": 3
-    }
-  },
   "products/factory/src/shepherd/observe.ts": {
     "titan/max-line-length": {
       "count": 1
@@ -335,11 +330,6 @@
     }
   },
   "products/factory/src/shepherd/tree-carry.ts": {
-    "titan/max-line-length": {
-      "count": 1
-    }
-  },
-  "products/factory/src/shepherd/view.ts": {
     "titan/max-line-length": {
       "count": 1
     }

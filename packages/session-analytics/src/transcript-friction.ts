@@ -1,8 +1,9 @@
 import { decodeClaudeToolLines, type ClaudeToolLine } from "@titan-design/session-read";
 import { z } from "zod";
+import { CI_WAIT_IN_COMMAND } from "./ci-wait-head.js";
 import { classifyFollowUp } from "./follow-up-class.js";
 import type { FrictionCluster } from "./friction-lines.js";
-import { classifyError, type ErrorClass } from "./tool-error-class.js";
+import { classifyError, denialOf, type ErrorClass } from "./tool-error-class.js";
 
 export const LOG_SIGNAL_KINDS = ["denial", "tool-error", "retry", "test-rerun", "wait", "follow-up"] as const;
 export type LogSignalKind = (typeof LOG_SIGNAL_KINDS)[number];
@@ -17,7 +18,7 @@ export interface LogSignal {
 }
 
 /** A gap longer than this is a wait, whether a tool ran that long or nothing happened. */
-export const LONG_WAIT_MS = 5 * 60_000;
+const LONG_WAIT_MS = 5 * 60_000;
 /** An error's cost is the time to the worker's next move, held to this so a long pause after it is not all blamed on it. */
 const REACTION_CAP_MS = 10 * 60_000;
 const HOUR_MS = 3_600_000;
@@ -41,10 +42,9 @@ const ERROR_CLUSTER: Partial<Record<ErrorClass, FrictionCluster>> = {
   "agent-chat-refused": "broker-infra",
 };
 
-const CI_POLL = /\bgh (?:pr checks|run (?:watch|view|list))\b|\bgh pr view\b.*\bstatusCheckRollup\b/;
+const CI_POLL = new RegExp(`${CI_WAIT_IN_COMMAND.source}|\\bgh pr view\\b.*\\bstatusCheckRollup\\b`);
 const TEST_RUN = /\b(?:vitest|jest|pytest|go test|cargo test|npm test|pnpm (?:[\w-]+ )*test)\b/;
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
-const DENIAL_TEXT = /auto mode classifier\. Reason:|Permission to use .* (?:has been )?denied/;
 
 const hoursOf = (ms: number) => Math.max(0, ms) / HOUR_MS;
 const commandOf = (input: unknown): string => {
@@ -162,7 +162,7 @@ function repeatSignal(runs: Map<string, { edits: number; cluster: FrictionCluste
 function errorSignal(line: ClaudeToolLine & { ms: number }, at: string, nextMs: number | undefined): LogSignal | null {
   if (line.kind !== "tool_result") return null;
   const text = resultText(line.output);
-  if (line.isError !== true && !DENIAL_TEXT.test(text)) return null;
+  if (line.isError !== true && denialOf(text) === null) return null;
   const cls = classifyError(text);
   const hours = nextMs === undefined ? 0 : hoursOf(Math.min(nextMs - line.ms, REACTION_CAP_MS));
   return { cluster: ERROR_CLUSTER[cls] ?? "other", kind: DENIAL_CLASSES.has(cls) ? "denial" : "tool-error", at, hours, detail: cls };

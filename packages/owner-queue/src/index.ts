@@ -24,7 +24,7 @@ export type { ConsolidateInput, Flow, FlowGroup, HeldItem, ShipBlock, ShipBlockR
 export { INFLUENCE_RULES, influenceEdges } from "./influence.js";
 export type { InfluenceContext, InfluenceEdge, InfluenceRule } from "./influence.js";
 export type { ClosedStatus, QueueSource, ResolveResult, SourceEvent } from "./port.js";
-export { alarmKey, askKey, componentKey, prKey, RELATION_KEY_KINDS, relationKind, roundAskKey, tokenKey, topicKey } from "./keys.js";
+export { alarmKey, askKey, componentKey, parsePrKey, prKey, RELATION_KEY_KINDS, relationKind, roundAskKey, sessionKey, tokenKey, topicKey } from "./keys.js";
 export { collapseRepeats } from "./repeats.js";
 export type { RelationKeyKind } from "./keys.js";
 export { isMergeKey, mergeByKeys } from "./merge.js";
@@ -38,7 +38,7 @@ export type { AnsweredContext, FeedbackInput, RoundItemsContext } from "./round-
 export { buildOwnerRounds } from "./rounds.js";
 export type { OwnerRound, OwnerRoundOptions, OwnerRounds, Principle, RoundQuestionBinding, SkipReason } from "./rounds.js";
 export { buildPlanRound } from "./plan-round.js";
-export type { CiPolicyPlanScope, PathPlanScope, PlanApproval, PlanAsk, PlanGate, PlanGateScope, PlanRound, PlanRoundInput } from "./plan-round.js";
+export type { CiPolicyPlanScope, PathPlanScope, PlanApproval, PlanAsk, PlanGate, PlanGateScope, PlanRound, PlanRoundInput, TaskPlanScope } from "./plan-round.js";
 export { PARKED, STALE_RULES, staleLabel } from "./stale.js";
 export { stackContext, supersede } from "./supersede.js";
 export type { StackedItem, Superseded, WithdrawnItem } from "./supersede.js";

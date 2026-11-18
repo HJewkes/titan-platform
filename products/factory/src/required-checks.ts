@@ -1,6 +1,6 @@
 import type { GitHubPort, RepoSlug, RequiredChecks } from "@titan-design/github";
 
-export type RequiredChecksRead = { readable: true; checks: RequiredChecks } | { readable: false; reason: string };
+type RequiredChecksRead = { readable: true; checks: RequiredChecks } | { readable: false; reason: string };
 
 /** Only the HTTP status, so a reason that reaches a PR comment carries nothing from the error's text. */
 export function statusOf(error: unknown): string {

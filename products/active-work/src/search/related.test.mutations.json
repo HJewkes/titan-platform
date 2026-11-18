@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "context mode is the default",
+      "file": "products/active-work/src/search/related.ts",
+      "find": "const context = input.mode === 'context';",
+      "replace": "const context = input.mode !== 'list';",
+      "kills": ["relatedContext in context mode no mode returns the list shape unchanged"]
+    },
+    {
+      "name": "the budget counts characters",
+      "file": "products/active-work/src/search/related.ts",
+      "find": "return input.tokens ?? RELATED_DEFAULT_TOKENS;",
+      "replace": "return (input.tokens ?? RELATED_DEFAULT_TOKENS) * 4;",
+      "kills": ["relatedContext in context mode context mode spends at most the token budget"]
+    },
+    {
+      "name": "class shares are not quotas",
+      "file": "products/active-work/src/search/related.ts",
+      "find": "    quotas: sharesAsQuotas(),\n",
+      "replace": "",
+      "kills": ["relatedContext in context mode class shares act as token quotas"]
+    },
+    {
+      "name": "an unreadable span throws",
+      "file": "products/active-work/src/search/context-tiers.ts",
+      "find": "  } catch {\n    return null;\n  } finally {",
+      "replace": "  } catch {\n    throw new Error('unreadable');\n  } finally {",
+      "kills": ["relatedContext in context mode a hit whose file is missing stays at tier 1"]
+    },
+    {
+      "name": "a degraded context result drops the context fields",
+      "file": "products/active-work/src/search/related.ts",
+      "find": "return input.mode === 'context' ? withContextFields(result, input) : result;",
+      "replace": "return result;",
+      "kills": ["relatedContext in context mode context mode on a missing index still carries empty context fields"]
+    }
+  ]
+}

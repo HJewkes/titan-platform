@@ -99,6 +99,39 @@ describe("setMatch", () => {
     expect(setMatch(set, { changed: set.files.map((file) => file.path), atHead })).toEqual({ carries: true });
   });
 
+  describe("refusals", () => {
+    const paths = () => built().set.files.map((file) => file.path);
+    const blobs = () => new Map(built().set.files.map((file) => [file.path, file.blob]));
+
+    it("refuses extra-path when the head's diff names a path outside the set", () => {
+      const { set } = built();
+
+      expect(setMatch(set, { changed: [...paths(), "src/extra.ts"], atHead: blobs() })).toEqual({ carries: false, reason: "extra-path", paths: ["src/extra.ts"] });
+    });
+
+    it("refuses unchanged when a set file is left out of the head's diff", () => {
+      const { set } = built();
+      const [left, ...rest] = paths();
+
+      expect(setMatch(set, { changed: rest, atHead: blobs() })).toEqual({ carries: false, reason: "unchanged", paths: [left] });
+    });
+
+    it("refuses missing when a set file is absent at the head", () => {
+      const { set } = built();
+      const [gone, ...rest] = paths();
+
+      expect(setMatch(set, { changed: paths(), atHead: new Map([...blobs()].filter(([path]) => path !== gone)) })).toEqual({ carries: false, reason: "missing", paths: [gone] });
+      expect(rest.length).toBeGreaterThan(0);
+    });
+
+    it("refuses blob-mismatch when a set file is at a different blob", () => {
+      const { set } = built();
+      const [other] = paths();
+
+      expect(setMatch(set, { changed: paths(), atHead: new Map([...blobs(), [other!, "0".repeat(40)]]) })).toEqual({ carries: false, reason: "blob-mismatch", paths: [other] });
+    });
+  });
+
   it("reads a removed name that is a directory of a set file as present, since ls-tree lists only inside it", () => {
     const { set } = built();
     const [file] = set.files;

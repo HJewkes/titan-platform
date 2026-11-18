@@ -5,6 +5,7 @@ import {
   type Retriever,
 } from '@titan-design/retrieval';
 import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
+import type { Shown } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { SEARCH_CLASSES, capFor, type SearchClass } from './classes.js';
 import { resolveHits, type ResolvedHit } from './resolve.js';
@@ -18,9 +19,12 @@ import { workspaceSpanReader } from './workspace-spans.js';
  * one initiative has to be findable from another without anyone having filed it
  * twice. `initiative` biases the ranking; it never removes a result. A strong
  * foreign hit beating a weak local one is the entire point.
+ *
+ * The one filter is privacy: a hit is returned only when the caller's `Shown` allows its
+ * initiative (TP-5453 P6, TP-5556).
  */
 
-export interface SearchOptions {
+interface SearchOptions {
   limit?: number;
   /** Bias towards this initiative. A boost, never a filter. */
   initiative?: string;
@@ -33,9 +37,11 @@ export interface SearchOptions {
   classes?: string[];
   /** The query is already an FTS5 expression; pass it through untouched. */
   rawExpression?: boolean;
+  /** Which initiatives may be served to the caller. */
+  visible: Shown;
 }
 
-export interface SearchResult {
+interface SearchResult {
   hits: ResolvedHit[];
   /** Retrievers that failed or timed out. Their absence narrows results; it never fails the search. */
   degraded: Degradation[];
@@ -74,7 +80,7 @@ function classRetriever(
 
 export async function searchWorkspace(
   query: string,
-  options: SearchOptions = {},
+  options: SearchOptions,
 ): Promise<SearchResult> {
   const activeRoot = options.activeRoot ?? getActiveRoot();
   const graph = options.graph ?? openGraph(options.dbPath ?? defaultGraphPath());
@@ -90,12 +96,9 @@ export async function searchWorkspace(
     });
 
     const response = await engine.search(query, { limit });
-    const resolved = await resolveHits(
-      graph,
-      response.results,
-      activeRoot,
-      options.excerptWidth ?? 160,
-    );
+    const resolved = (
+      await resolveHits(graph, response.results, activeRoot, options.excerptWidth ?? 160)
+    ).filter((hit) => options.visible(hit.initiative));
 
     const boosted = options.initiative
       ? resolved

@@ -27,6 +27,15 @@
       "kills": [
         "prints unknown when every reading's seven_day window has already reset"
       ]
+    },
+    {
+      "name": "a null window rejects the whole reading",
+      "file": "packages/anthropic-account/src/usage.ts",
+      "find": "windowSchema.nullable()",
+      "replace": "windowSchema",
+      "kills": [
+        "statusline renders a reading whose five_hour is null"
+      ]
     }
   ]
 }

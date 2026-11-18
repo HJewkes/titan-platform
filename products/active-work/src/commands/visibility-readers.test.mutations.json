@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "doctor serves an agent the owner's view",
+      "file": "products/active-work/src/commands/doctor.ts",
+      "find": "shown: await visibilityFor(ctx)",
+      "replace": "shown: await visibilityFor({ ...ctx, caller: 'owner' })",
+      "kills": [
+        "doctor for an agent caller names no withheld initiative to an agent and names every one to the owner",
+        "doctor for an agent caller names no initiative gone from the root through the workspace index",
+        "doctor for an agent caller reports a lease sweep failure under a withheld initiative as a count, without its path"
+      ]
+    },
+    {
+      "name": "the workspace-index check names every indexed ref",
+      "file": "products/active-work/src/workspace-index/doctor.ts",
+      "find": "    .filter((row) => shown(row.path));",
+      "replace": "    .filter(() => true);",
+      "kills": ["doctor for an agent caller names no initiative gone from the root through the workspace index"]
+    },
+    {
+      "name": "a lease sweep failure names its path to any caller",
+      "file": "products/active-work/src/doctor/checks-data.ts",
+      "find": "if (result.failedSlug !== undefined && !shown(result.failedSlug)) {",
+      "replace": "if (result.failedSlug !== undefined && !shown(result.failedSlug) && false) {",
+      "kills": [
+        "doctor for an agent caller reports a lease sweep failure under a withheld initiative as a count, without its path"
+      ]
+    },
+    {
+      "name": "the lease sweep forgets which initiative failed",
+      "file": "products/active-work/src/sessions/lease.ts",
+      "find": "error: (err as Error).message, failedSlug: slug };",
+      "replace": "error: (err as Error).message };",
+      "kills": [
+        "doctor for an agent caller reports a lease sweep failure under a withheld initiative as a count, without its path"
+      ]
+    },
+    {
+      "name": "focus and unfocus name every move",
+      "file": "products/active-work/src/commands/_focus-helpers.ts",
+      "find": "  return moves.filter((move) => shown(move.slug));",
+      "replace": "  return [...moves];",
+      "kills": [
+        "focus and unfocus renumbering focus names only the shifted initiatives an agent may see, and every one to the owner",
+        "focus and unfocus renumbering unfocus names only the renumbered initiatives an agent may see, and every one to the owner",
+        "focus and unfocus renumbering withholds a move from a caller no surface marked",
+        "focus and unfocus renumbering focus names no owner-only initiative whose directory is a symlink to an agent"
+      ]
+    }
+  ]
+}

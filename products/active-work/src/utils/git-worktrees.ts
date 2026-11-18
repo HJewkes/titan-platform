@@ -54,7 +54,7 @@ export interface WorktreeState {
   unpushed: number | null;
 }
 
-export interface StashRef {
+interface StashRef {
   label: string;
   sha: string;
 }

@@ -11,10 +11,14 @@ describe("alive", () => {
   });
 
   it.each(["ESRCH", "ENOENT"])("reports not alive when the stat read fails with %s after the process exited", (code) => {
-    expect(alive(process.pid, failing(code))).toBe(false);
+    expect(alive(process.pid, failing(code), () => true)).toBe(false);
+  });
+
+  it("reports a live process alive when the host has no /proc", () => {
+    expect(alive(process.pid, failing("ENOENT"), () => false)).toBe(true);
   });
 
   it("rethrows any other read failure", () => {
-    expect(() => alive(process.pid, failing("EACCES"))).toThrow("EACCES");
+    expect(() => alive(process.pid, failing("EACCES"), () => true)).toThrow("EACCES");
   });
 });

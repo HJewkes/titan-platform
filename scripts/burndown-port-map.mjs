@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Checks the burndown port map against agent-chat's src/agents/burndown/ at a ref, and refreshes the map's per-file facts.
-// check exits 1 for unmapped, removed or unpinned entries, 2 for drift alone, 0 when clean.
+// check exits 1 for unmapped, removed, unpinned or unknown-portedFrom entries or subdirectories, 2 for drift alone, 0 when clean.
 // Usage: node scripts/burndown-port-map.mjs check [--agent-chat <dir>] [--ref <sha>] [--map <file>]
 //        node scripts/burndown-port-map.mjs facts --ref <sha> [--agent-chat <dir>] [--map <file>]
 import { execFileSync } from "node:child_process";
@@ -106,6 +106,15 @@ export function portClaims(map) {
   return { pinned: claims.filter((c) => FULL_SHA.test(c.portedFrom ?? "")), unpinned: claims.filter((c) => !FULL_SHA.test(c.portedFrom ?? "")) };
 }
 
+const hasCommit = (agentChat, sha) => {
+  try {
+    execFileSync("git", ["-C", agentChat, "cat-file", "-e", `${sha}^{commit}`], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Ported entries whose agent-chat source gained commits after the commit they were ported from. */
 function driftedEntries(agentChat, ref, pinned) {
   return pinned.flatMap((c) => {
@@ -126,9 +135,11 @@ function check({ agentChat, ref, map: mapPath }) {
   for (const d of subdirs) console.log(`subdirectory: ${d} (the map holds files only)`);
   const { pinned, unpinned } = portClaims(map);
   for (const c of unpinned) console.log(`unpinned: ${c.file} (${c.kind}) has no 40-hex portedFrom`);
-  const drifted = driftedEntries(agentChat, at, pinned);
+  const unknown = pinned.filter((c) => !hasCommit(agentChat, c.portedFrom));
+  for (const c of unknown) console.log(`unknown portedFrom: ${c.file} (${c.kind}) ${c.portedFrom}`);
+  const drifted = driftedEntries(agentChat, at, pinned.filter((c) => !unknown.includes(c)));
   for (const d of drifted) console.log(`drifted: ${d.file} (${d.kind}) ${d.commits.join(" ")}`);
-  if (unmapped.length + removed.length + subdirs.length + unpinned.length > 0) return 1;
+  if (unmapped.length + removed.length + subdirs.length + unpinned.length + unknown.length > 0) return 1;
   return drifted.length > 0 ? 2 : 0;
 }
 

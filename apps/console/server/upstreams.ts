@@ -13,7 +13,7 @@ import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
 import { dayStartFrom } from "./coord-day.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
-import type { UpstreamObserver } from "./perf/timed-fetch.js";
+import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { createInvalidation } from "./invalidation.js";
@@ -22,6 +22,7 @@ import { storybookLiveReader } from "./round-live.js";
 import { seatNotifier } from "./round-notice-transport.js";
 import { subscriptionsDirOf } from "./round-subscriptions.js";
 import { shepherdReader, type ShepherdSource } from "./shepherd.js";
+import { gitEvidenceReader } from "./repo-evidence.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
 
@@ -29,9 +30,9 @@ import { videoCatalog } from "./videos.js";
 const OWNER_ACTIONS_DIR = "owner-actions";
 
 export const UPSTREAM_IDS = ["work", "agents", "sessions"] as const;
-export type UpstreamId = (typeof UPSTREAM_IDS)[number];
+type UpstreamId = (typeof UPSTREAM_IDS)[number];
 
-export interface ProbeResult {
+interface ProbeResult {
   reachable: boolean;
   detail: string;
 }
@@ -103,7 +104,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** rung).toFixed(rung === 0 ? 0 : 1)} ${units[rung]}`;
 }
 
-export function createUpstreams(config: ConsoleConfig): Upstream[] {
+function createUpstreams(config: ConsoleConfig): Upstream[] {
   return [
     httpUpstream("work", "active-work daemon", config.activeWorkPort),
     httpUpstream("agents", "agent-chat broker", config.agentChatPort),
@@ -115,12 +116,17 @@ export async function probeUpstreams(upstreams: readonly Upstream[]): Promise<Up
   return Promise.all(upstreams.map(async ({ id, label, target, probe }) => ({ id, label, target, ...(await probe()) })));
 }
 
-/** Active-work owns the charter read; an unreadable charter or a down daemon reads as unknown, which excludes every answer. */
+/** Active-work owns the visibility verdict (`withheld_from_agents`). A down daemon, or an inventory where no row carries the field, reads as unknown; a row without it counts as withheld. */
 export function humanOnlyFrom(activeWork: ActiveWork): () => Promise<HumanOnly> {
   return async () => {
     const inventory = await activeWork.read("inventory").catch(() => null);
-    if (inventory === null || !inventory.human_only_known) return { known: false };
-    return { known: true, initiatives: new Set(inventory.initiatives.filter((entry) => entry.human_only).map((entry) => entry.slug)) };
+    if (inventory === null || !inventory.initiatives.some((entry) => entry.withheld_from_agents !== undefined)) return { known: false };
+    const withheld = (entry: { withheld_from_agents?: boolean }) => entry.withheld_from_agents !== false;
+    return {
+      known: true,
+      initiatives: new Set(inventory.initiatives.filter(withheld).map((entry) => entry.slug)),
+      shown: new Set(inventory.initiatives.filter((entry) => !withheld(entry)).map((entry) => entry.slug)),
+    };
   };
 }
 
@@ -134,21 +140,22 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
   };
 }
 
-function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
+/** TP-6747: every `inbox.list` reads the broker's sessions and history, so each read leaves an `agent-chat:(other)` row. */
+function agentsOf(config: ConsoleConfig, recorder: UpstreamObserver | undefined): ConsoleSources["agents"] {
   return {
-    broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath, fetch: timedFetch("agent-chat", recorder, fetch) }),
     eventsDbPath: config.agentChatEventsDbPath,
     seatPrefixes: config.seatPrefixes,
   };
 }
 
 /** The sources that read dirs on this machine, which other processes write. */
-function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
+function localDirSourcesOf(config: ConsoleConfig, recorder: UpstreamObserver | undefined): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
     inbox: { dir: config.inboxDir, capExemptAskers: config.capExemptAskers ?? DEFAULT_CAP_EXEMPT_ASKERS },
     rounds: {
       dir: config.roundsDir,
-      lineage: shipLineageReader(),
+      lineage: shipLineageReader({ recorder }),
       ...(config.storybooksDir !== undefined && { live: storybookLiveReader(config.storybooksDir) }),
     },
     hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
@@ -182,9 +189,10 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     upstreams: createUpstreams(config),
     invalidation,
     activeWork,
-    agents: agentsOf(config),
+    evidence: gitEvidenceReader({ recorder }),
+    agents: agentsOf(config, recorder),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
-    ...localDirSourcesOf(config),
+    ...localDirSourcesOf(config, recorder),
     shepherd,
     autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,
@@ -199,5 +207,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     inboxActions: inboxActionsOf(config),
     shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
     ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
+    ...(config.scorecardStore !== undefined && { scorecard: { storeFile: config.scorecardStore } }),
   };
 }

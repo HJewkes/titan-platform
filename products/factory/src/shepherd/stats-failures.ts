@@ -10,12 +10,12 @@ interface FailureRow {
   byClass: Record<FailureClass, number>;
 }
 
-/** Cancelled runs carry a cancel reason, not a failure. */
+/** Cancelled runs carry a cancel reason, not a failure. A parked run is counted, as `other`: no failure site classed it. */
 const FAILED: ReadonlySet<WorkflowRun["status"]> = new Set(["failed", "recovery_required"]);
 
 const emptyClasses = (): Record<FailureClass, number> => ({ "ci-timeout": 0, "gh-api-5xx": 0, "gh-rate-limit": 0, "land-rules": 0, "update-branch": 0, other: 0 });
 
-/** Per repo and ISO week: failed runs counted by failure class; legacy rows without a prefix are classified by their text. */
+/** Per repo and ISO week: failed runs counted by failure class; the class each run recorded, read from text only for rows from before `error_class`. */
 export function failureStats(runs: readonly WorkflowRun[], range: Parameters<typeof inRange>[1] = {}): FailureRow[] {
   const rows = new Map<string, FailureRow>();
   for (const run of runs) {
@@ -27,7 +27,7 @@ export function failureStats(runs: readonly WorkflowRun[], range: Parameters<typ
     const row = rows.get(`${repo} ${week}`) ?? { repo, week, failures: 0, byClass: emptyClasses() };
     rows.set(`${repo} ${week}`, row);
     row.failures++;
-    row.byClass[failureClassOf(run.error)]++;
+    row.byClass[run.status === "recovery_required" ? "other" : failureClassOf(run.error, run.errorClass)]++;
   }
   return [...rows.values()].sort((a, b) => a.repo.localeCompare(b.repo) || a.week.localeCompare(b.week));
 }

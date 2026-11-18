@@ -31,7 +31,7 @@
     },
     {
       "name": "the registered task is not read",
-      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "file": "products/factory/src/shepherd/registered-kind.ts",
       "find": "...(registration && { task: registration.task }), ",
       "replace": "",
       "kills": ["the old-path merge guard the evidence route judges the task and kind the run was registered with"]

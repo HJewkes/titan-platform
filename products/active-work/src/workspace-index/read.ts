@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { briefAllowsAgents } from '../sessions/visibility.js';
 import YAML from 'yaml';
 import { NoteFrontmatterSchema } from '../schemas/note.js';
 import { TaskSchema } from '../schemas/task.js';
@@ -6,7 +7,9 @@ import { SessionFrontmatterSchema } from '../schemas/session.js';
 import { BriefFrontmatterSchema } from '../schemas/brief.js';
 import { coerceDates } from '../utils/coerce-dates.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
-import { initiativeRef, noteRef, sessionRef, sourceRef, taskRef } from './refs.js';
+import { parseIntentDigest } from '@titan-design/pm';
+import { BetSchema, OutcomeSchema } from '@titan-design/pm';
+import { initiativeRef, noteRef, planRef, sessionRef, sourceRef, taskRef } from './refs.js';
 import type { WorkspaceFile } from './scan.js';
 import { bodyByteOffset, locate, sectionSpans, type IndexedSpan } from './spans.js';
 
@@ -37,6 +40,7 @@ const READERS = {
   task: readTask,
   session: readSession,
   source: readSource,
+  plan: readPlan,
 } as const;
 
 export async function readRecord(file: WorkspaceFile): Promise<WorkspaceRecord> {
@@ -70,10 +74,13 @@ function readInitiative(file: WorkspaceFile, raw: string): WorkspaceRecord {
       task_prefix: brief.task_prefix,
       updated: brief.updated,
     },
-    spans: compact([
-      locate(raw, 'title', brief.title),
-      lead === undefined ? null : locate(raw, 'body', lead),
-    ]),
+    // An owner-only brief keeps its row for owner tooling but nothing an agent can search.
+    spans: briefAllowsAgents(file.slug, data)
+      ? compact([
+          locate(raw, 'title', brief.title),
+          lead === undefined ? null : locate(raw, 'body', lead),
+        ])
+      : [],
     tags: [],
     body: '',
   };
@@ -178,6 +185,62 @@ function readSource(file: WorkspaceFile, raw: string): WorkspaceRecord {
     tags: [],
     body: '',
   };
+}
+
+/** Outcomes and bets are YAML records keyed by their own id; a digest is one file of intent lines. */
+function readPlan(file: WorkspaceFile, raw: string): WorkspaceRecord {
+  if (file.path.includes('/plan/outcomes/')) return readOutcome(file, raw);
+  if (file.path.includes('/plan/bets/')) return readBet(file, raw);
+  return readIntentDigest(file, raw);
+}
+
+function planRecord(
+  file: WorkspaceFile,
+  ref: string,
+  kind: string,
+  title: string,
+  spans: IndexedSpan[],
+): WorkspaceRecord {
+  return { file, ref: planRef(ref), row: { initiative: file.slug, kind, title }, spans, tags: [], body: '' };
+}
+
+function readOutcome(file: WorkspaceFile, raw: string): WorkspaceRecord {
+  const outcome = OutcomeSchema.parse(YAML.parse(raw));
+  return planRecord(
+    file,
+    outcome.id,
+    'outcome',
+    outcome.statement,
+    compact([locate(raw, 'statement', outcome.statement), locate(raw, 'measure', outcome.measure)]),
+  );
+}
+
+function readBet(file: WorkspaceFile, raw: string): WorkspaceRecord {
+  const bet = BetSchema.parse(coerceDates(YAML.parse(raw)));
+  return planRecord(
+    file,
+    bet.id,
+    'bet',
+    `Bet ${bet.id}`,
+    compact([
+      bet.selector !== undefined && locate(raw, 'selector', bet.selector),
+      locate(raw, 'metric', bet.prediction.metric),
+    ]),
+  );
+}
+
+function readIntentDigest(file: WorkspaceFile, raw: string): WorkspaceRecord {
+  const digest = parseIntentDigest(raw);
+  if (!digest.ok) {
+    throw new Error(`intent digest ${file.path}: ${digest.errors.map((e) => `line ${e.line} ${e.message}`).join('; ')}`);
+  }
+  return planRecord(
+    file,
+    `${file.slug}/intents/${basename(file.path)}`,
+    'intent',
+    `Intent lines ${digest.slug}`,
+    compact(digest.lines.map((line) => locate(raw, 'intent', line.quote))),
+  );
 }
 
 const PR_FILENAME = /^pr-\d+-/;

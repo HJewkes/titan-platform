@@ -8,12 +8,16 @@ export type {
   InteractionError,
   InteractionResult,
   InteractiveTransport,
+  MediaFile,
+  MediaSendResult,
   MessageRef,
   MessageTransport,
+  PhotoInput,
   Scheduler,
   SendError,
   SendInput,
   SendResult,
+  VoiceInput,
 } from "./contract.js";
 export { sendFailed } from "./contract.js";
 
@@ -46,10 +50,13 @@ export type { Liveness, ProbeOptions } from "./liveness.js";
 export { probeLiveness } from "./liveness.js";
 
 export type { TelegramConfig, TelegramEnvelope } from "./telegram.js";
+
+export { TELEGRAM_MAX_PHOTO_BYTES, TELEGRAM_MAX_VOICE_BYTES } from "./telegram-media.js";
 export {
   createTelegramTransport,
   redactToken,
   TELEGRAM_MAX_CALLBACK_DATA_BYTES,
+  TELEGRAM_MAX_CAPTION_LENGTH,
   TELEGRAM_MAX_RETRY_AFTER_SECONDS,
   TELEGRAM_MAX_TEXT_LENGTH,
   TelegramTransport,

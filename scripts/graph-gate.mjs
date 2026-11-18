@@ -16,12 +16,12 @@ const ROOT = path.resolve(path.dirname(SCRIPT), "..");
 const DEFAULT_BASE_REF = "origin/main";
 const FAILED_TO_RUN = new Set([2, 75]);
 
-export function gateArgs(argv, tmpDb) {
+function gateArgs(argv, tmpDb) {
   const kept = keptDbPath(argv);
   return kept ? { dagArgs: argv, dbPath: kept } : { dagArgs: [...argv, "--db", tmpDb], dbPath: tmpDb };
 }
 
-export function deadEnv(env, baseRefExists) {
+function deadEnv(env, baseRefExists) {
   if (env.BASE_REF !== undefined || !baseRefExists) return env;
   return { ...env, BASE_REF: DEFAULT_BASE_REF };
 }

@@ -6,7 +6,10 @@ const execFile = vi.hoisted(() =>
 )
 vi.mock('node:child_process', () => ({ execFile }))
 
-import { itermSessionPresent, OSASCRIPT_TIMEOUT_MS } from './iterm.js'
+import type { LaunchPlan } from '../types.js'
+import type { Launcher } from './command.js'
+import { itermSessionPresent, itermSurface, OSASCRIPT_TIMEOUT_MS } from './iterm.js'
+import { SurfaceRefused } from './options.js'
 import { PS_TIMEOUT_MS, psProbe } from './launch-check.js'
 
 const UUID = 'ABCD-1234'
@@ -44,6 +47,35 @@ describe('itermSessionPresent through an injected runner', () => {
   it('says unknown when iTerm2 is not running', async () => {
     const runAppleScript = async (): Promise<string> => 'false'
     expect(await itermSessionPresent(UUID, { platform: 'darwin', runAppleScript })).toBeUndefined()
+  })
+})
+
+describe('launching when the running probe times out', () => {
+  const plan: LaunchPlan = {
+    agentId: 'ag000001',
+    bin: 'agent',
+    args: [],
+    cwd: '/work',
+    env: {},
+    title: 'synthetic',
+    surface: 'iterm-window',
+  }
+  const launcher: Launcher = {
+    argv: id => ['sa', 'run-agent', id],
+    relaunchPath: id => `/tmp/state/agents/${id}/relaunch`,
+  }
+
+  it('refuses naming the osascript timeout, never "is not running"', async () => {
+    const runAppleScript = async (): Promise<string> => {
+      throw timedOut()
+    }
+    const surface = itermSurface('iterm-window', launcher, { platform: 'darwin', runAppleScript })
+
+    const launching = surface.launch(plan)
+
+    await expect(launching).rejects.toBeInstanceOf(SurfaceRefused)
+    await expect(launching).rejects.toThrow(/osascript.*10s/)
+    await expect(launching).rejects.not.toThrow(/not running/)
   })
 })
 

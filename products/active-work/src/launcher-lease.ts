@@ -23,10 +23,10 @@
 import { acquireLease, releaseLease, releaseLeaseSync } from './sessions/lease.js';
 
 /** Env var carrying this session's lease id into the spawned `claude`. */
-export const LEASE_ENV_VAR = 'AW_LEASE_ID';
+const LEASE_ENV_VAR = 'AW_LEASE_ID';
 
 /** Env var naming the facet alias the session was opened through (TP-326). */
-export const FACET_ENV_VAR = 'AW_FACET';
+const FACET_ENV_VAR = 'AW_FACET';
 
 /**
  * The child's environment, with the lease id and facet alias added.
@@ -55,7 +55,7 @@ export function buildLauncherEnv(
 // by an unrelated process (see readLiveLeases in sessions/lease.ts).
 const CLEANUP_SIGNALS: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 
-export interface LauncherLeaseInput {
+interface LauncherLeaseInput {
   activeRoot: string;
   slug: string;
   cwd: string;

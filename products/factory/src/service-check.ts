@@ -28,6 +28,8 @@ export interface CheckPorts extends ServicePorts {
   tickStatus: () => TickStatusRead;
   /** The service checkout's .git/index.lock, read only: a stale one blocks every later deploy, and only a person removes it. */
   indexLock: () => Promise<IndexLock>;
+  /** The live pid holding the factory deploy lock, or undefined when none does or its holder is dead. */
+  deployer: () => number | undefined;
   /** The config's shepherd.hubSeat, the seat a deploy alarm reaches; undefined when none is set. */
   hubSeat: () => string | undefined;
   /** The bare `titan-factory` on PATH, resolved through symlinks, and the build sha baked into its dist; undefined when none is on PATH. */
@@ -347,15 +349,19 @@ function crashLoop(job: Job, name: string, health: Record<string, unknown> | nul
   return verdict("crash loop", message, job, health, { lastExitCode: job.lastExit ?? null, runs: job.runs ?? null });
 }
 
+/** A deploy that holds the lock is about to restart onto that dist, so the gap is progress, not a fault; any other cause still reports. */
 async function judgeRunning(ports: CheckPorts, job: Job, health: Record<string, unknown>): Promise<CheckResult> {
   const running = runningSha(health);
   const target = await newerRestartTarget(ports, running);
-  if (target !== undefined) {
+  const deployer = target === undefined ? undefined : ports.deployer();
+  if (target !== undefined && deployer === undefined) {
     const message = `the server runs build ${running} but the dist a restart loads is build ${target}, which is newer; run titan-factory service restart`;
     return verdict("stale build", message, job, health, { runningBuild: running ?? null, restartTarget: target });
   }
-  if (health.github !== "ok") return verdict("GitHub down", `/health answers from pid ${job.pid} but its GitHub check is not ok: ${String(health.github)}; run gh auth status`, job, health, { github: String(health.github) });
-  return verdict(null, `ok: /health answers from pid ${job.pid} with github ok`, job, health);
+  const deploying = target === undefined || deployer === undefined ? "" : `; deploy pid ${deployer} is moving the server to build ${target}`;
+  const detail: CheckResult["detail"] = target === undefined || deployer === undefined ? {} : { runningBuild: running ?? null, deployPid: deployer, deployTarget: target };
+  if (health.github !== "ok") return verdict("GitHub down", `/health answers from pid ${job.pid} but its GitHub check is not ok: ${String(health.github)}; run gh auth status${deploying}`, job, health, { github: String(health.github), ...detail });
+  return verdict(null, `ok: /health answers from pid ${job.pid} with github ok${deploying}`, job, health, detail);
 }
 
 async function checkService(ports: CheckPorts, io: ServiceIo, port: number, json: boolean): Promise<number> {

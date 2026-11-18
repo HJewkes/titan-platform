@@ -36,7 +36,7 @@ export class ValidationError extends ActiveWorkError {
 }
 
 /** Why a lookup failed; `no_match` means nothing matched, as opposed to several things. */
-export type NotFoundReason = 'no_match';
+type NotFoundReason = 'no_match';
 
 export class NotFoundError extends ActiveWorkError {
   override readonly code: number = EXIT.NOINPUT;
@@ -94,8 +94,14 @@ export class LockTimeoutError extends ActiveWorkError {
   }
 }
 
-export function isActiveWorkError(err: unknown): err is ActiveWorkError {
-  return err instanceof ActiveWorkError;
+/** The lock being held was lost (e.g. the machine slept past the stale window); the critical section cannot be trusted. */
+export class LockCompromisedError extends ActiveWorkError {
+  override readonly code: number = EXIT.TEMPFAIL;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'LockCompromisedError';
+  }
 }
 
 export function formatError(err: unknown): { message: string; code: number } {

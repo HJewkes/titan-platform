@@ -135,7 +135,9 @@ export { BaseGateStore, DEFAULT_POLL_MS, GateAnswerAllowance, GateAuthorize, typ
 import { ResolverClass, DelegateResolverClass, ActorClass } from '@titan-design/authority';
 
 /** A gate is a row, never a promise: pending work survives the process that opened it. */
-type GateStatus = "pending" | "resolved" | "cancelled" | "expired";
+type GateStatus = (typeof GATE_STATUSES)[number];
+/** The one status list: the type above and the store's status trigger both derive from it, so they cannot drift. */
+declare const GATE_STATUSES: readonly ["pending", "resolved", "cancelled", "expired"];
 /** A JSON Schema document, stored so any process can validate a payload without the original zod schema. */
 type JsonSchema = Record<string, unknown>;
 interface GateRecord {

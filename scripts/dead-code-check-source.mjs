@@ -1,116 +1,93 @@
-// Reads TypeScript source as text for dead-code-check.mjs: code-graph has no edge for a namespace import's members
-// or for a use inside the declaring file, so those are found in the source with comments and string text blanked.
+// Reads TypeScript source for dead-code-check.mjs: code-graph has no edge for a namespace import's members
+// or for a use inside the declaring file, so those are found in the source. The TypeScript parser decides what is
+// a comment, string, template, regex, JSX text or a property key, so no lexing rule here guesses at a `/`.
+import ts from "typescript";
 
-// A `/` after one of these (or at the start) opens a regex literal rather than dividing.
-const REGEX_PRECEDERS = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "<", ">", "~", "^"]);
+const SCRIPT_KINDS = { ".ts": ts.ScriptKind.TS, ".mts": ts.ScriptKind.TS, ".cts": ts.ScriptKind.TS, ".js": ts.ScriptKind.JS, ".mjs": ts.ScriptKind.JS };
 
-function stringEnd(src, start, quote) {
-  for (let j = start + 1; j < src.length; j++) {
-    if (src[j] === "\\") j++;
-    else if (src[j] === quote) return j + 1;
-    else if (src[j] === "\n") return j;
-  }
-  return src.length;
+// Without a file name the source is read as TSX, the superset that also parses JSX text.
+function parse(src, fileName) {
+  const kind = SCRIPT_KINDS[fileName.slice(fileName.lastIndexOf("."))] ?? ts.ScriptKind.TSX;
+  return ts.createSourceFile(fileName, src, ts.ScriptTarget.Latest, false, kind);
 }
 
-function regexEnd(src, start) {
-  let inClass = false;
-  for (let j = start + 1; j < src.length; j++) {
-    const c = src[j];
-    if (c === "\\") j++;
-    else if (c === "\n") return j;
-    else if (c === "[" || c === "]") inClass = c === "[";
-    else if (c === "/" && !inClass) return j + 1;
-  }
-  return src.length;
+const isJsDoc = (node) => node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode;
+
+/** Calls visit for every node and token of the tree, JSDoc excluded since the comment scan already blanks it. */
+function walk(node, sf, visit) {
+  visit(node);
+  for (const child of node.getChildren(sf)) if (!isJsDoc(child)) walk(child, sf, visit);
 }
 
-/** From a template's opening backtick or an expression's closing brace, to the next `${` or closing backtick. */
-function templateEnd(src, start) {
-  for (let j = start + 1; j < src.length; j++) {
-    if (src[j] === "\\") j++;
-    else if (src[j] === "`") return { stop: j + 1, opensExpression: false };
-    else if (src[j] === "$" && src[j + 1] === "{") return { stop: j + 2, opensExpression: true };
-  }
-  return { stop: src.length, opensExpression: false };
+const K = ts.SyntaxKind;
+const TEMPLATE_INNER = {
+  [K.NoSubstitutionTemplateLiteral]: [1, 1],
+  [K.TemplateHead]: [1, 2],
+  [K.TemplateMiddle]: [1, 2],
+  [K.TemplateTail]: [1, 1],
+  [K.StringLiteral]: [1, 1],
+};
+const MEMBER_KINDS = new Set([K.PropertyAssignment, K.PropertySignature, K.MethodSignature]);
+
+/**
+ * Comments sit in a token's leading trivia. Only tokens are asked: a parent node starts where its first token does,
+ * and the children of a JSX element start where its JSX text does, where a `//` is text rather than a comment.
+ */
+function commentRanges(node, text) {
+  if (node.kind >= K.FirstNode || node.kind === K.JsxText) return [];
+  return [...(ts.getLeadingCommentRanges(text, node.pos) ?? []), ...(ts.getTrailingCommentRanges(text, node.pos) ?? [])];
 }
 
-function lastCodeChar(out, i) {
-  let j = i - 1;
-  while (j >= 0 && /\s/.test(out[j])) j--;
-  return j < 0 ? "" : out[j];
+/** The [from, to) spans of text that is not code, for one node. */
+function blankedSpans(node, sf, text) {
+  const start = node.getStart(sf);
+  const inner = TEMPLATE_INNER[node.kind];
+  const spans = commentRanges(node, text).map((c) => [c.pos, c.end]);
+  if (inner) spans.push([start + inner[0], node.end - inner[1]]);
+  else if (node.kind === K.RegularExpressionLiteral) spans.push([start + 1, text.lastIndexOf("/", node.end - 1)]);
+  else if (node.kind === K.JsxText) spans.push([node.pos, node.end]);
+  else if (MEMBER_KINDS.has(node.kind) && ts.isIdentifier(node.name)) spans.push([node.name.getStart(sf), node.name.end]);
+  return spans;
 }
 
-/** One lexical token at i: the index after it, and the span inside it to blank, if any. */
-function scanToken(src, out, i, templates, depth) {
-  const c = src[i];
-  const next = src[i + 1];
-  if (c === "/" && next === "/") {
-    const end = src.indexOf("\n", i);
-    return { stop: end < 0 ? src.length : end, blankFrom: i, blankTo: end < 0 ? src.length : end };
-  }
-  if (c === "/" && next === "*") {
-    const end = src.indexOf("*/", i + 2);
-    const stop = end < 0 ? src.length : end + 2;
-    return { stop, blankFrom: i, blankTo: stop };
-  }
-  if (c === '"' || c === "'") {
-    const stop = stringEnd(src, i, c);
-    return { stop, blankFrom: i + 1, blankTo: stop - 1 };
-  }
-  if (c === "/" && REGEX_PRECEDERS.has(lastCodeChar(out, i))) {
-    const stop = regexEnd(src, i);
-    return { stop, blankFrom: i + 1, blankTo: stop - 1 };
-  }
-  if (c === "`" || (c === "}" && templates.at(-1) === depth.value)) return templateToken(src, i, templates, depth);
-  if (c === "{") depth.value++;
-  if (c === "}") depth.value--;
-  return { stop: i + 1 };
-}
-
-function templateToken(src, i, templates, depth) {
-  if (src[i] === "}") templates.pop();
-  const { stop, opensExpression } = templateEnd(src, i);
-  if (opensExpression) templates.push(depth.value);
-  return { stop, blankFrom: i + 1, blankTo: stop - (opensExpression ? 2 : 1) };
-}
-
-/** The source with comments and string, template and regex text blanked to spaces; offsets still index the original. */
-export function maskSource(src) {
+/** The masked source plus the specifiers imported whole: `import * as ns from "x"` and `import("x")`, never inside a comment or string. */
+export function analyzeSource(src, fileName = "source.tsx") {
+  const sf = parse(src, fileName);
   const out = src.split("");
-  const templates = [];
-  const depth = { value: 0 };
-  for (let i = 0; i < src.length; ) {
-    const { stop, blankFrom, blankTo } = scanToken(src, out, i, templates, depth);
-    for (let k = blankFrom ?? stop; k < (blankTo ?? stop); k++) if (out[k] !== "\n") out[k] = " ";
-    i = stop;
-  }
-  return out.join("");
+  const namespace = [];
+  const dynamic = [];
+  walk(sf, sf, (node) => {
+    for (const [from, to] of blankedSpans(node, sf, src)) for (let k = from; k < to; k++) if (out[k] !== "\n") out[k] = " ";
+    const namespaceSpecifier = namespaceImportSpecifier(node);
+    if (namespaceSpecifier !== undefined) namespace.push(namespaceSpecifier);
+    const dynamicSpecifier = dynamicImportSpecifier(node);
+    if (dynamicSpecifier !== undefined) dynamic.push(dynamicSpecifier);
+  });
+  return { masked: out.join(""), namespace, dynamic };
+}
+
+function namespaceImportSpecifier(node) {
+  const bindings = node.kind === K.ImportDeclaration ? node.importClause?.namedBindings : undefined;
+  return bindings && ts.isNamespaceImport(bindings) && ts.isStringLiteral(node.moduleSpecifier) ? node.moduleSpecifier.text : undefined;
+}
+
+/** `import("x")` or ``import(`x`)``; a template with a substitution has no fixed specifier. */
+function dynamicImportSpecifier(node) {
+  if (node.kind !== K.CallExpression || node.expression.kind !== K.ImportKeyword) return undefined;
+  const [arg] = node.arguments;
+  return arg && (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) ? arg.text : undefined;
+}
+
+/** The source with comments and string, template, regex, JSX text and property-key text blanked to spaces; offsets still index the original. */
+export function maskSource(src, fileName = "source.tsx") {
+  return analyzeSource(src, fileName).masked;
 }
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const NAMESPACE_IMPORT = /import\s+(?:type\s+)?\*\s*as\s+[\w$]+\s+from\s*(["'])/g;
-const DYNAMIC_IMPORT = /import\(\s*(["'])/g;
-
-/** Specifiers of the string literals each match of pattern opens, read from the original at the masked offsets. */
-function matchedSpecifiers(src, masked, pattern) {
-  const out = [];
-  for (const m of masked.matchAll(pattern)) {
-    const open = m.index + m[0].length - 1;
-    const close = masked.indexOf(m[1], open + 1);
-    if (close > open) out.push(src.slice(open + 1, close));
-  }
-  return out;
-}
-
-/** The specifiers this file imports whole: `import * as ns from "x"` and `import("x")`, never inside a comment or string. */
-export function wholeImportSpecifiers(src, masked = maskSource(src)) {
-  return { namespace: matchedSpecifiers(src, masked, NAMESPACE_IMPORT), dynamic: matchedSpecifiers(src, masked, DYNAMIC_IMPORT) };
-}
 
 /**
  * How often name appears as an identifier in the masked source, its declaration included. Property names after a
- * single dot and names inside an `export { … }` list are not uses.
+ * single dot, object keys, interface members and names inside an `export { … }` list are not uses.
  */
 export function identifierMentions(masked, name) {
   const code = masked.replace(/export\s+(?:type\s+)?\{[^}]*\}/g, "");

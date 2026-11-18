@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "loop open records the owning seat",
+      "file": "products/active-work/src/commands/loop-open.ts",
+      "find": "    ...(args.seat !== undefined ? { seat: args.seat } : {}),\n",
+      "replace": "",
+      "kills": ["loop.open files a handoff loop the board lists with its source and owning seat"]
+    },
+    {
+      "name": "loop open leaves a derived id uncapped",
+      "file": "products/active-work/src/commands/loop-open.ts",
+      "find": "slugifyLabel(text).slice(0, DERIVED_ID_MAX_LENGTH).replace(",
+      "replace": "slugifyLabel(text).replace(",
+      "kills": ["loop.open derives an id from the text that is a valid ref segment"]
+    }
+  ]
+}

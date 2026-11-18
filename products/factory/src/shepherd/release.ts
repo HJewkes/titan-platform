@@ -20,7 +20,7 @@ import { readPath } from "../narrow.js";
 export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
 /** The registration's implementer: no agent writes this PR, so a wake for it is never handled. */
 export const RELEASE_IMPLEMENTER = "changesets";
-export const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
+const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
 export const RELEASE_STEPS: readonly StepDeclaration[] = [
   { id: RELEASE_PREFLIGHT_STEP, kind: "dispatch" },
   { id: RELEASE_FOLLOW_STEP, kind: "dispatch" },
@@ -77,15 +77,19 @@ const CHANGELOG_FILE = /^(?:[^/]+\/)*CHANGELOG\.md$/;
 const CONSUMED_CHANGESET = /^\.changeset\/[^/]+\.md$/;
 const CATALOG_FILES = new Set(["CAPABILITIES.md", "site/guides/capabilities.md"]);
 
-/** What `pnpm version-packages` writes: bumped manifests, changelogs, the regenerated catalog, and consumed changesets. */
+/**
+ * What `pnpm version-packages` writes: bumped manifests, changelogs, the regenerated catalog, and consumed changesets.
+ * GitHub reports a type or mode change, a symlink swap among them, as `changed`, which no release writes.
+ */
 export function isReleaseFile(file: PrFile): boolean {
   if (isGithubPath(file.path) || file.previousPath !== undefined) return false;
   if (CONSUMED_CHANGESET.test(file.path)) return file.status === "removed";
   if (MANIFEST_FILE.test(file.path)) return file.status === "modified";
-  return CHANGELOG_FILE.test(file.path) || CATALOG_FILES.has(file.path);
+  const written = file.status === "modified" || file.status === "added";
+  return written && (CHANGELOG_FILE.test(file.path) || CATALOG_FILES.has(file.path));
 }
 
-export interface ReleaseTarget {
+interface ReleaseTarget {
   repo: RepoSlug;
   pr: number;
   head: string;
@@ -321,6 +325,8 @@ export function releaseGuard(registrations: () => ShepherdStore, now: () => numb
       const ready = release?.releaseReady;
       if (!release || release.pr === null || release.pr === pr || !ready) return undefined;
       if (now() - Date.parse(ready.at) > RELEASE_FREEZE_MS) return undefined;
+      // A held release cannot land first, so freezing the repo behind it only stalls every other merge until the freeze runs out.
+      if (registrations().heldReason(repo, release.pr, VERSION_PACKAGES_BRANCH, ready.head) !== undefined) return undefined;
       const live = await port.getPr(repo, release.pr);
       if (live.state !== "open" || live.headSha !== ready.head) return undefined;
       return `the Version Packages PR #${release.pr} is ready at ${ready.head} and lands first`;

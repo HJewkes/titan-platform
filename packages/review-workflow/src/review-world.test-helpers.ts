@@ -44,7 +44,7 @@ type Reply = string | undefined;
 /** What the member under `agent` has written last, before or after its correction. */
 type Script = (agent: string, resumed: boolean) => Reply;
 
-export const MERGE = `Probes: drove the bound past its edge.\n\nVerdict: MERGE\nPR: ${target.repo}#${target.pr}\nHead: ${HEAD}\n`;
+export const MERGE = `Probes: drove the bound past its edge.\nAuthority: unchanged\n\nVerdict: MERGE\nPR: ${target.repo}#${target.pr}\nHead: ${HEAD}\n`;
 export const merges: Script = () => MERGE;
 type Locator = ReviewerMessage["locator"];
 const locatorFor = (sessionId: string): Locator =>

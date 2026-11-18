@@ -43,9 +43,11 @@ const GUARD_ROWS: Readonly<Record<MergeGuardRow, Row>> = {
   "ci-policy-weakened": { gateClass: "deliberate", words: "the reviewer says it weakens CI policy, and only you accept a weaker CI policy" },
   "ci-policy-budget": { gateClass: "deliberate", words: "it changes only CI budget or timeout numbers, measured, with a MERGE at this head, so a coordinator may accept it (owner decision 552)" },
   "ci-policy-malformed": { gateClass: "accidental", words: "the reviewer wrote a CI-policy line Shepherd could not read, which may hide a weakening; a fresh review asks for it again" },
-  "attest-unmet": { gateClass: "accidental", words: "it claims a step's behaviour is unchanged, and no independent reviewer's MERGE at this head attests it; a fresh review or a version bump clears it" },
+  "attest-unmet": { gateClass: "accidental", words: "it claims a step's behaviour is unchanged, and no independent reviewer's MERGE at this head attests it; a fresh review or a version bump clears it, and a reviewer's decline goes back to the implementer for the bump first" },
   "attest-deploy-skew": { gateClass: "accidental", words: "main has registry commits the running Shepherd build lacks, so its attestation read waits for the deploy rather than judge the claims (transient deploy skew)" },
   "old-path-untagged": { gateClass: "deliberate", words: "it changes old-path code frozen since M1b exit, and its task carries no superseded-at or survives carve-out tag" },
+  "owner-tier": { gateClass: "deliberate", words: "it changes a file on your merge stop list: Shepherd's merge, hold or gate-resolve rules, CI workflows, publish or settings" },
+  "owner-validate": { gateClass: "deliberate", words: "its task is tagged owner-validate, or could not be read, and you have not approved the task's current done_when in the console; that one approval clears every PR of the task" },
 };
 
 /** The gate rows of `release.ts` and the factory's catch-all default, keyed `table/row`. */

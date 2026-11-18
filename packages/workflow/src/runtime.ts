@@ -5,12 +5,12 @@ import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
 import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from "./orphans.js";
 import { mustacheRenderer } from "./prompt.js";
-import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps } from "./recovery.js";
+import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps, removeAnswered } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
-import { failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
+import { errorClassOf, failureText, fenceOf, messageOf, vaultOf, positiveDuration, RuntimeShutdown, sameFence, timestampAt, WorkflowPersistenceError } from "./runtime-values.js";
 import { parseSignal as defaultParseSignal } from "./signals.js";
 import { DEFAULT_MAX_STEP_DATA_BYTES } from "./step-output.js";
-import { completedTiming } from "./step-timing.js";
+import { completedTiming, everyTrySpend } from "./step-timing.js";
 import { ACTIVE_STATUSES, WorkflowOwnershipLostError, WorkflowRunStore, newRun } from "./store.js";
 import { WorkflowCancelledError, WorkflowNotOwnedError, WorkflowRecoveryRequiredError, type ActiveStep, type WorkflowFn, type WorkflowRun } from "./types.js";
 
@@ -187,7 +187,7 @@ export class WorkflowRuntime {
     if (error instanceof WorkflowRecoveryRequiredError || run.status === "recovery_required") return this.park(run);
     if (abortReason instanceof WorkflowCancelledError) return this.finish(run, "cancelled", abortReason.reason);
     if (error instanceof WorkflowCancelledError) return this.finish(run, "cancelled", error.reason);
-    this.finish(run, "failed", failureText(error, this.baseDeps.capabilities));
+    this.finish(Object.assign(run, errorClassOf(error)), "failed", failureText(error, this.baseDeps.capabilities));
   }
 
   shutdown(): void {
@@ -284,8 +284,8 @@ export class WorkflowRuntime {
       const step = run.activeSteps[stepId];
       if (!step) return false;
       const iteration = Number(step.iterKey.slice(step.iterKey.lastIndexOf(":") + 1));
-      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output };
-      delete run.activeSteps[stepId];
+      run.stepResults[step.iterKey] = { stepId, iteration, operation: "dispatch", agentId: null, signal: null, completedAt: this.isoNow(), ...completedTiming(step), output, ...everyTrySpend(step) };
+      removeAnswered(run, stepId);
       this.save(run);
       return true;
     } finally {

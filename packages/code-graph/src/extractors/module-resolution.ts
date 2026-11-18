@@ -28,7 +28,7 @@ export function isRelativeSpecifier(specifier: string): boolean {
  * order: an explicit extension already present, then the source extensions,
  * then a NodeNext `.js`→`.ts` remap, then `index.*` for directory imports.
  */
-export function* relativeResolutionCandidates(base: string): Iterable<string> {
+function* relativeResolutionCandidates(base: string): Iterable<string> {
   yield base;
   for (const ext of RESOLVABLE_EXTS) yield base + ext;
   const jsExt = /\.(?:jsx?|mjs|cjs)$/.exec(base);

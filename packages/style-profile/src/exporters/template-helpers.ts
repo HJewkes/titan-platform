@@ -114,10 +114,8 @@ export function readableConvention(rule: RuleEntry): string {
 }
 
 export function detectLanguages(profile: Profile): string[] {
-  const langs: string[] = [];
   const hasTypescriptSignals =
     Object.keys(profile.naming).length > 0 ||
     Object.keys(profile.structure).length > 0;
-  if (hasTypescriptSignals) langs.push("typescript");
-  return langs.length > 0 ? langs : ["typescript"];
+  return hasTypescriptSignals ? ["typescript"] : [];
 }

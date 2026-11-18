@@ -8,7 +8,7 @@ export const AGENT_CALL_TIMEOUT_MS = 90_000;
 /** Every agent this adapter starts is Shepherd's, so its roster row says so (CC-1466); a record, never `--spawned-as`. */
 const SHEPHERD_LAUNCH = { launchedBy: "shepherd" } as const;
 
-export interface AgentChatOptions {
+interface AgentChatOptions {
   /** The Claude config directory every spawn runs under; absent means agent-chat's default account. */
   configDir?: string;
   timeoutMs?: number;

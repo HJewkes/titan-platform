@@ -11,7 +11,7 @@ export type InheritMode = "dominant" | "nearest";
 /** A call with tools that no rule classifies. Assigned like a call with no tools, but kept apart in `raw`. */
 export const OTHER_TOOL = "other-tool";
 
-export interface AssignableCall {
+interface AssignableCall {
   usd: number;
   /** The rule result: a duty, OTHER_TOOL, or null for a call with no tools. */
   raw: string | null;

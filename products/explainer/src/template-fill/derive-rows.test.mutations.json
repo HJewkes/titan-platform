@@ -27,6 +27,15 @@
       "kills": [
         "template fill: list beats draws the rows untitled with a hint when the chapter label is longer than a title holds"
       ]
+    },
+    {
+      "name": "a verdict with no call falls back to a list",
+      "file": "products/explainer/src/template-fill/derive-rows.ts",
+      "find": "  if (reasons.length === 0) return { reason: \"verdict-card has no reasons",
+      "replace": "  if (call === undefined) return { reason: \"verdict-card has no call\" };\n  if (reasons.length === 0) return { reason: \"verdict-card has no reasons",
+      "kills": [
+        "template fill: verdict-card and issue-pin beats draws the opening verdict as the heading over its reasons when it has no call and no chip"
+      ]
     }
   ]
 }

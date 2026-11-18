@@ -10,10 +10,10 @@ import { z } from "zod";
 /** fadeUp takes 0.5 s; a ListBeat tick lands 0.15 s later and eases 0.5 s. Matches the cue gate's AFTER_CUE_S. */
 export const SETTLE_S = 0.9;
 export const END_BACKOFF_S = 0.2;
-export const OUTRO_EXIT_S = 1.2;
+const OUTRO_EXIT_S = 1.2;
 export const BEFORE_CUE_S = 0.1;
 /** A focus beat shows its whole view before the first cue only when that view has had time to settle. */
-export const MIN_BEFORE_S = 1.5;
+const MIN_BEFORE_S = 1.5;
 
 export const SHEET_RULES = ["hero", "hero-before-exit", "build", "swap", "focus", "steps", "marks"] as const;
 export type SheetRule = (typeof SHEET_RULES)[number];
@@ -35,12 +35,12 @@ export const SheetVisualSchema = z.object({
     heading: z.unknown().optional(),
   })),
 });
-export const MARK_KINDS = ["settled", "step", "before", "transform-start", "transform-end", "hero"] as const;
+const MARK_KINDS = ["settled", "step", "before", "transform-start", "transform-end", "hero"] as const;
 export const PageMarksSchema = z.array(z.object({ t: z.number(), beat: z.string(), kind: z.enum(MARK_KINDS) }));
 
 export type RenderTimeline = z.infer<typeof RenderTimelineSchema>;
-export type CueTimes = z.infer<typeof CueTimesSchema>;
-export type SheetVisual = z.infer<typeof SheetVisualSchema>;
+type CueTimes = z.infer<typeof CueTimesSchema>;
+type SheetVisual = z.infer<typeof SheetVisualSchema>;
 /** One page mark, `t` in video seconds as the protocol reports it. */
 export type PageMark = z.infer<typeof PageMarksSchema>[number];
 type VisualBeat = SheetVisual["beats"][number];

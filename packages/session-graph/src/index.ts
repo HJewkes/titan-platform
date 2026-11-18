@@ -6,6 +6,7 @@ export { AUDIT_DDL, AUDIT_MIGRATION_NAME, AUDIT_TABLES, FACET_TABLE, SIGNAL_COPY
 export { EPISODE_TABLE, ORIGIN_DDL, ORIGIN_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_VIEWS } from "./origin-schema.js";
 export { ORIGIN_TASK_LINK_MIGRATION_NAME } from "./origin-task-link-schema.js";
 export { ORIGIN_EXPERIMENT_MIGRATION_NAME } from "./origin-experiment-schema.js";
+export { ORIGIN_EXECUTION_MIGRATION_NAME } from "./origin-execution-schema.js";
 export { ORIGIN_ROUTE_MIGRATION_NAME } from "./origin-route-schema.js";
 export { INBOUND_BROADCAST_MIGRATION_NAME } from "./inbound-broadcast-schema.js";
 export { PRICE_LONG_PROMPT_MIGRATION_NAME } from "./price-long-prompt-schema.js";
@@ -14,6 +15,7 @@ export { applyAudit } from "./audit-apply.js";
 export { AUDIT_FACET, backfillFacets, DEFAULT_FACET_LIMIT, type BackfillOptions, type BackfillSummary } from "./facet.js";
 export { applyDelta, type DeltaSource } from "./apply.js";
 export { purgeTranscript } from "./purge.js";
+export { DRAIN_SCREENED_MIGRATION, DRAIN_TEMPLATE_MIGRATION, ingestDrain, listTemplates, type DrainSummary, type TemplateRow } from "./drain.js";
 export type { ReconcileCounts } from "./rollup.js";
 export { reconcile, rollupSessions, rollupYielding } from "./rollup.js";
 export type { IndexOptions, RefreshOptions, RefreshSummary, TranscriptOutcome } from "./refresh.js";
@@ -22,11 +24,15 @@ export type { ResolvedTask, TaskEnrichment, TaskResolution, TaskResolver } from 
 export { allTaskIds, enrichTasks, NO_ENRICHMENT } from "./tasks.js";
 export type { ExternalEvent, OriginEnrichment, OriginResolution, OriginResolver, ResolvedOrigin, TaskLinkSource } from "./origin.js";
 export { NO_ORIGINS, NO_TASK_LINK, resolveOrigins, sessionsNeedingOrigin } from "./origin.js";
-export type { PrEnrichment, PrKey, PrResolution, PrResolver, ResolvedPr, ResolvedReview } from "./outcomes.js";
+export type { PrDue, PrEnrichment, PrKey, PrOutcomeBand, PrResolution, PrResolver, ResolvedPr, ResolvedReview } from "./outcomes.js";
 export { enrichPrs, NO_PR_OUTCOMES, prsNeedingOutcome } from "./outcomes.js";
 export type { ReviewerProfilePredicate, ReviewProjection, ReviewRoundOptions } from "./review-rounds.js";
 export { countRounds, isReviewerProfile, projectReviewRounds } from "./review-rounds.js";
 export { replaceEpisodes, type EpisodeRow } from "./episodes.js";
+export {
+  sessionsTouchingFiles, type SessionsTouchingFilesOptions, type SessionTaskInitiative, type SessionTouchingFiles, type TouchedFileQuery,
+} from "./files-touched.js";
+export { commitLineage, type CommitLineage, type CommitLinks, type LineageSession, type LineageTask, type SessionStep, type TaskStep } from "./commit-lineage.js";
 export { reconcilePrices, syncPrices, type LongPromptPrice, type PriceInput, type ReconcileResult, type SyncPricesOptions } from "./prices.js";
 
 export { indexSource, indexCodexSource, type NormalizedIndexResult, type SourceIndexPort, type SourceIndexResult } from "./normalized-index.js";

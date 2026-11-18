@@ -9,7 +9,7 @@ import { expandTilde } from '../utils/paths.js';
  * conventional `active` worktree-staging dir.
  */
 
-export interface DiscoverProjectsResult {
+interface DiscoverProjectsResult {
   hits: DiscoveryHit[];
   errors: DiscoverySourceError[];
 }

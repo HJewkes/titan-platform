@@ -82,7 +82,9 @@ priceRequest(
   task edges, falling back to the `cf_analyze.py` cwd rule.
 - `buildSessionTimeline(observations, options?)`, `SessionTimelineAccumulator`,
   `countAtOrBefore(sortedMs, targetMs)` and the `SessionTimeline` types — the read model behind
-  a session view; see "Session timeline" below.
+  a session view; see "Session timeline" below. A browser bundle imports `countAtOrBefore` and the
+  timeline types from the `@titan-design/session-analytics/timeline` subpath, whose import graph
+  holds no Node module.
 
 ```ts
 import { openDatabase } from "@titan-design/store-sqlite";
@@ -220,8 +222,24 @@ text form.
   up) finds a 5m cache gone. Its cache read is charged again at the 5m write rate, less the read
   it no longer pays. Past an hour the 1h cache had expired too, so the read is already near zero
   and only the reprice applies.
+- **Reverse replay.** A session observed purely on 5m is replayed toward 1h: a request after a
+  5-60 minute gap reverts `min(5m write, previous prompt)` to a read, saving the 5m write rate
+  less the read rate (`reverseReverts`, `reverseTokens`, `reverseSavingUsd`, per role and per
+  profile, with `reversePremiumUsd` and `reverseNetUsd` after the 1h-over-5m write premium on the writes kept, beside the 1h-to-5m direction). It claims nothing for a first request, a gap over an
+  hour, or a session with any 1h write.
 - **Net.** Per role and per profile: reprice saving less rebuild cost, and the same per session.
   `lossRoles` lists the roles whose net is negative, typically seats that wait on CI.
+- **No cache.** Per role and per profile, `noCacheNetUsd` prices every prompt token at the input rate
+  with no cache writes or reads, as cost today less that cost. Positive means no cache is cheaper
+  (`noCacheCheaper`), typically a one-shot profile that writes a cache and never reads it. The text
+  table adds a `no-cache net` column and flags those buckets. `TtlRequestRow` gains
+  `cacheWrite5mTokens`; the 5m-against-1h numbers do not change.
+- **Gap cause.** `byGapCause` splits the rebuilds by the last action before the gap: `ci-wait` (a
+  Bash call whose command head is `gh pr checks`, `gh run` or `ci-wait`), `other-bash`, or
+  `end-of-turn` (no tool call, or a non-Bash last call). `readTtlRows` sets `previousAction` from
+  the previous request on the same thread (same `is_sidechain`), so a subagent's calls never
+  stand in for the main thread's; the graph has no per-agent id, so nested subagents share one
+  chain. A row without `previousAction` reads as `end-of-turn`. The text render adds a by-cause table.
 
 The gap is the request's `gap_ms` when the miner stored one. Otherwise it is the time since the
 session's previous request on the same thread, which may fall before the window.
@@ -378,6 +396,37 @@ empty has `value: null` and `measured: false`, never 0, and `scorecardRowText(ro
 `not measured`. The cost row stays unmeasured below `MIN_COST_COVERAGE` (0.8) of merged tasks
 carrying a `usd_est`, and its `coverage` field says how many did. Baselines and targets are
 program data and stay with the caller.
+
+## Ticket scorecard
+
+The pure core of the per-task scorecard (TP-5446): one row per dispatched task, weekly cells
+over those rows, and the store they live in. It reads no file, clock or network. The caller
+reads events.db, factory.sqlite3, the graph and the task files, groups what it read per task,
+and passes in the class and source labels, each `recorded` or `inferred:<heuristic-id>`.
+
+- `taskRow(input)` — the row for one task, or null when no spawn outside Shepherd dispatched
+  it. The first such spawn is the dispatch. A PR counts only when a Shepherd registration
+  names it for the task. Fix rounds are the `await-new-head` and `sh-await-new-head` steps
+  plus the lineage successors. An inferred `mixed` class is stored as `upkeep`. `provenance`
+  gives each labelled column's origin, and `inputsHash` (sha256 over the canonical input,
+  list order ignored) lets a run skip a row that has not changed.
+- `rulePick(pool, k)` and `rulePlacement(pick, taskId)` — E1's simple rule: product before
+  upkeep, then rank ascending, then oldest first, ties by task id; take K.
+- `weekRows(rows, thresholds)` — one cell per ISO week (UTC) of first dispatch and per
+  dimension (`all`, `initiative`, `dispatcher`), with `WeekMetrics` and its red flags. A
+  share is null when nothing in the cell was measured.
+- `redFlags(metrics, thresholds)` and `DEFAULT_THRESHOLDS` — upkeep above 25%, owner-sourced
+  below 10%, rule agreement below 20%, cost above $10 per merged task. A value equal to its
+  bound is not red, and an unmeasured value trips nothing.
+- `SCORECARD_MIGRATIONS`, `upsertTaskRows`, `readTaskRows`, `upsertWeekRows`, `readWeekRows`,
+  `writePoolSnapshot` and `readPoolSnapshot` — the SQLite store. Every write is an upsert on
+  the row's key, so a rerun is idempotent. A week's pool snapshot is written once.
+- `phaseWeeks(runs)`, `upsertPhaseWeeks` and `readPhaseWeeks` — Shepherd phase medians
+  (TP-467): the median and p90 minutes finished runs spent in each stage, per ISO week of
+  completion, per repo and over `all`. An unchanged cell is not rewritten.
+- `recordRun(db, run)` logs one pass of the job, and `clearDerivedRows(db)` empties the task,
+  week and phase tables for a rebuild; the pool snapshot, run log and watermarks stay.
+- `isoWeek(ts)` — `2026-W45`.
 
 ## Things that will bite you
 

@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { isPythonStdlib } from "./python-stdlib.js";
 
 const MODULE_EXT_RE = /\.(?:tsx|ts|jsx|js|mts|cts|mjs|cjs|py)$/;
 
@@ -37,6 +38,17 @@ export function externalId(specifier: string): string {
     return specifier;
   }
   return `npm:${bareName(specifier)}`;
+}
+
+/**
+ * External id for an absolute Python import the tree does not hold: `python:` for
+ * the standard library, `pypi:` for anything else, keyed by the top-level package
+ * so `requests` and `requests.adapters` share one node. Relative imports never
+ * reach here; an unresolved one names no installable package.
+ */
+export function pythonExternalId(dotted: string): string {
+  const top = dotted.split(".")[0] ?? dotted;
+  return isPythonStdlib(top) ? `python:${top}` : `pypi:${top}`;
 }
 
 function bareName(specifier: string): string {

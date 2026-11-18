@@ -14,14 +14,20 @@ const NOTE = "note:orbit-relay/2031-03-03-backoff-ceiling.md";
 const SOURCE = "source:orbit-relay/pr-41-handshake.md";
 const MISSING = "note:orbit-relay/missing.md";
 
+/** Two synthetic tags on the decision note, as readNotes carries them from note.list. */
+async function taggedNotes(): Promise<Awaited<ReturnType<typeof readNotes>>> {
+  const answer = await readNotes(fixtureActiveWork());
+  return { ...answer, records: answer.records.map((row) => (row.ref === NOTE ? { ...row, tags: ["retry", "backoff"] } : row)) };
+}
+
 /** The answers the console daemon gives over the synthetic active-work fixture. */
-async function recorded(): Promise<Snapshot> {
+async function recorded(notes?: Awaited<ReturnType<typeof readNotes>>): Promise<Snapshot> {
   const activeWork = fixtureActiveWork();
   return {
     format: SNAPSHOT_FORMAT,
     createdAt: "2031-03-05T00:00:00.000Z",
     calls: {
-      [snapshotKey("work.notes", {})]: successEnvelope(await readNotes(activeWork)),
+      [snapshotKey("work.notes", {})]: successEnvelope(notes ?? (await readNotes(activeWork))),
       [snapshotKey("work.record", { ref: NOTE })]: successEnvelope(await readRecord(activeWork, NOTE)),
       [snapshotKey("work.record", { ref: SOURCE })]: successEnvelope({ ...(await readRecord(activeWork, SOURCE)), truncated: true }),
       [snapshotKey("work.record", { ref: MISSING })]: errorEnvelope("note sources/notes/missing.md not found", 66),
@@ -53,6 +59,33 @@ describe("the knowledge browser", () => {
     renderConsole("#/knowledge?initiative=orbit-relay&kind=source&since=2031-02-21", await recorded());
     await screen.findByTestId(`knowledge-row-${SOURCE}`);
     expect(rows()).toEqual([SOURCE]);
+  });
+
+  it("lists only the notes with the tag in the query string and shows their tags", async () => {
+    renderConsole("#/knowledge?tag=retry", await recorded(await taggedNotes()));
+    const row = await screen.findByTestId(`knowledge-row-${NOTE}`);
+    expect(rows()).toEqual([NOTE]);
+    expect(within(row).getByText("backoff")).toBeTruthy();
+  });
+
+  it("lists only the notes of the note kind in the query string", async () => {
+    renderConsole("#/knowledge?type=decision", await recorded());
+    await screen.findByTestId(`knowledge-row-${NOTE}`);
+    expect(rows()).toEqual([NOTE]);
+  });
+
+  it("puts a chosen tag and note kind into the query string, and clearing restores the list", async () => {
+    renderConsole("#/knowledge", await recorded(await taggedNotes()), { inApp: true });
+    await screen.findByTestId(`knowledge-row-${NOTE}`);
+    fireEvent.click(screen.getByText("Any tag"));
+    fireEvent.click(await screen.findByRole("option", { name: "retry" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/knowledge?tag=retry"));
+    fireEvent.click(screen.getByText("Any note kind"));
+    fireEvent.click(await screen.findByRole("option", { name: "gotcha" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/knowledge?tag=retry&type=gotcha"));
+    fireEvent.click(await screen.findByText("Clear filters"));
+    await waitFor(() => expect(window.location.hash).toBe("#/knowledge"));
+    await waitFor(() => expect(rows()).toHaveLength(7));
   });
 
   it("puts a chosen kind into the query string", async () => {

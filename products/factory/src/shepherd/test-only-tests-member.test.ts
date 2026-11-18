@@ -72,7 +72,7 @@ type TestsSays = "MERGE" | "FIX_FIRST" | "nothing";
 
 function verdictText(said: "MERGE" | "FIX_FIRST"): string {
   const findings = said === "FIX_FIRST" ? "- The changed test still passes with the bound removed.\n\n" : "";
-  return `${findings}Probes: removed bound -> test fails\n\nVerdict: ${said}\nPR: ${REPO}#1\nHead: ${H}\n`;
+  return `${findings}Probes: removed bound -> test fails\nAuthority: unchanged\n\nVerdict: ${said}\nPR: ${REPO}#1\nHead: ${H}\n`;
 }
 
 function reviewers(tests: TestsSays, now: () => number) {

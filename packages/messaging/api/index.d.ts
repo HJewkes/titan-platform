@@ -115,6 +115,8 @@ interface ChannelCapabilities {
     drafts: boolean;
     draftStreaming: boolean;
     threads: boolean;
+    /** Whether `sendVoice` and `sendPhoto` can deliver; false means both answer `unsupported`. */
+    media: boolean;
 }
 /**
  * `unsupported` sits outside `SendError` so an exhaustive switch over send
@@ -142,6 +144,36 @@ interface EditInput {
     buttons?: ButtonRow[] | "remove";
 }
 /**
+ * Bytes, not a URL or a path, so the same call runs in a Worker with no
+ * filesystem. `fileName` and `mimeType` label the upload; a channel picks a
+ * default when they are absent.
+ */
+interface MediaFile {
+    bytes: Uint8Array;
+    fileName?: string;
+    mimeType?: string;
+}
+interface VoiceInput {
+    handle: string;
+    audio: MediaFile;
+}
+interface PhotoInput {
+    handle: string;
+    image: MediaFile;
+    caption?: string;
+}
+/**
+ * A media send fails with an `InteractionError` rather than a `SendError`,
+ * because a channel without media answers `unsupported` before it calls.
+ */
+type MediaSendResult = {
+    ok: true;
+    ref?: MessageRef;
+} | {
+    ok: false;
+    error: InteractionError;
+};
+/**
  * The acknowledgement half of a channel, kept apart from `MessageTransport` so
  * a consumer's own one-method fake still satisfies the send contract. No method
  * here ever throws.
@@ -162,6 +194,8 @@ interface InteractiveTransport extends MessageTransport {
         actionId: string;
         toast?: string;
     }): Promise<InteractionResult>;
+    sendVoice(input: VoiceInput): Promise<MediaSendResult>;
+    sendPhoto(input: PhotoInput): Promise<MediaSendResult>;
 }
 /** Injected time, so a keep-alive loop is testable without a real wait. */
 interface Scheduler {
@@ -196,6 +230,9 @@ declare class BlueBubblesTransport implements InteractiveTransport {
     chatAction(): Promise<InteractionResult>;
     edit(): Promise<InteractionResult>;
     answerAction(): Promise<InteractionResult>;
+    /** Attachments go through a different endpoint this adapter does not implement yet, so no request is made. */
+    sendVoice(): Promise<MediaSendResult>;
+    sendPhoto(): Promise<MediaSendResult>;
     /** `buttons` is ignored: iMessage has no inline keyboards, so only the text goes. */
     send({ handle, text }: SendInput): Promise<SendResult>;
     private resultFor;
@@ -240,6 +277,19 @@ type MockEvent = {
     at: number;
     actionId: string;
     toast?: string;
+} | {
+    type: "sendVoice";
+    at: number;
+    handle: string;
+    audio: MediaFile;
+    ref: MessageRef;
+} | {
+    type: "sendPhoto";
+    at: number;
+    handle: string;
+    image: MediaFile;
+    caption?: string;
+    ref: MessageRef;
 };
 interface MockOptions {
     now?: () => number;
@@ -266,6 +316,7 @@ declare class MockTransport implements InteractiveTransport {
     private readonly scripted;
     private readonly messages;
     private readonly typingUntil;
+    private mediaSent;
     /** The bare clock form is what 0.3.0 consumers pass, so it still works. */
     constructor(options?: (() => number) | MockOptions);
     /** Queue one failure, optionally only for one method. Calls consume the queue in order. */
@@ -289,6 +340,10 @@ declare class MockTransport implements InteractiveTransport {
         actionId: string;
         toast?: string;
     }): Promise<InteractionResult>;
+    /** Media goes to `log` only: `sent` and `messageAt` hold text a later edit can target. */
+    sendVoice({ handle, audio }: VoiceInput): Promise<MediaSendResult>;
+    sendPhoto({ handle, image, caption }: PhotoInput): Promise<MediaSendResult>;
+    private mediaRef;
     /** A capability turned off answers `unsupported` before any scripted failure is consumed. */
     private refuse;
     /** A failure scoped to one method is skipped by every other, so the queue stays in order. */
@@ -339,6 +394,17 @@ interface TelegramEnvelope {
 /** A wait longer than this is clamped: the wait is real, only its size is untrusted. */
 declare const TELEGRAM_MAX_RETRY_AFTER_SECONDS = 86400;
 
+/** `sendPhoto` documents `caption` as 0-1024 characters after entities parsing. */
+declare const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
+/**
+ * The Bot API caps an uploaded photo at 10 MB and any other uploaded file, a voice
+ * note included, at 50 MB (https://core.telegram.org/bots/api#sending-files). Past
+ * that Telegram rejects the request, so refusing first spares the upload. Read as
+ * MiB, so a file Telegram would take is never refused here.
+ */
+declare const TELEGRAM_MAX_PHOTO_BYTES: number;
+declare const TELEGRAM_MAX_VOICE_BYTES: number;
+
 /**
  * Sends over the Telegram Bot API with `fetch` only, so the same code runs in a
  * Worker, a daemon, and a test. No `parse_mode`: coach copy is sent verbatim.
@@ -364,6 +430,10 @@ declare class TelegramTransport implements InteractiveTransport {
         actionId: string;
         toast?: string;
     }): Promise<InteractionResult>;
+    /** Uploaded as multipart, so the bytes go with the request and no public URL is needed. */
+    sendVoice({ handle, audio }: VoiceInput): Promise<MediaSendResult>;
+    sendPhoto({ handle, image, caption }: PhotoInput): Promise<MediaSendResult>;
+    private upload;
     private interact;
     private resolveChatId;
     private redact;
@@ -603,4 +673,4 @@ interface SplitOptions {
 /** Splits text into parts of at most `maxLength` UTF-16 units, preferring natural boundaries. */
 declare function splitText(text: string, options: SplitOptions): string[];
 
-export { type AnswerCallbackResult, type BlueBubblesConfig, BlueBubblesTransport, type Button, type ButtonRow, type ChannelCapabilities, type ChannelId, type DeliveryCeiling, type EditInput, type InboundRejection, type InboundResult, type InteractionError, type InteractionResult, type InteractiveTransport, type Liveness, MOCK_TYPING_VISIBLE_MS, ManualClock, MemorySeenStore, type MessageRef, type MessageTransport, type MockEvent, type MockMessage, type MockOptions, MockTransport, type PollUpdatesOptions, type ProbeOptions, type RecordedSend, type Scheduler, type SeenStore, type SendError, type SendInput, type SendResult, type SplitBoundary, type SplitOptions, TELEGRAM_MAX_CALLBACK_DATA_BYTES, TELEGRAM_MAX_RETRY_AFTER_SECONDS, TELEGRAM_MAX_TEXT_LENGTH, type TelegramCallback, type TelegramConfig, type TelegramEnvelope, type TelegramInbound, type TelegramInboundResult, type TelegramLiveness, type TelegramRejection, type TelegramTextUpdate, TelegramTransport, type ValidateInboundInput, type ValidateTelegramWebhookInput, answerCallbackQuery, constantTimeEqual, createBlueBubblesTransport, createTelegramTransport, fakeCallbackUpdate, fakeTextUpdate, newMessageEvent, pollUpdates, probeLiveness, probeTelegramLiveness, readChatIds, redactPassword, redactToken, refOfInbound, sendFailed, splitText, telegramUpdateEvent, validateInbound, validateTelegramWebhook };
+export { type AnswerCallbackResult, type BlueBubblesConfig, BlueBubblesTransport, type Button, type ButtonRow, type ChannelCapabilities, type ChannelId, type DeliveryCeiling, type EditInput, type InboundRejection, type InboundResult, type InteractionError, type InteractionResult, type InteractiveTransport, type Liveness, MOCK_TYPING_VISIBLE_MS, ManualClock, type MediaFile, type MediaSendResult, MemorySeenStore, type MessageRef, type MessageTransport, type MockEvent, type MockMessage, type MockOptions, MockTransport, type PhotoInput, type PollUpdatesOptions, type ProbeOptions, type RecordedSend, type Scheduler, type SeenStore, type SendError, type SendInput, type SendResult, type SplitBoundary, type SplitOptions, TELEGRAM_MAX_CALLBACK_DATA_BYTES, TELEGRAM_MAX_CAPTION_LENGTH, TELEGRAM_MAX_PHOTO_BYTES, TELEGRAM_MAX_RETRY_AFTER_SECONDS, TELEGRAM_MAX_TEXT_LENGTH, TELEGRAM_MAX_VOICE_BYTES, type TelegramCallback, type TelegramConfig, type TelegramEnvelope, type TelegramInbound, type TelegramInboundResult, type TelegramLiveness, type TelegramRejection, type TelegramTextUpdate, TelegramTransport, type ValidateInboundInput, type ValidateTelegramWebhookInput, type VoiceInput, answerCallbackQuery, constantTimeEqual, createBlueBubblesTransport, createTelegramTransport, fakeCallbackUpdate, fakeTextUpdate, newMessageEvent, pollUpdates, probeLiveness, probeTelegramLiveness, readChatIds, redactPassword, redactToken, refOfInbound, sendFailed, splitText, telegramUpdateEvent, validateInbound, validateTelegramWebhook };

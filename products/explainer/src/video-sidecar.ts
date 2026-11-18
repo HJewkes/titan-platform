@@ -23,6 +23,8 @@ export interface ExplainerBlock {
 export interface VideoSidecar {
   schema: typeof VIDEO_META_SCHEMA;
   title: string;
+  /** The theater's link target for this video, e.g. `daily-2026-11-13`. */
+  alias?: string;
   description?: string;
   purpose: "daily" | "repo-review" | "design" | "explainer";
   series: string;
@@ -63,7 +65,14 @@ export function classify(script: Pick<ScriptV1, "id" | "profile">, profile: stri
   return { title: words, purpose: profile.includes("design") ? "design" : "explainer", series };
 }
 
+/** A daily's identity comes from the day the run gathered: the model-written script id carries no guaranteed date. */
+function dailyOf(day: string): Classified & { alias: string } {
+  return { title: `Daily ${day}`, purpose: "daily", series: "daily-overview", subject: { kind: "day", id: day }, alias: `daily-${day}` };
+}
+
 export interface SidecarInput {
+  /** The day the run's gather covers; stamps a daily-overview video's subject, title and alias. */
+  day?: string;
   script: Pick<ScriptV1, "id" | "profile" | "video">;
   /** The run's profile id; the script's own `profile` when the run names none. */
   profile: string;
@@ -77,7 +86,7 @@ export interface SidecarInput {
 
 /** The port of `write_video_meta.py`'s `build_meta`: v1 fields only, plus the `explainer` block. */
 export function buildSidecar(input: SidecarInput): VideoSidecar {
-  const { title, ...rest } = classify(input.script, input.profile);
+  const { title, ...rest } = input.day && DAILY_PROFILES.has(input.profile) ? dailyOf(input.day) : classify(input.script, input.profile);
   const promise = input.script.video.promise;
   return {
     schema: VIDEO_META_SCHEMA, title, ...(promise ? { description: promise } : {}), ...rest,

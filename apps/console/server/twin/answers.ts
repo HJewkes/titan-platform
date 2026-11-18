@@ -3,6 +3,7 @@
 import type { ServedCommands } from "../../src/data/rpc.js";
 import { AR_RUN_FIXTURE, AR_RUN_PRE_S3A, AR_RUN_PRE_S3A_SUMMARY, AR_RUN_SUMMARY } from "./autoresearch.js";
 import { TWIN_NOW } from "./clock.js";
+import { PLAN_ITEMS } from "./plan-ops.js";
 import { TWIN_VIDEO_EDITS, TWIN_VIDEO_PROPS } from "./video-props.js";
 import { listPage, listRow, type TasksArgs } from "../task-list.js";
 
@@ -121,6 +122,7 @@ const INBOX_ITEMS = [
   inboxItem("ask-6", { sources: [{ system: "agent-chat", ref: "msg-6" }], kind: "decide", lens: "blocking-agent", summary: "Which port should the depth probe listen on?", openedAt: at(40 * MINUTE), action: { kind: "answer-chat", msgId: "msg-6" } }),
   inboxItem("round-ship", { sources: [{ system: "round", ref: "ship-tile-r1" }], kind: "review", summary: "Ship tile frames", openedAt: at(5 * HOUR), evidence: "#/rounds/ship-tile-r1", action: { kind: "open-round", roundId: "ship-tile-r1" } }),
   inboxItem("task-or-9", { sources: [{ system: "active-work", ref: "orbit-relay/OR-9" }], kind: "decide", lens: "planning", section: "planning", summary: "Plan OR-9", evidence: "#/tasks/OR-9", action: { kind: "open", route: "#/tasks/OR-9" } }),
+  ...PLAN_ITEMS,
 ];
 
 type WatchRow = Served["shepherd.list"]["result"][number];
@@ -208,7 +210,7 @@ function task(id: string, title: string, overrides: Partial<TaskRow>): TaskRow {
 const TASKS = [
   task("OR-12", "Retry a dropped handshake with backoff", { severity: "critical", estimate: 2, tags: ["transport"], stage: "review", stageRule: "open-pr", stageReason: "orbit/relay#12 is open", stageGuessed: false }),
   task("OR-14", "Report queue depth per station", { priority: 2, estimate: 1, stage: "in-progress", stageRule: "live-ref", stageReason: "Branch feat/or-14 is live", stageGuessed: false }),
-  task("OR-9", "Document the routing table format", { priority: 3, severity: "low", updated: "2031-02-20", stage: "blocked", stageRule: "dependency", stageReason: "Waits on OR-12", stageGuessed: false, dep: ["OR-12"] }),
+  task("OR-9", "Document the routing table format", { priority: 3, severity: "low", updated: "2031-02-20", stage: "blocked", stageRule: "dependency", stageReason: "Waits on OR-12", stageGuessed: false, dep: ["OR-12"], owner_steps: [{ kind: "release", note: "Publish the routing table" }] }),
   task("LD-3", "Merge the two battery chapters", { slug: "lantern-docs", severity: "medium", estimate: 3, updated: "2031-03-01" }),
 ];
 
@@ -318,7 +320,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
   answer("sessions.list", { limit: 50 }, { sessions: SESSIONS, nextBefore: null, degraded: null }),
   answer("sessions.list", { agent: "relay-builder", limit: 50 }, { sessions: SESSIONS.slice(0, 1), nextBefore: null, degraded: null }),
   answer("sessions.timeline", { sessionId: "relay-retry" }, { status: "degraded", sessionId: "relay-retry", degraded: { reason: "transcript-missing", detail: "The twin carries no transcript" }, session: SESSIONS[0]! }),
-  ...[{}, { stage: "blocked" as const }, { initiative: "orbit-relay" }].map((args) => answer("work.tasks", args, tasksAnswer(args))),
+  ...[{}, { stage: "blocked" as const }, { initiative: "orbit-relay" }, { ownerOnly: true, limit: 200 }].map((args) => answer("work.tasks", args, tasksAnswer(args))),
   answer("work.task", { id: "OR-12" }, TASK_DETAIL),
   answer("work.taskMentions", { id: "OR-12" }, { mentions: [], degraded: null }),
   answer("work.taskArtifacts", { id: "OR-12", slug: TASK_DETAIL.task.slug }, { branches: [], degraded: [] }),
@@ -342,6 +344,7 @@ export const HAND_ANSWERS: readonly TwinCall[] = [
     gaps: [],
     readAt: new Date(TWIN_NOW).toISOString(),
   }),
+  answer("videos.resolve", { subject: new Date(TWIN_NOW).toISOString().slice(0, 10) }, { found: true, id: VIDEO.id }),
   answer("videos.list", {}, { videos: [...FEED_VIDEOS], truncated: false, gaps: [] }),
   answer("videos.notes", { videoId: VIDEO.id }, { video: VIDEO.id, notes: [VIDEO_NOTE], verdict: null, gaps: [] }),
   answer("videos.props", { videoId: VIDEO.id }, TWIN_VIDEO_PROPS),

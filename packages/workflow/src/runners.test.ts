@@ -8,7 +8,8 @@ import { agentRunner, idempotentRunner, inlineRunner } from "./runners.js";
 import { routedRunner } from "./routed-runner.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
-import { StepOutputInvalidError, type StepRunner, type WorkflowFn } from "./types.js";
+import { type StepRunner, type WorkflowFn } from "./types.js";
+import { StepOutputInvalidError } from "./step-errors.js";
 
 function makeDb(): Db {
   const db = openDatabase(":memory:");

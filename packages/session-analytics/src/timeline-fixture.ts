@@ -5,7 +5,7 @@ import type { PriceRow } from "./prices.js";
 /** Hand-written observations for the timeline tests. Every string here is invented; none comes from a transcript. */
 export const CONVERSATION: ConversationIdentity = { harness: "claude-code", namespace: "fixture-host", nativeId: "session-a" };
 
-export const TEST_MODEL = "fixture-model";
+const TEST_MODEL = "fixture-model";
 
 /** Round rates, so a test can state a cost by hand. */
 export const TEST_PRICES: readonly PriceRow[] = [
@@ -23,7 +23,7 @@ const SOURCE: SessionSourceDescriptor = {
   provenance: { kind: "claude-code-transcript", legacySessionId: CONVERSATION.nativeId },
 };
 
-export interface UsageCounts {
+interface UsageCounts {
   /** Fresh input, before cache reads and writes are added to the prompt total. */
   input: number;
   cacheRead?: number;

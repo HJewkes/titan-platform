@@ -6,10 +6,18 @@ import { openFactoryHost, untilSettledOrGated } from "./host.js";
 
 const LEASE_MS = 30;
 
-/** A step that only ends when the run is aborted, as an eval does that is still running when the lease goes. */
-const untilAborted: StepRoute[] = [
-  { match: "work", onRestart: "repeat", runner: { run: ({ signal }) => new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true })) } },
-];
+/**
+ * A step that only ends when the run is aborted, as an eval does that is still running when the lease goes.
+ * A loaded host can fire the renewal, and so the abort, before dispatch reaches the runner; a listener alone would then wait forever.
+ */
+function rejectOnAbort(signal: AbortSignal): Promise<never> {
+  return new Promise((_, reject) => {
+    if (signal.aborted) return reject(signal.reason);
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+  });
+}
+
+const untilAborted: StepRoute[] = [{ match: "work", onRestart: "repeat", runner: { run: ({ signal }) => rejectOnAbort(signal) } }];
 
 const longRunning = defineWorkflow({ name: "long-running", steps: [{ id: "work", kind: "dispatch" }], run: async (ctx) => void (await ctx.dispatch("work", "work")) });
 

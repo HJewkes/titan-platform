@@ -5,11 +5,15 @@ import type {
   InteractionError,
   InteractionResult,
   InteractiveTransport,
+  MediaFile,
+  MediaSendResult,
   MessageRef,
+  PhotoInput,
   Scheduler,
   SendError,
   SendInput,
   SendResult,
+  VoiceInput,
 } from "./contract.js";
 import { emptyEditError, sendFailed } from "./contract.js";
 
@@ -25,7 +29,9 @@ export type MockEvent =
   | { type: "react"; at: number; to: MessageRef; emoji: string | null }
   | { type: "chatAction"; at: number; handle: string; action: "typing" }
   | { type: "edit"; at: number; ref: MessageRef; text?: string; buttons?: ButtonRow[] | "remove" }
-  | { type: "answer"; at: number; actionId: string; toast?: string };
+  | { type: "answer"; at: number; actionId: string; toast?: string }
+  | { type: "sendVoice"; at: number; handle: string; audio: MediaFile; ref: MessageRef }
+  | { type: "sendPhoto"; at: number; handle: string; image: MediaFile; caption?: string; ref: MessageRef };
 
 export interface MockOptions {
   now?: () => number;
@@ -53,6 +59,7 @@ const DEFAULT_CAPABILITIES: ChannelCapabilities = {
   drafts: false,
   draftStreaming: false,
   threads: false,
+  media: true,
 };
 
 interface ScriptedFailure {
@@ -82,6 +89,7 @@ export class MockTransport implements InteractiveTransport {
   private readonly scripted: ScriptedFailure[] = [];
   private readonly messages = new Map<string, MockMessage>();
   private readonly typingUntil = new Map<string, number>();
+  private mediaSent = 0;
 
   /** The bare clock form is what 0.3.0 consumers pass, so it still works. */
   constructor(options: (() => number) | MockOptions = Date.now) {
@@ -101,6 +109,7 @@ export class MockTransport implements InteractiveTransport {
     this.scripted.length = 0;
     this.messages.clear();
     this.typingUntil.clear();
+    this.mediaSent = 0;
   }
 
   messageAt(ref: MessageRef): MockMessage | undefined {
@@ -193,11 +202,43 @@ export class MockTransport implements InteractiveTransport {
     return { ok: true, changed: true };
   }
 
+  /** Media goes to `log` only: `sent` and `messageAt` hold text a later edit can target. */
+  async sendVoice({ handle, audio }: VoiceInput): Promise<MediaSendResult> {
+    const refused = this.refuse("sendVoice", "media");
+    if (refused) return refused;
+
+    const ref = this.mediaRef(handle);
+    this.log.push({ type: "sendVoice", at: this.now(), handle, audio, ref });
+    return { ok: true, ref };
+  }
+
+  async sendPhoto({ handle, image, caption }: PhotoInput): Promise<MediaSendResult> {
+    const refused = this.refuse("sendPhoto", "media");
+    if (refused) return refused;
+
+    const ref = this.mediaRef(handle);
+    this.log.push({
+      type: "sendPhoto",
+      at: this.now(),
+      handle,
+      image,
+      ...(caption === undefined ? {} : { caption }),
+      ref,
+    });
+    return { ok: true, ref };
+  }
+
+  private mediaRef(handle: string): MessageRef {
+    this.mediaSent += 1;
+    this.typingUntil.delete(handle);
+    return { channel: "mock", chat: handle, messageId: `mock-media-${this.mediaSent}` };
+  }
+
   /** A capability turned off answers `unsupported` before any scripted failure is consumed. */
   private refuse(
     type: MockEvent["type"],
     capability: keyof ChannelCapabilities,
-  ): InteractionResult | undefined {
+  ): { ok: false; error: InteractionError } | undefined {
     if (this.capabilities[capability] !== true) {
       return {
         ok: false,

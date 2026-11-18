@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BENCH, cpuBudgetIt, cpuStopwatch, expectWithinCpuBudget, wallTimeoutMs, withinCpuBudget, withinWallBudget } from "./cpu-budget.js";
-import { expectLinearTime } from "./linear-time.js";
+import { expectLinearTime, timedBy } from "./linear-time.js";
 
 function spinCpu(ms: number): void {
   const elapsed = cpuStopwatch();
@@ -87,7 +87,45 @@ describe("the linearity check", () => {
     expectLinearTime((n) => () => void work(n * 500), 40_000);
   });
 
+  // The fixture counts its own steps, so the ratio is exactly the growth and no runner load can blur it (TP-4721).
+  const counted = () => {
+    let steps = 0;
+    const measure = (run: () => void): number => {
+      const before = steps;
+      run();
+      return steps - before;
+    };
+    return { measure, add: (n: number) => void (steps += n) };
+  };
+
   cpuBudgetIt("fails quadratic work on its ratio", 2000, () => {
-    expect(() => expectLinearTime((n) => () => void work(n * n), 4_000)).toThrow(/expected .* to be less than 5/);
+    const { measure, add } = counted();
+    expect(() => expectLinearTime((n) => () => add(n * n), 4_000, measure)).toThrow(/expected .* to be less than 5/);
+  });
+
+  cpuBudgetIt("passes linear counted work with a ratio of one", 2000, () => {
+    const { measure, add } = counted();
+    expect(expectLinearTime((n) => () => add(n), 4_000, measure)).toBe(1);
+  });
+
+  // A stopwatch on a shared work counter stands in for thread CPU, so the default measure's arithmetic is judged without a clock (TP-5262).
+  const fakeClock = (tickMs: number) => {
+    let work = 0;
+    const startStopwatch = () => {
+      const from = work;
+      return () => Math.floor((work - from) / tickMs) * tickMs;
+    };
+    return { measure: timedBy(startStopwatch), add: (n: number) => void (work += n) };
+  };
+
+  cpuBudgetIt("fails quadratic work timed by the default measure's stopwatch", 2000, () => {
+    const { measure, add } = fakeClock(1);
+    expect(() => expectLinearTime((n) => () => add((n * n) / 1000), 4_000, measure)).toThrow(/expected .* to be less than 5/);
+  });
+
+  cpuBudgetIt("passes a linear run that fills one tick when the small batch reads zero ticks", 2000, () => {
+    const { measure, add } = fakeClock(1);
+    // The small batch spends 0.9 ms and reads 0 ticks; the large run spends 1 ms and reads one.
+    expect(expectLinearTime((n) => () => add(n === 4_000 ? 1 : 0.1125), 4_000, measure)).toBeLessThan(5);
   });
 });

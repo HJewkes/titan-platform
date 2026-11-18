@@ -1,34 +1,39 @@
-import type { PrKey, PrResolution, PrResolver, ResolvedPr } from '@titan-design/session-graph';
+import type { PrDue, PrResolution, PrResolver, ResolvedPr } from '@titan-design/session-graph';
 import { z } from 'zod';
 
-import { runCommand, type RunCommand } from '../discover/run-command.js';
-import type { WorkspaceGraph } from './graph.js';
+import { runCommand, type RunCommand } from '../utils/run-command.js';
 
 /**
  * Resolve PR outcomes against GitHub through `gh` (TP-275, design G8).
  *
  * A transcript only sees a merge it ran itself; a merge done in the browser or
  * by another session, a close, and the review history exist only on the forge.
- * `@titan-design/session-graph` takes this as its `PrResolver` and hands it
- * every PR not yet known to be merged. This side narrows that to what can
- * still change, caps it per pass, and turns every `gh` failure into an error
+ * `@titan-design/session-graph` takes this as its `PrResolver` and decides which PRs are due and in what
+ * order (`prsNeedingOutcome`). This side only throttles: it skips a PR inside its failure backoff or, for a
+ * `recheck` PR, inside its recheck interval, caps the rest per pass, and turns every `gh` failure into an error
  * line rather than a thrown pass: the PR is left out of the resolution, so its
  * row stays unchecked and the next pass asks again.
  */
 
-export const PR_OUTCOME_BATCH = 50;
+const PR_OUTCOME_BATCH = 50;
 const CONCURRENCY = 5;
 const DEFAULT_FAIL_BACKOFF_MS = 30 * 60 * 1000;
+const DEFAULT_OPEN_RECHECK_MS = 10 * 60 * 1000;
+const DEFAULT_CLOSED_RECHECK_MS = 24 * 60 * 60 * 1000;
 const GH_FIELDS = 'state,mergedAt,closedAt,reviews,commits';
 
-export interface PrOutcomeOptions {
+interface PrOutcomeOptions {
   /** Process boundary; tests replace it so the real `gh` never runs. */
   run?: RunCommand;
   /** PRs asked about per pass. */
   limit?: number;
   /** Receives one line per PR `gh` could not answer. */
   errors?: string[];
-  /** Clock for the failure backoff; tests replace it. */
+  /** Least time between two checks of one open PR; `AW_PR_OPEN_RECHECK_MS` sets the default. */
+  openRecheckMs?: number;
+  /** Least time before a closed PR is checked again, so a reopen is seen; `AW_PR_CLOSED_RECHECK_MS`. */
+  closedRecheckMs?: number;
+  /** Clock for the failure backoff and the recheck intervals; tests replace it. */
   now?: () => number;
   /** Told how many PRs each call asks `gh` about, so the pass log can carry it. */
   onPolled?: (count: number) => void;
@@ -41,11 +46,32 @@ export function clearPrFailureBackoff(): void {
   failedAt.clear();
 }
 
-function failBackoffMs(): number {
-  const parsed = Number(process.env.AW_PR_FAIL_BACKOFF_MS);
-  return process.env.AW_PR_FAIL_BACKOFF_MS && Number.isFinite(parsed) && parsed >= 0
-    ? parsed
-    : DEFAULT_FAIL_BACKOFF_MS;
+function envMs(name: string, fallback: number): number {
+  const raw = process.env[name];
+  const parsed = Number(raw);
+  return raw && Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+const failBackoffMs = (): number => envMs('AW_PR_FAIL_BACKOFF_MS', DEFAULT_FAIL_BACKOFF_MS);
+
+interface RecheckIntervals {
+  open: number;
+  closed: number;
+}
+
+function recheckIntervals(options: PrOutcomeOptions): RecheckIntervals {
+  return {
+    open: options.openRecheckMs ?? envMs('AW_PR_OPEN_RECHECK_MS', DEFAULT_OPEN_RECHECK_MS),
+    closed: options.closedRecheckMs ?? envMs('AW_PR_CLOSED_RECHECK_MS', DEFAULT_CLOSED_RECHECK_MS),
+  };
+}
+
+/** A `recheck` PR is due once its state's interval has passed since the last check. */
+function isDue(pr: PrDue, now: number, every: RecheckIntervals): boolean {
+  const checked = Date.parse(pr.checkedAt ?? '');
+  if (Number.isNaN(checked)) return true;
+  const interval = pr.state?.toLowerCase() === 'open' ? every.open : every.closed;
+  return now - checked >= interval;
 }
 
 /** A wrong-typed field fails the parse, which the caller reports like any other `gh` failure. */
@@ -60,12 +86,6 @@ const GhPrSchema = z.looseObject({
 });
 
 type GhPr = z.infer<typeof GhPrSchema>;
-
-interface CheckedRow {
-  pr_ref: string;
-  state: string | null;
-  outcome_checked_at: string | null;
-}
 
 /** The round rule lives in session-graph; this side only hands over what the forge said. */
 function toResolved(pr: GhPr): ResolvedPr {
@@ -82,35 +102,23 @@ function toResolved(pr: GhPr): ResolvedPr {
 }
 
 /**
- * The package re-asks a checked PR until it is merged, which would re-query
- * every closed PR forever. Only open PRs and never-checked PRs can still
- * change, and the least recently checked go first so a long open tail is not
- * starved by the same fifty.
+ * Throttling only; session-graph's `prsNeedingOutcome` already decided which PRs are due and their order.
+ * A PR that failed recently waits out the backoff. A `recheck` PR waits out its state's interval (short for
+ * open, long for closed so a reopen is seen). `unchecked` and `backfill` PRs are asked at once: one answer
+ * settles a backfill PR, since it always carries commit times.
  */
-function selectPrs(
-  graph: WorkspaceGraph,
-  prs: readonly PrKey[],
-  limit: number,
-  now: number,
-): PrKey[] {
+function selectPrs(prs: readonly PrDue[], limit: number, now: number, every: RecheckIntervals): PrDue[] {
   const backoff = failBackoffMs();
-  const rows = graph.db
-    .prepare<[], CheckedRow>('SELECT pr_ref, state, outcome_checked_at FROM pr')
-    .all();
-  const byRef = new Map(rows.map((row) => [row.pr_ref, row]));
-  const checkedAt = (pr: PrKey): string => byRef.get(pr.prRef)?.outcome_checked_at ?? '';
+  const inBackoff = (pr: PrDue): boolean => {
+    const failed = failedAt.get(pr.prRef);
+    return failed !== undefined && now - failed <= backoff;
+  };
   return prs
-    .filter((pr) => {
-      const failed = failedAt.get(pr.prRef);
-      if (failed !== undefined && now - failed <= backoff) return false;
-      const row = byRef.get(pr.prRef);
-      return !row?.outcome_checked_at || row.state?.toLowerCase() === 'open';
-    })
-    .sort((a, b) => checkedAt(a).localeCompare(checkedAt(b)))
+    .filter((pr) => !inBackoff(pr) && (pr.band !== 'recheck' || isDue(pr, now, every)))
     .slice(0, limit);
 }
 
-async function viewPr(run: RunCommand, pr: PrKey): Promise<ResolvedPr> {
+async function viewPr(run: RunCommand, pr: PrDue): Promise<ResolvedPr> {
   const args = ['pr', 'view', String(pr.number), '--repo', pr.repo, '--json', GH_FIELDS];
   const result = await run('gh', args);
   if (result.code !== 0) {
@@ -125,11 +133,12 @@ async function viewPr(run: RunCommand, pr: PrKey): Promise<ResolvedPr> {
   return toResolved(parsed.data);
 }
 
-export function ghPrResolver(graph: WorkspaceGraph, options: PrOutcomeOptions = {}): PrResolver {
+export function ghPrResolver(options: PrOutcomeOptions = {}): PrResolver {
   const run = options.run ?? runCommand;
   const now = options.now ?? Date.now;
-  return async (prs: readonly PrKey[]): Promise<PrResolution> => {
-    const queue = selectPrs(graph, prs, options.limit ?? PR_OUTCOME_BATCH, now());
+  const every = recheckIntervals(options);
+  return async (prs: readonly PrDue[]): Promise<PrResolution> => {
+    const queue = selectPrs(prs, options.limit ?? PR_OUTCOME_BATCH, now(), every);
     options.onPolled?.(queue.length);
     const resolved = new Map<string, ResolvedPr>();
     const worker = async (): Promise<void> => {

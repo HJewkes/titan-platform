@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MergeFacts } from "./conditions.js";
-import { unmetConditions } from "./conditions.js";
+import { CARRYING_KINDS, unmetConditions } from "./conditions.js";
 import { evaluate } from "./evaluate.js";
 import { DEFAULT_TABLE } from "./table.js";
 import type { ConditionKind } from "./vocabulary.js";
@@ -89,6 +89,15 @@ describe("MRG-AU-RC: an automation merge on a carried verdict", () => {
     const facts = patched(patch);
     expect(unmetConditions([condition], { merge: facts })).toEqual([condition]);
     expect(decide(facts)).toMatchObject({ verdict: "gate", ruleId: "MRG-AU" });
+  });
+
+  it.each(["security", "revert", "unknown"])("denies a carried MERGE of kind %s, which CARRYING_KINDS leaves out", (kind) => {
+    expect(CARRYING_KINDS.has(kind)).toBe(false);
+    expect(decide(patched((f) => { f.kind = kind; })).verdict).not.toBe("allow");
+  });
+
+  it.each([...CARRYING_KINDS])("allows a carried MERGE of exported carrying kind %s", (kind) => {
+    expect(decide(patched((f) => { f.kind = kind; }))).toEqual({ verdict: "allow", ruleId: "MRG-AU-RC" });
   });
 
   it.each(["correctness", "feature", "refactor"])("allows a carried MERGE of kind %s", (kind) => {

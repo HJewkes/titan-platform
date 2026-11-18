@@ -27,18 +27,22 @@ describe.skipIf(!existsSync(bin))("merge-lint on this repo's own tree", () => {
   });
 });
 
-// The I9 form: without its allow entry, the ratchet is the only merge path the lint finds outside the list.
-describe.skipIf(!existsSync(bin))("merge-lint with the autoresearch-ratchet entry removed", () => {
+// The I9 form: without its allow entry, an autoresearch writer is the only merge path the lint finds outside the list.
+describe.skipIf(!existsSync(bin)).each([
+  ["autoresearch-ratchet", "ratchet", 2, "the ratchet's push and seed lines"],
+  ["autoresearch-snapshot", "snapshot", 1, "the snapshot's atomic push"],
+])("merge-lint with the %s entry removed", (mergePath, file, count, lines) => {
   const scratch = mkdtempSync(join(tmpdir(), "merge-lint-rules-"));
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
   const rules = JSON.parse(readFileSync(join(root, ".github/merge-lint.json"), "utf-8"));
   const rulesPath = join(scratch, "merge-lint.json");
-  writeFileSync(rulesPath, JSON.stringify({ ...rules, allow: rules.allow.filter((entry) => entry.mergePath !== "autoresearch-ratchet") }));
+  writeFileSync(rulesPath, JSON.stringify({ ...rules, allow: rules.allow.filter((entry) => entry.mergePath !== mergePath) }));
   const result = spawnSync(process.execPath, [bin, "--rules", rulesPath], { cwd: root, encoding: "utf-8", env: { ...process.env, GITHUB_ACTIONS: "" } });
   const unallowed = result.stdout.split("\n").filter((l) => /^merge-lint: warn \S+:\d+:/.test(l));
 
-  it("reports only the ratchet's push and seed lines as unallowed", () => {
-    expect(unallowed).toHaveLength(2);
-    for (const line of unallowed) expect(line).toMatch(/^merge-lint: warn products\/factory\/src\/autoresearch\/ratchet\.ts:\d+: git-refspec-push/);
+  it(`reports only ${lines} as unallowed`, () => {
+    expect(unallowed).toHaveLength(count);
+    const pattern = new RegExp(String.raw`^merge-lint: warn products/factory/src/autoresearch/${file}\.ts:\d+: git-refspec-push`);
+    for (const line of unallowed) expect(line).toMatch(pattern);
   });
 });

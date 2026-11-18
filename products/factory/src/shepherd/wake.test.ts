@@ -18,9 +18,10 @@ import { OWNER } from "../test-support/resolver.js";
 import type { ShepherdDeps, WakeOutcome, WakeRequest } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
+import { shepherdEventMigration } from "./events.js";
 import { spendRepair } from "./repair.js";
 import { MAX_REPAIRS } from "./route-table.js";
-import { lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
+import { holdReviewerMigration, holdSatisfiedMigration, reviewRequestMigration, lineageMigration, shepherdMigration, shepherdStoreRef, sliceMigration, type RegistrationInput, type ShepherdStoreRef } from "./store.js";
 import { TURN_START_MS } from "./turn-check.js";
 import { LOG_BUDGET_BYTES, tailBytes } from "./wake-brief.js";
 import { recordFixFirst } from "./routed.js";
@@ -29,7 +30,7 @@ import { FIX_PROOF_WAKE_STEP, MAX_FIX_PROOF_WAKES } from "./fix-proof-cap.js";
 import { isHeld } from "./held-wake.js";
 import { WAKE_STEPS, wakeRoutes, type ImplementerAgents, type WakeStepResult, type WakeWiring } from "./wake.js";
 import { wakePhase } from "./wake-phase.js";
-import type { Warmth } from "./warmth.js";
+import type { Warmth, WarmthLimits } from "./warmth.js";
 import { WAKE_ASK_MS, WAKE_DEFER_MS } from "./wake-wait.js";
 import { mergeBaseExceptionMigration } from "./merge-base-exception.js";
 import { accountLimitMigration, accountLimitStoreRef, type AccountLimitStoreRef } from "./account-store.js";
@@ -92,6 +93,8 @@ interface Scene {
   rows?: AgentRow[];
   registered?: RegistrationInput | null;
   warmth?: Record<string, Warmth>;
+  /** Lets a transcript stay warm across hours of deferral, so the resume is still the choice. */
+  limits?: WarmthLimits;
   agentChatBin?: string;
   noAgents?: boolean;
   checkoutFor?: (repo: string) => string | undefined;
@@ -107,6 +110,7 @@ interface Scene {
   exitNotice?: ExitNoticePorts;
 }
 
+const ALWAYS_WARM: WarmthLimits = { warmMinutes: 10_000, maxFill: 1_000_000 };
 const warmAt = (minutesAgo: number, fill = 50_000): Warmth => ({ lastEventAt: T0 - minutesAgo * MINUTE, fill });
 
 /** The sh-wake-implementer step run alone over a fake GitHub and a fake roster. */
@@ -121,7 +125,7 @@ function wakeStep(scene: Scene = {}) {
   const store = boundStore(scene.registered === null ? undefined : (scene.registered ?? registration));
   const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock.now, sleep, pollMs: 1_000, agentChatBin: scene.agentChatBin ?? "/opt/bin/agent-chat", ...(scene.agentChatConfigDir !== undefined && { agentChatConfigDir: scene.agentChatConfigDir }), ...(scene.successorAccounts && { successorAccounts: () => scene.successorAccounts! }), ...(scene.accountLimits && { accountLimits: scene.accountLimits }), ...(scene.advisory && { advisory: scene.advisory }), ...(scene.exitNotice && { exitNotice: scene.exitNotice }) };
   const turnSince = async () => scene.turnSince?.(agents) ?? true;
-  const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
+  const wiring: WakeWiring = { turnSince, readWarmth: async (path) => scene.warmth?.[path], ...(scene.limits && { limits: scene.limits }), checkoutFor: scene.checkoutFor ?? (() => MAIN_CHECKOUT), ...(scene.home !== undefined && { home: scene.home }), ...(!scene.noAgents && { agents }) };
   const route = wakeRoutes(deps, wiring).find((candidate) => candidate.match === "sh-wake-implementer")!;
   const run = async (kind: WakeRequest["kind"], payload: unknown = {}, fixFirst?: number) => {
     const input = { kind, repo: REPO, pr: 1, round: 0, headSha: H1, payload, runId: "run-1", ...(fixFirst !== undefined && { fixFirst }) };
@@ -407,6 +411,24 @@ describe("sh-wake-implementer: who is woken", () => {
     expect(agents.asked).toEqual([]);
   });
 
+  it("asks nobody when the implementer exited and a new head was pushed since the wake was requested (TP-5171)", async () => {
+    const { agents, run } = wakeStep({ rows: [row("impl-a")], pr: { headSha: H2 } });
+
+    const { result } = await run("ci-red");
+
+    expect(result).toMatchObject({ kind: "woken", agent: "impl-a" });
+    expect(agents.asked).toEqual([]);
+  });
+
+  it("advances with the registered implementer when its lineage is gone from the roster and a new head was pushed (TP-5171)", async () => {
+    const { agents, run } = wakeStep({ rows: [], pr: { headSha: H2 } });
+
+    const { result } = await run("ci-red");
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "live" });
+    expect(agents.asked).toEqual([]);
+  });
+
   /** Read 1 is the wake's own PR read; read 2 is the first head check, which fails. */
   function unreadableOnce(scene: ReturnType<typeof wakeStep>) {
     scene.fake.onGetPr = (_pr, reads) => {
@@ -607,16 +629,26 @@ describe("sh-wake-implementer: when the broker cannot act", () => {
     expect(scene.clock.now - T0).toBeLessThan(WAKE_ASK_MS + 2_000);
   });
 
-  it("fails the wake within 30 minutes when the spawn gate defers every resume, naming the gate but not its words", async () => {
-    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) } });
+  it("fails the wake within 180 minutes when the spawn gate defers every resume, naming the gate but not its words", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, limits: ALWAYS_WARM });
     scene.agents.resume = async () => Promise.reject(new SpawnDeferred(LEAKY_MESSAGE));
 
     const { result } = await scene.run("ci-red");
 
-    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's resume took no effect within 30 minutes: the spawn gate deferred it" });
+    expect(result).toEqual({ kind: "unhandled", reason: "impl-a's resume took no effect within 180 minutes: the spawn gate deferred it" });
     expect(scene.clock.now - T0).toBeGreaterThanOrEqual(WAKE_DEFER_MS);
     expect(scene.clock.now - T0).toBeLessThan(WAKE_DEFER_MS + 2_000);
     expectNoLeak(result);
+  });
+
+  it("wakes the fixer when the spawn gate admits it after deferring every resume for 2 hours", async () => {
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, limits: ALWAYS_WARM });
+    const resume = scene.agents.resume;
+    scene.agents.resume = async (...args) => (scene.clock.now - T0 < 120 * MINUTE ? Promise.reject(new SpawnDeferred(LEAKY_MESSAGE)) : resume(...args));
+
+    const { result } = await scene.run("ci-red");
+
+    expect(result).toEqual({ kind: "woken", agent: "impl-a", mode: "resume", sessionId: "s-impl-a", askedAt: expect.any(Number) });
   });
 
   it("resumes a finished implementer of another account with the CI failure once the spawn gate admits it after 8 minutes of low memory", async () => {
@@ -771,12 +803,12 @@ describe("sh-wake-implementer: a wake no agent took tells the lineage's spawner"
 
   it("tells the spawner of a finished implementer the gate deferred past its deadline why, and whom to resume", async () => {
     const { sent, ports } = noticePorts();
-    const scene = wakeStep({ rows: [row("impl-a", { spawnedBy: "demo-coord" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, exitNotice: ports });
+    const scene = wakeStep({ rows: [row("impl-a", { spawnedBy: "demo-coord" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, limits: ALWAYS_WARM, exitNotice: ports });
     scene.agents.resume = deferred;
 
     const { result } = await scene.run("ci-red");
 
-    const reason = "impl-a's resume took no effect within 30 minutes: the spawn gate deferred it";
+    const reason = "impl-a's resume took no effect within 180 minutes: the spawn gate deferred it";
     expect(result).toEqual({ kind: "unhandled", reason, notice: { sent: true, seat: "demo-coord", detail: "told demo-coord" } });
     expect(sent.map((notice) => notice.seat)).toEqual(["demo-coord"]);
     expect(sent[0]!.text).toContain(`no agent took the ci-red wake, so nothing is fixing it: ${reason}.`);
@@ -786,7 +818,7 @@ describe("sh-wake-implementer: a wake no agent took tells the lineage's spawner"
 
   it("records that no notice went out when only the human spawned the lineage", async () => {
     const { sent, ports } = noticePorts();
-    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, exitNotice: ports });
+    const scene = wakeStep({ warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, limits: ALWAYS_WARM, exitNotice: ports });
     scene.agents.resume = deferred;
 
     const { result } = await scene.run("ci-red");
@@ -797,7 +829,7 @@ describe("sh-wake-implementer: a wake no agent took tells the lineage's spawner"
 
   it("records a failed notice by its error class, and the step still succeeds", async () => {
     const ports: ExitNoticePorts = { seatFor: () => undefined, lastReport: async () => undefined, send: async () => Promise.reject(new DispatchError(LEAKY_MESSAGE)) };
-    const scene = wakeStep({ rows: [row("impl-a", { spawnedBy: "demo-coord" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, exitNotice: ports });
+    const scene = wakeStep({ rows: [row("impl-a", { spawnedBy: "demo-coord" })], warmth: { "/transcripts/impl-a.jsonl": warmAt(1) }, limits: ALWAYS_WARM, exitNotice: ports });
     scene.agents.resume = deferred;
 
     const { outcome, result } = await scene.run("ci-red");
@@ -996,8 +1028,7 @@ describe("wakePhase", () => {
   const hosts: FactoryHost[] = [];
   afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1), kind: WakeRequest["kind"] = "review") {
-    const store = shepherdStoreRef();
+  async function runPhase(agents: ImplementerAgents, fake: FakeGitHub, readWarmth: (path: string) => Promise<Warmth | undefined> = async () => warmAt(1), kind: WakeRequest["kind"] = "review", store = shepherdStoreRef()) {
     let clock = T0;
     const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
@@ -1007,7 +1038,7 @@ describe("wakePhase", () => {
       if (kind === "review") await recordFixFirst(ctx, { repo: REPO, pr: 1, headSha: H1 });
       outcomes.push(await wakePhase(ctx, request));
     };
-    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8)], bind: store.bind } });
+    const routes = Object.assign([...wakeRoutes(deps, { agents, readWarmth, checkoutFor: () => MAIN_CHECKOUT })], { database: { extraMigrations: [shepherdMigration(4), lineageMigration(5), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), reviewRequestMigration(18)], bind: store.bind } });
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [defineWorkflow({ name: "wake-test", steps: WAKE_STEPS, run })], routes, gatePollMs: 5 });
     hosts.push(host);
     const runId = host.runtime.start("wake-test");
@@ -1029,6 +1060,21 @@ describe("wakePhase", () => {
 
     expect(outcome).toEqual({ kind: "woken", agent: "impl-a", sessionId: "s-impl-a" });
     expect(stepIds).toEqual(["sh-wake-fix-first", "sh-wake-implementer:0", "sh-await-new-head:0"]);
+  });
+
+  it("ends the wait as a same-head wake when shepherd review asks at the waited head", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    fake.addPr({ headSha: H1 });
+    const agents = fakeAgents([row("impl-a")]);
+    const resume = agents.resume;
+    agents.resume = async (...args) => (await resume(...args), void (agents.rows[0]!.presence = "live"));
+    const store = shepherdStoreRef();
+    let reads = 0;
+    fake.onGetPr = () => void (agents.asked.length > 0 && ++reads === 6 && store.get().requestReview(store.get().byPr(REPO, 1)!.runId, H1));
+
+    const { outcome } = await runPhase(agents, fake, async () => ({ lastEventAt: T0 + 1, fill: 1 }), "review", store);
+
+    expect(outcome).toEqual({ kind: "woken", agent: "impl-a", sessionId: "s-impl-a", sameHead: true });
   });
 
   it("is unhandled with the exit named when the resumed agent exits and the head is unchanged, with no second ask", async () => {
@@ -1195,13 +1241,13 @@ describe("a held wake and the repair budget", () => {
     let refusals = 0;
     agents.spawn = async () => Promise.reject(new DispatchError(`refusal ${++refusals}`));
     let pushed = 0;
-    fake.onGetPr = (pr) => void (refusals > pushed && (pr.headSha = fakeSha(`by-hand-${++pushed}`)));
     const store = shepherdStoreRef();
     let clock = T0;
     const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "/opt/bin/agent-chat" };
     const outcomes: WakeOutcome[] = [];
     const run = async (ctx: Parameters<typeof wakePhase>[0]) => {
       for (let round = 0; ; round++) {
+        if (refusals > pushed) fake.pushHead(1, fakeSha(`by-hand-${++pushed}`));
         const headSha = fake.pr(1).headSha;
         if (!(await spendRepair(ctx, { repo: REPO, pr: 1 }, "review", headSha))) return;
         outcomes.push(await wakePhase(ctx, { kind: "review", repo: REPO, pr: 1, round, headSha, payload: { kind: "FIX_FIRST", headSha, text: "fix it" } }));

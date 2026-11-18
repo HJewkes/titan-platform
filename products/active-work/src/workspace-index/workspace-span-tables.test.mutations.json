@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "workspace fts strands rows again",
+      "file": "products/active-work/src/workspace-index/schema.ts",
+      "find": "export const WORKSPACE_SPAN_TABLES = { name: 'workspace', contentlessDelete: true } as const;",
+      "replace": "export const WORKSPACE_SPAN_TABLES = { name: 'workspace', contentlessDelete: false } as const;",
+      "kills": [
+        "migration 1003: workspace span tables upgrades a 1002 graph to contentless-delete workspace tables and keeps every existing row"
+      ]
+    },
+    {
+      "name": "migration 1003 left off the chain",
+      "file": "products/active-work/src/workspace-index/schema.ts",
+      "find": "  WORKSPACE_SPANS_MIGRATION,\n  PLAN_MIGRATION,\n  CACHE_BLOB_MIGRATION,\n];",
+      "replace": "  PLAN_MIGRATION,\n  CACHE_BLOB_MIGRATION,\n];",
+      "kills": [
+        "migration 1003: workspace span tables upgrades a 1002 graph to contentless-delete workspace tables and keeps every existing row"
+      ]
+    }
+  ]
+}

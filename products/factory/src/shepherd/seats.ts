@@ -41,7 +41,7 @@ const VisualPathsSchema = z
 const VisualBaselinesSchema = z.object({ check: z.string().min(1, "name the check that diffs the baselines"), paths: VisualPathsSchema });
 
 /** A path as written (slashes tidied, case kept, for spawn cwds) and its one comparison key. */
-export interface RepoPath {
+interface RepoPath {
   written: string;
   key: string;
 }
@@ -126,7 +126,7 @@ export interface SeatBook {
 
 export type SeatLookup = { kind: "seat"; seat: Seat } | { kind: "none" } | { kind: "denied"; reason: string };
 
-export interface SeatSources {
+interface SeatSources {
   seatsDir?: string;
   charterPath?: string;
   /** Charter hard-stop id to the `owner/name` remotes it forbids, e.g. `dotfiles-merge`. */
@@ -139,7 +139,7 @@ export class SeatBookInvalid extends Error {
   override readonly name = "SeatBookInvalid";
 }
 
-export function frontmatter(text: string): unknown {
+function frontmatter(text: string): unknown {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   return match ? parse(match[1]!) : undefined;
 }

@@ -320,9 +320,8 @@ describe("the inbox page, acting from the console", () => {
     expect(within(await screen.findByTestId("inbox-row-gate-1")).getByText("Approve merge")).toBeTruthy();
     expect(within(screen.getByTestId("inbox-row-held-1")).getByText("Release hold")).toBeTruthy();
     const ask = screen.getByTestId("inbox-row-ask-1");
-    expect(within(ask).queryByText("Answer")).toBeNull();
-    fireEvent.click(within(ask).getByText("Run on terminal"));
-    expect(within(ask).getByText("Answer from the console comes later; run it on the terminal for now.")).toBeTruthy();
+    expect(within(ask).getByText("Answer")).toBeTruthy();
+    expect(within(ask).queryByText("Run on terminal")).toBeNull();
   });
 
   it("labels an sh-sent-back tap as a wait for a new head, never as a merge", async () => {
@@ -604,5 +603,36 @@ describe("the round age nudge", () => {
     renderInbox(inboxAnswer());
     await screen.findByTestId("inbox-row-gate-1");
     expect(screen.queryByTestId("inbox-nudges")).toBeNull();
+  });
+});
+
+describe("the inbox page, who asked and what an answer unblocks", () => {
+  it("shows the asker, the initiative link and the unblocksNow line, and the initiative opens its page", async () => {
+    const row = item("who-1", { asker: "fixture-agent", initiative: "demo-init", unblocksNow: "Unblocks the demo lane" });
+    renderInbox(inboxAnswer({ items: [row] }));
+    const card = await screen.findByTestId("inbox-row-who-1");
+    expect(within(card).getByText("Asked by fixture-agent")).toBeTruthy();
+    expect(within(card).getByText("Unblocks now: Unblocks the demo lane")).toBeTruthy();
+    fireEvent.click(within(card).getByText("demo-init"));
+    expect(window.location.hash).toBe("#/initiatives/demo-init");
+  });
+
+  it("falls back to the seat when there is no asker", async () => {
+    renderInbox(inboxAnswer({ items: [item("who-2", { seat: "fixture-seat" })] }));
+    expect(within(await screen.findByTestId("inbox-row-who-2")).getByText("Asked by fixture-seat")).toBeTruthy();
+  });
+
+  it("shows no empty labels on an item that carries none of them", async () => {
+    renderInbox(inboxAnswer({ items: [item("who-3", {})] }));
+    const card = await screen.findByTestId("inbox-row-who-3");
+    expect(within(card).queryByText(/Asked by/)).toBeNull();
+    expect(within(card).queryByText(/Unblocks now/)).toBeNull();
+    expect(within(card).queryByText(/Blocks:/)).toBeNull();
+  });
+
+  it("shows what a hard-blocked item blocks", async () => {
+    const row = item("who-4", { blocker: { since: ago(HOUR), blocks: "lane console, TP-6158" } });
+    renderInbox(inboxAnswer({ items: [row] }));
+    expect(within(await screen.findByTestId("inbox-row-who-4")).getByText("Blocks: lane console, TP-6158")).toBeTruthy();
   });
 });

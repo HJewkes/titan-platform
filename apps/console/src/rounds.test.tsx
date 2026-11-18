@@ -52,13 +52,29 @@ function choice(questionId: string, label: string): HTMLElement {
 const isChecked = (control: HTMLElement): boolean => control.getAttribute("aria-checked") === "true";
 
 describe("the rounds list", () => {
-  it("lists open rounds first and the sent round after them", async () => {
+  it("shows only open rows on load, with Sent and Withdrawn folded behind their counts", async () => {
     await renderConsole("#/rounds");
     await screen.findByText("Open rounds");
     const rows = screen.getAllByTestId(/^round-row-/).map((row) => row.getAttribute("data-testid"));
-    expect(rows).toHaveLength(7);
-    expect(rows.at(-1)).toBe("round-row-kiln-schedule-r1");
-    expect(screen.getByText("Sent rounds")).toBeTruthy();
+    expect(rows).toHaveLength(6);
+    expect(rows).not.toContain("round-row-kiln-schedule-r1");
+    expect(screen.getByText("Sent rounds (1)")).toBeTruthy();
+    expect(screen.getByText("Withdrawn rounds (0)")).toBeTruthy();
+  });
+
+  it("opens the sent group on a press to show its rows after the open ones", async () => {
+    await renderConsole("#/rounds");
+    fireEvent.click(await screen.findByText("Sent rounds (1)"));
+    const sent = await within(screen.getByTestId("rounds-sent")).findByTestId("round-row-kiln-schedule-r1");
+    expect(sent).toBeTruthy();
+    expect(screen.getAllByTestId(/^round-row-/).at(-1)).toBe(sent);
+  });
+
+  it("keeps every group expanded in a set view, so a sent round shows without a press", async () => {
+    await renderConsole("#/rounds?set=kiln-schedule");
+    await screen.findByText("Open rounds");
+    expect(within(screen.getByTestId("rounds-sent")).getByTestId("round-row-kiln-schedule-r1")).toBeTruthy();
+    expect(within(screen.getByTestId("rounds-open")).getByTestId("round-row-kiln-schedule-r2")).toBeTruthy();
   });
 
   it("folds invalid rounds into their own group, closed until pressed, each reason cut to one line", async () => {
@@ -72,7 +88,8 @@ describe("the rounds list", () => {
 
   it("shows an empty group as one muted line, not an empty-state heading", async () => {
     await renderConsole("#/rounds");
-    const empty = await within(await screen.findByTestId("rounds-withdrawn")).findByText("No withdrawn rounds");
+    fireEvent.click(await screen.findByText("Withdrawn rounds (0)"));
+    const empty = await within(screen.getByTestId("rounds-withdrawn")).findByText("No withdrawn rounds");
     expect(empty.className).toContain("text-text-secondary");
     expect(empty.className).not.toContain("text-lg");
   });
@@ -108,7 +125,8 @@ describe("the rounds list", () => {
     const card = await screen.findByTestId("round-card-kiln-schedule-r2");
 
     expect(within(card).getByText("unbound: no merge tap")).toBeTruthy();
-    expect(within(screen.getByTestId("round-card-kiln-schedule-r1")).getByText("questions")).toBeTruthy();
+    fireEvent.click(screen.getByText("Sent rounds (1)"));
+    expect(within(await screen.findByTestId("round-card-kiln-schedule-r1")).getByText("questions")).toBeTruthy();
   });
 
   it("keeps the four-column table for wide screens", async () => {

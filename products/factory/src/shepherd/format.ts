@@ -55,6 +55,9 @@ const FORMATTERS: Formatters = {
   // A calibration read feeds a threshold recommendation, so it prints JSON with or without --json.
   "shepherd.visual-delta": (report) => `${JSON.stringify(report, null, 2)}\n`,
   "shepherd.visual-week": (batch) => `${JSON.stringify(batch, null, 2)}\n`,
+  "shepherd.visual-week-feedback": (sheet) => `${JSON.stringify(sheet, null, 2)}\n`,
+  "shepherd.visual-feedback-notes": (result) => `${JSON.stringify(result, null, 2)}\n`,
+  "shepherd.ownerMeter": (meter) => `${JSON.stringify(meter, null, 2)}\n`,
   "shepherd.brief": (output) => (output.format === "md" ? output.markdown : `${JSON.stringify({ section: output.section, question: output.question }, null, 2)}\n`),
 };
 
@@ -207,6 +210,7 @@ function entryLine(entry: TimelineEntry): string {
   if (entry.kind === "ci") return `  ci ${entry.stepId} ${entry.headSha.slice(0, 7)} ${entry.conclusion}`;
   if (entry.kind === "gate") return `  gate ${entry.gateId} ${entry.status}${entry.resolvedBy ? ` by ${entry.resolvedBy}` : ""}`;
   if (entry.kind === "event") return `  ${entry.event} ${entry.at}${entry.reason ? `: ${entry.reason}` : ""}${entry.actor ? ` (by ${entry.actor})` : ""}`;
+  if (entry.kind === "decision") return `  decision ${entry.rule} at ${entry.head.slice(0, 7)} by ${entry.reviewer} (${entry.profile})`;
   if (entry.kind === "verdict") return `  verdict ${entry.stepId} ${entry.verdict}${entry.reviewer ? ` by ${entry.reviewer}` : ""}${entry.note ? ` (${entry.note})` : ""}`;
   return `  ${entry.kind} ${entry.stepId}`;
 }

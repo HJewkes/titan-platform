@@ -3,18 +3,19 @@ import { inProcessCaller, type JsonEnvelope } from "@titan-design/registry";
 import type { Command } from "commander";
 import { parsePort } from "../cli-options.js";
 import type { FactoryHost, FactoryRoutes } from "../host.js";
+import { callerForShell } from "../caller.js";
 import { createFactoryRegistry, factoryContext } from "../registry.js";
 import { FACTORY_PORT } from "../serve.js";
 import { parseSinceOption, runDigestVerb, type DigestFlags, type DigestIo, type FactoryCall } from "./command.js";
 
-export interface DigestVerbs {
+interface DigestVerbs {
   io: DigestIo;
   withHost: (fn: (host: FactoryHost, routes: FactoryRoutes) => Promise<number> | number) => Promise<void>;
   setExit: (code: number) => void;
   dbPath: () => string;
 }
 
-export type FactoryRpc = (port: number, name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
+type FactoryRpc = (port: number, name: string, args: unknown) => Promise<JsonEnvelope<unknown>>;
 
 /** Reads Shepherd and the gates from titan-factory serve when one answers, else from the database here. */
 export function registerDigest(program: Command, verbs: DigestVerbs, rpc: FactoryRpc): void {
@@ -31,7 +32,7 @@ export function registerDigest(program: Command, verbs: DigestVerbs, rpc: Factor
       const flags: DigestFlags = { sinceMinutes: opts.since, dryRun: opts.dryRun, full: opts.full };
       if (await probeHealth(opts.port)) return verbs.setExit(await runDigestVerb(verbs.io, (name, args) => rpc(opts.port, name, args), flags, { dbPath: verbs.dbPath() }));
       await verbs.withHost((host, routes) => {
-        const call: FactoryCall = inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes));
+        const call: FactoryCall = inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes, callerForShell(verbs.io.env)));
         return runDigestVerb(verbs.io, call, flags, { dbPath: verbs.dbPath() });
       });
     });

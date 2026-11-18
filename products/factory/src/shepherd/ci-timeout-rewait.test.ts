@@ -1,4 +1,5 @@
 import { fakeGitHub, githubPort, successRun } from "@titan-design/github";
+import { WorkflowRunStore } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "../host.js";
 import { H1, REPO } from "../test-support/land.js";
@@ -78,5 +79,14 @@ describe("a Shepherd run whose ci-wait times out while GitHub has not settled th
       `attempt 2 of ${CI_WAIT_ATTEMPTS}, waiting again`,
       `attempt 3 of ${CI_WAIT_ATTEMPTS}, attempts spent, the run fails`,
     ]);
+  });
+
+  it("ci-wait timeout run records error class", async () => {
+    const w = world(Number.POSITIVE_INFINITY);
+
+    const run = await w.host.runtime.wait(w.runId);
+
+    expect(run.status).toBe("failed");
+    expect(new WorkflowRunStore(w.host.db).get(w.runId)?.errorClass).toBe("ci-timeout");
   });
 });

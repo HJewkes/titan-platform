@@ -1,5 +1,12 @@
 # @titan-design/embed
 
+## 0.2.1
+
+### Patch Changes
+
+- d279098: Narrow the Ollama response and the optional transformers import with type guards instead of assertions. A response whose embeddings are not number arrays now fails with the embedding-count error.
+- aef50d8: Embed exports `loadTransformersPipeline(missingMessage)`, the one place that imports the optional `@huggingface/transformers` peer. `LocalEmbedder` and the retrieval cross-encoder reranker both load through it and keep their own missing-runtime messages.
+
 ## 0.2.0
 
 ### Minor Changes

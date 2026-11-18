@@ -53,13 +53,24 @@ export const NoteReadIfSchema = z
   })
   .refine((value) => !/[\r\n]/.test(value), { message: 'read_if must be a single line' });
 
+const ISO_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+const isoTimestamp = z
+  .string()
+  .refine((value) => ISO_TIMESTAMP_REGEX.test(value) && !Number.isNaN(Date.parse(value)), {
+    message: 'Must be a full ISO 8601 timestamp with a UTC offset',
+  });
+
 export const NoteFrontmatterSchema = z.object({
   kind: NoteKindSchema,
   title: z.string().min(1),
   created: isoDate,
+  // Stamped by note.add; absent on notes filed before TP-6217.
+  created_at: isoTimestamp.optional(),
+  session: z.string().min(1).optional(),
+  agent: z.string().min(1).optional(),
   tags: z.array(z.string().min(1)).optional(),
   read_if: NoteReadIfSchema.optional(),
 });
 
-export type NoteKind = z.infer<typeof NoteKindSchema>;
 export type NoteFrontmatter = z.infer<typeof NoteFrontmatterSchema>;

@@ -1,5 +1,5 @@
 import { GhError } from "./exec.js";
-import type { RequiredChecks } from "./port.js";
+import type { RequiredChecks } from "./port-types.js";
 import type { Rest } from "./rest.js";
 
 export interface GhRule {

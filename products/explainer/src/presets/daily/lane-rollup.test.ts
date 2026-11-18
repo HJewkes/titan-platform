@@ -64,4 +64,18 @@ describe("daily lane rollups", () => {
     expect(byId.get("day/rollup")?.title).toBe("6 merged across 1 repo");
     expect(laned.find((pr) => pr.id.includes("#6/"))).toMatchObject({ lane: "shop", role: "side-quest" });
   });
+
+  it("writes a zero-merge rollup with the goal and the next tasks for a lane that merged nothing", () => {
+    const prs = [mergedPr(1, "Desk one (WS-5)", "agent-chat/dk-a", ["apps/desk"], 5)];
+    const tasks = [task("WS-5", [], IN_DAY), task("WS-7", ["studio"], undefined, { priority: 10 })];
+
+    const { rollups, coverage } = laneRollups(prs, tasks, widgetLanes(), WINDOW);
+    const byId = new Map(rollups.map((item) => [item.id, item]));
+
+    expect(byId.get("lane/studio/rollup")).toMatchObject({ title: "Studio: 0 merged, 0 side quests, 0 goals moved", summary: "nothing merged; next: WS-7", lane: "studio" });
+    expect(byId.get("goal/studio/launch")?.summary).toBe("nothing merged toward it");
+    expect(coverage.lanes.find((lane) => lane.id === "studio")).toEqual({ id: "studio", label: "Studio", rollup: "lane/studio/rollup", merged: 0, named: [], counted: 0 });
+    expect(coverage.prs.some((entry) => entry.lane === "studio")).toBe(false);
+    expect(byId.get("day/rollup")?.summary).toBe("1 lane moved");
+  });
 });

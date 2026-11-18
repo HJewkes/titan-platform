@@ -15,6 +15,7 @@ const ArgsSchema = z.object({
   all_initiatives: z.boolean().optional(),
   type: SourceTypeSchema.optional(),
   nested: z.boolean().optional(),
+  limit: z.number().int().positive().optional(),
 });
 
 const SourceEntrySchema = z.object({
@@ -49,6 +50,9 @@ const ResultSchema = z.object({
   drift: z.array(DriftEntrySchema),
   // False when the charter is unreadable; every source is then flagged human_only.
   human_only_known: z.boolean(),
+  // Present only with `limit`: sources matching the filters before the cap, and whether it dropped any.
+  total: z.number().int().optional(),
+  truncated: z.boolean().optional(),
 });
 
 type Args = z.infer<typeof ArgsSchema>;
@@ -104,6 +108,25 @@ async function driftForSlug(slug: string, humanOnly: boolean): Promise<DriftEntr
   return findings.map((finding) => ({ path: finding.message, slug, human_only: humanOnly }));
 }
 
+/** Without a limit the order and shape are untouched; with one, newest first (null mtimes last). */
+function capNewest(
+  sources: Entry[],
+  limit: number | undefined,
+): Pick<Result, 'sources' | 'total' | 'truncated'> {
+  if (limit === undefined) return { sources };
+  const newestFirst = [...sources].sort((a, b) => {
+    if (a.mtime === b.mtime) return 0;
+    if (a.mtime === null) return 1;
+    if (b.mtime === null) return -1;
+    return a.mtime < b.mtime ? 1 : -1;
+  });
+  return {
+    sources: newestFirst.slice(0, limit),
+    total: sources.length,
+    truncated: sources.length > limit,
+  };
+}
+
 export default defineCommand<Args, Result>({
   name: 'source.list',
   description:
@@ -125,13 +148,17 @@ export default defineCommand<Args, Result>({
         long: '--nested',
         description: 'Also list files under sources/<dir>/ (not notes/) by path',
       },
+      limit: {
+        long: '--limit',
+        description: 'Return only the N newest sources by mtime, with total and truncated',
+      },
     },
     usage:
-      'active-work source list <slug>|--all-initiatives [--type pr|deepdive|session|pointer] [--nested]',
+      'active-work source list <slug>|--all-initiatives [--type pr|deepdive|session|pointer] [--nested] [--limit N]',
   },
   async run(args, ctx) {
     const [slugs, humanOnly] = await Promise.all([
-      resolveListSlugs('source.list', args),
+      resolveListSlugs('source.list', args, ctx),
       humanOnlyPredicate(getActiveRoot(), ctx.warnings),
     ]);
     const nested = args.nested ?? false;
@@ -139,9 +166,10 @@ export default defineCommand<Args, Result>({
       Promise.all(slugs.map((slug) => entriesForSlug(slug, nested, humanOnly.isHumanOnly(slug)))),
       Promise.all(slugs.map((slug) => driftForSlug(slug, humanOnly.isHumanOnly(slug)))),
     ]);
-    const sources = entries.flat();
+    const all = entries.flat();
+    const matching = args.type ? all.filter((entry) => entry.type === args.type) : all;
     return {
-      sources: args.type ? sources.filter((entry) => entry.type === args.type) : sources,
+      ...capNewest(matching, args.limit),
       drift: drift.flat(),
       human_only_known: humanOnly.known,
     };

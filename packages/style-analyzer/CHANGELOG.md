@@ -1,5 +1,23 @@
 # @titan-design/style-analyzer
 
+## 0.1.7
+
+### Patch Changes
+
+- 6f5dbe2: The control-flow, documentation, error-handling, naming and structure extractors take the function-declaration node kind from `@titan-design/code-parser/node-kinds` instead of restating the string. No behaviour change.
+- 215623a: Narrow observation categories with a runtime guard instead of casts, and drop two redundant conditions.
+- 1dbfbab: Remove the dead bare-category fallback in `lookupStability`, and make `detectLanguages` stop reporting `typescript` for a profile with no naming or structure evidence.
+- d905ebb: The complexity extractor takes its cyclomatic and nesting walkers and node-type tables from `@titan-design/code-parser` instead of a local copy. Observation values are unchanged.
+- 709ab1e: Type language parameters as unions (`FilterLanguage`, `GrammarLanguage`) and derive `SchemaKind` from zod's `def.type` (TP-1298).
+- Updated dependencies [c89daa1]
+- Updated dependencies [1dbfbab]
+- Updated dependencies [d905ebb]
+- Updated dependencies [709ab1e]
+- Updated dependencies [00099bd]
+- Updated dependencies [565913d]
+  - @titan-design/code-parser@0.3.0
+  - @titan-design/style-profile@0.4.2
+
 ## 0.1.6
 
 ### Patch Changes

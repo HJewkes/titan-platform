@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a pre-group frozen week reads as drift",
+      "file": "products/session-miner/src/ticket-scorecard/freeze.ts",
+      "find": "  return text === content || text === weekFile(stored, week, false);",
+      "replace": "  return text === content;",
+      "kills": ["ticket-scorecard run a week frozen before the factory health group existed does not read as drift"]
+    },
+    {
+      "name": "spawn refusals are not read",
+      "file": "products/session-miner/src/ticket-scorecard/read-health.ts",
+      "find": "    spawnRefusalAts: readSpawnRefusalAts(s.events),",
+      "replace": "    spawnRefusalAts: [],",
+      "kills": ["ticket-scorecard run the frozen week file carries the factory health group read from the stores"]
+    },
+    {
+      "name": "the spawn's model is dropped",
+      "file": "products/session-miner/src/ticket-scorecard/read-events.ts",
+      "find": "    const model = meta.model ?? null;",
+      "replace": "    const model = null;",
+      "kills": ["ticket-scorecard run the frozen week file carries the factory health group read from the stores"]
+    }
+  ]
+}

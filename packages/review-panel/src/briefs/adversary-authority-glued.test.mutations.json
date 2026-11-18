@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the Authority label takes CI-policy's identifier-glue exemption again",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "if (!foldLabelledLine(raw).startsWith(AUTHORITY_LABEL)) return undefined;",
+      "replace": "if (labelledLineRest(raw, AUTHORITY_HEADING, WIDENED) === undefined) return undefined;",
+      "kills": [
+        "authorityLine with a glued Authority label a hyphen-glued widened label reads widened",
+        "authorityLine with a glued Authority label a glued label next to Authority: unchanged reads malformed, never unchanged",
+        "authorityLine with a glued Authority label a code-name lead reads malformed"
+      ]
+    },
+    {
+      "name": "the value after the colon is not read for widened",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "if (rest === WIDENED || valueAfterColon(raw) === WIDENED) return WIDENED;",
+      "replace": "if (rest === WIDENED) return WIDENED;",
+      "kills": [
+        "authorityLine with a glued Authority label a hyphen-glued widened label reads widened",
+        "authorityLine with a glued Authority label an underscore-glued widened label reads widened"
+      ]
+    }
+  ]
+}

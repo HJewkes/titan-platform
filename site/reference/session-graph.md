@@ -201,6 +201,30 @@ passes, and `summary.reviews` reports `resolved` (this pass) and `unresolved` (s
 checked. Once the resolver has answered for a PR, its `merged_at` is the forge's and a later
 pass never overwrites it with a sighting time.
 
+## Sessions that touched files
+
+`sessionsTouchingFiles(graph, { files, since, limit })` lists the sessions with a live
+`touched` edge to any of the files, newest first, capped at `limit` (default 10). Each file is
+a repo-relative `path`, with an optional `repo`. With no repo, the path matches in every repo.
+The lookup goes through the `file` table, so the edge scan is limited to the matching refs.
+
+```ts
+import { openSessionGraph, sessionsTouchingFiles } from "@titan-design/session-graph";
+
+const graph = openSessionGraph(graphPath, { readonly: true });
+const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
+const rows = sessionsTouchingFiles(graph, { files: [{ path: "src/app.ts" }], since, limit: 4 });
+// [{ sessionId, touchedAt, cwd, title, fileRefs, tasks: [{ initiative, edges }] }]
+```
+
+- **Touch time.** An edge keeps a session's *first* touch of a file, so `touchedAt` is the
+  latest of those first touches across the named files. A session that first touched a file
+  20 days ago and came back to it yesterday still dates from 20 days ago.
+- **Visibility is the caller's job.** Each row carries `cwd` and the initiatives its `ran`
+  task edges name, so a product can decide what a reader may see. The package filters
+  nothing. active-work's `context.brief` maps each row to an initiative and keeps only
+  initiatives its agent view shows.
+
 ## Tables
 
 **Kit tables:** `transcript` (watermark), `edge` (bi-temporal, `session:… touched file:…`),
@@ -376,7 +400,7 @@ requested session it examined, with `taskIds` empty when nothing links; a sessio
 out keeps a null `task_source` and is offered again on every pass. The
 upsert updates only the columns it names, so a later column keeps its value. Each linked id
 projects a `task` row and a `session ran task` edge with `attrs = { via: "origin", source }`
-and a confidence of 1.0 for `name` or `name-over-brief`, 0.9 for `brief-anchor` and 0.6 for
+and a confidence of 1.0 for `name`, `name-over-brief` or `spawn-meta`, 0.9 for `brief-anchor` and 0.6 for
 `brief-paragraph`. Only rows resolved in the current pass are projected. When a
 re-resolution drops an id, only that origin-made edge expires. A transcript's `ran` edge
 carries no `via`, and when a transcript claims an edge the origin made first, the edge is

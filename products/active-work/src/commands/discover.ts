@@ -38,11 +38,11 @@ export default defineCommand({
     options: {
       github_repos: {
         long: '--github-repos',
-        description: 'Comma-separated owner/repo list for gh PR discovery',
+        description: 'owner/repo for gh PR discovery. Repeat the flag for each value',
       },
       local_repos: {
         long: '--local-repos',
-        description: 'Comma-separated repo paths for local git discovery',
+        description: 'Repo path for local git discovery. Repeat the flag for each value',
       },
       projects_root: {
         long: '--projects-root',

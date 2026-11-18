@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { FacetFrontmatterSchema, type FacetFrontmatter } from '../schemas/facet.js';
-import { readMarkdownWithSchema } from '../bootstrap/prompt.js';
+import { readMarkdownWithSchema } from '../utils/markdown-schema.js';
 import { writeFrontmatter } from '../utils/gray-matter-io.js';
 
 /** A sub-area alias that opens its owning initiative scoped to some tags. */
@@ -14,12 +14,12 @@ export interface LoadedFacet {
   path: string;
 }
 
-export interface MalformedFacet {
+interface MalformedFacet {
   path: string;
   error: string;
 }
 
-export interface LoadedFacets {
+interface LoadedFacets {
   facets: LoadedFacet[];
   malformed: MalformedFacet[];
 }

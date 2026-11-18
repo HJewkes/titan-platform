@@ -349,3 +349,59 @@ describe("token redaction", () => {
     expect(redactToken(line, token)).toBe("path /bot***/ and raw ***");
   });
 });
+
+describe("TelegramTransport media size limits", () => {
+  const MIB = 1024 * 1024;
+  const sized = (bytes: number) => ({ bytes: new Uint8Array(bytes) });
+
+  function counting() {
+    const requests: string[] = [];
+    const transport = transportWith(async (url) => {
+      requests.push(String(url));
+      return envelope({ ok: true, result: { message_id: 5, date: 1 } });
+    });
+    return { transport, requests };
+  }
+
+  it("refuses a photo over 10 MB as too-long and never calls fetch", async () => {
+    const { transport, requests } = counting();
+
+    const result = await transport.sendPhoto({ handle: "lifter", image: sized(10 * MIB + 1) });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { kind: "too-long", limit: 10 * MIB, length: 10 * MIB + 1 },
+    });
+    expect(requests).toEqual([]);
+  });
+
+  it("refuses a voice note over 50 MB as too-long and never calls fetch", async () => {
+    const { transport, requests } = counting();
+
+    const result = await transport.sendVoice({ handle: "lifter", audio: sized(50 * MIB + 1) });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { kind: "too-long", limit: 50 * MIB, length: 50 * MIB + 1 },
+    });
+    expect(requests).toEqual([]);
+  });
+
+  it("sends a photo of exactly 10 MB", async () => {
+    const { transport, requests } = counting();
+
+    const result = await transport.sendPhoto({ handle: "lifter", image: sized(10 * MIB) });
+
+    expect(result.ok).toBe(true);
+    expect(requests).toHaveLength(1);
+  });
+
+  it("sends a voice note of exactly 50 MB", async () => {
+    const { transport, requests } = counting();
+
+    const result = await transport.sendVoice({ handle: "lifter", audio: sized(50 * MIB) });
+
+    expect(result.ok).toBe(true);
+    expect(requests).toHaveLength(1);
+  });
+});

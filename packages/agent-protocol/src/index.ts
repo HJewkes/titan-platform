@@ -1,3 +1,5 @@
+import { component } from "./id-encoding.js";
+
 /** Native conversation identity. Namespace identifies a host/account corpus, not a path. */
 export interface ConversationIdentity {
   harness: string;
@@ -60,11 +62,6 @@ export function conversationRef(identity: ConversationIdentity): string {
 /** Call, turn and item IDs are unique within their conversation and category only. */
 export function conversationItemRef(identity: ConversationIdentity, kind: "turn" | "call" | "item" | "response", nativeId: string): string {
   return `${kind}:${conversationRef(identity).slice("conversation:".length)}:${component(nativeId)}`;
-}
-
-function component(value: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) throw new TypeError("identity components must be nonempty strings");
-  return encodeURIComponent(value);
 }
 
 /** Null means unreported. Input includes cache reads/writes; output includes reasoning. */

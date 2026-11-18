@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lineSourceFromTexts, splitLines } from "./line-source.js";
-import { quoteInRange, quoteInText, verifyCitation } from "./citation.js";
+import { citationHolds, citationsIn, quoteInRange, quoteInText, verifyCitation } from "./citation.js";
 
 const FILE = ["def area(r):", "    return 3.14159 * r * r", "", "def unused():", "    pass"].join("\n") + "\n";
 const source = lineSourceFromTexts({ "geo.py": FILE, "other.py": "x = 1\n" });
@@ -79,5 +79,22 @@ describe("splitLines", () => {
   it("drops the trailing newline's empty entry and handles CRLF", () => {
     expect(splitLines("a\r\nb\n")).toEqual(["a", "b"]);
     expect(splitLines("a\n\n")).toEqual(["a", ""]);
+  });
+});
+
+describe("citationsIn", () => {
+  it("reads single lines and ranges in order and ignores text without a path:line", () => {
+    expect(citationsIn("see src/a.ts:4 and b.py:2-9, not v1.2 or http://x.io:80")).toEqual([
+      { path: "src/a.ts", lineStart: 4, lineEnd: 4 },
+      { path: "b.py", lineStart: 2, lineEnd: 9 },
+    ]);
+  });
+});
+
+describe("citationHolds", () => {
+  it("holds for lines that exist and fails for a missing path or a range past the end", () => {
+    expect(citationHolds(source, { path: "geo.py", lineStart: 2, lineEnd: 3 })).toBe(true);
+    expect(citationHolds(source, { path: "nope.py", lineStart: 1, lineEnd: 1 })).toBe(false);
+    expect(citationHolds(source, { path: "geo.py", lineStart: 4, lineEnd: 99 })).toBe(false);
   });
 });

@@ -37,6 +37,7 @@ graph TD
     pngDelta["png-delta"]
     reviewBurden["review-burden"]
     rpcProtocol["rpc-protocol"]
+    seatSpec["seat-spec"]
     storeSqlite["store-sqlite"]
     testKit["test-kit"]
     toolGuard["tool-guard"]
@@ -57,10 +58,12 @@ graph TD
     registry["registry"]
     retrieval["retrieval"]
     rpcClient["rpc-client"]
+    serviceSupervisor["service-supervisor"]
     speechG2p["speech-g2p"]
     speechStt["speech-stt"]
     speechTts["speech-tts"]
     testTiming["test-timing"]
+    textIngest["text-ingest"]
     worktree["worktree"]
   end
   subgraph T2["Tier 2 · domain"]
@@ -104,6 +107,7 @@ graph TD
     ytScout["yt-scout"]
     codewatch["codewatch"]
     console["console"]
+    docs["docs"]
   end
 
   agent --> agentLifecycle
@@ -154,6 +158,8 @@ graph TD
   messaging --> rpcProtocol
   openaiAccount --> anthropicAccount
   ownerQueue --> evidence
+  ownerQueue --> pm
+  pm --> locator
   queueMirror --> hitl
   queueMirror --> matrixBus
   queueMirror --> rpcProtocol
@@ -176,6 +182,7 @@ graph TD
   reviewWorkflow --> reviewPanel
   reviewWorkflow --> workflow
   rpcClient --> rpcProtocol
+  serviceSupervisor --> daemon
   sessionAnalytics --> agentProtocol
   sessionAnalytics --> reviewPanel
   sessionAnalytics --> rpcProtocol
@@ -183,6 +190,7 @@ graph TD
   sessionAnalytics --> sessionRead
   sessionAnalytics --> storeSqlite
   sessionGraph --> agentProtocol
+  sessionGraph --> clusterPkg
   sessionGraph --> locator
   sessionGraph --> sessionRead
   sessionGraph --> storeSqlite
@@ -213,7 +221,10 @@ graph TD
   workflow --> storeSqlite
   activeWork --> agentDispatch
   activeWork --> agentProtocol
+  activeWork --> anthropicAccount
+  activeWork --> appPaths
   activeWork --> clusterPkg
+  activeWork --> codeRead
   activeWork --> daemon
   activeWork --> decider
   activeWork --> locator
@@ -222,6 +233,7 @@ graph TD
   activeWork --> registry
   activeWork --> retrieval
   activeWork --> rpcProtocol
+  activeWork --> serviceSupervisor
   activeWork --> sessionAnalytics
   activeWork --> sessionGraph
   activeWork --> sessionRead
@@ -240,6 +252,7 @@ graph TD
   evals --> fixProof
   evals --> health
   evals --> hitl
+  evals --> pm
   evals --> reviewPanel
   evals --> reviewWorkflow
   evals --> sessionAnalytics
@@ -250,6 +263,7 @@ graph TD
   explainer --> agentDispatch
   explainer --> agentProtocol
   explainer --> appPaths
+  explainer --> autoresearch
   explainer --> codeGraph
   explainer --> codeRead
   explainer --> evidence
@@ -270,6 +284,7 @@ graph TD
   explainer --> workflow
   factory --> agent
   factory --> agentDispatch
+  factory --> anthropicAccount
   factory --> appPaths
   factory --> authority
   factory --> autoresearch
@@ -284,6 +299,7 @@ graph TD
   factory --> health
   factory --> hitl
   factory --> ownerQueue
+  factory --> pm
   factory --> pngDelta
   factory --> registry
   factory --> reviewPanel
@@ -299,11 +315,13 @@ graph TD
   fleetPanel --> rpcProtocol
   retrievalEval --> appPaths
   retrievalEval --> embed
+  retrievalEval --> evidence
   retrievalEval --> retrieval
   retrievalEval --> rpcProtocol
+  retrievalEval --> sessionRead
   retrievalEval --> storeSqlite
+  sessionMiner --> anthropicAccount
   sessionMiner --> appPaths
-  sessionMiner --> clusterPkg
   sessionMiner --> daemon
   sessionMiner --> embed
   sessionMiner --> github
@@ -321,6 +339,7 @@ graph TD
   sessionMiner --> storeSqlite
   sessionMiner --> throughput
   sessionMiner --> workflow
+  titan --> anthropicAccount
   titan --> daemon
   titan --> health
   ytScout --> agent
@@ -358,7 +377,7 @@ Same-tier edges such as `daemon --> registry`, `agent --> agent-lifecycle` and
 `session-graph --> session-read` are legal when they remain acyclic.
 
 <!-- generated:arch-leaves start -->
-`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `png-delta`, `rpc-protocol`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `worktree`, `pm`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
+`agent-protocol`, `app-paths`, `authority`, `chat-protocol`, `cluster`, `code-parser`, `embed`, `evidence`, `fix-proof`, `locator`, `owner-proof`, `png-delta`, `rpc-protocol`, `seat-spec`, `store-sqlite`, `test-kit`, `frame-capture`, `github`, `text-ingest`, `worktree`, and `style-profile` have no titan dependencies at all, which is why any of them can be adopted on its own.
 <!-- generated:arch-leaves end -->
 
 The [package families](/guides/package-families) guide groups the same packages by job.
@@ -407,7 +426,7 @@ those live in the separate `@titan-design/react-ui` design system.
 command definitions — and gets everything else from the tiers.
 
 <!-- generated:arch-products start -->
-The `product` tier holds twelve units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `fleet-panel`, `retrieval-eval`, `session-miner`, `titan`, `yt-scout`, and the `codewatch` and `console` apps.
+The `product` tier holds thirteen units: `active-work`, `corpus-query`, `evals`, `explainer`, `factory`, `fleet-panel`, `retrieval-eval`, `session-miner`, `titan`, `yt-scout`, and the `codewatch`, `console`, and `docs` apps.
 <!-- generated:arch-products end -->
 
 The usage guides are under [Guides](/guides/#running-the-products).

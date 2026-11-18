@@ -76,7 +76,7 @@ function world(phases: ShepherdPhases, validate: (headSha: string) => string = (
   const tick = async (ms: number, signal: AbortSignal) => ((clock += ms), sleep(1, signal));
   const port = githubPort(fake.wire);
   const mainGreen = { ...port, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), port.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port: mainGreen, store: ref, now: () => clock, sleep: tick, park, registry, versions: async () => true, snapshot: snapshotOf?.(mainGreen), flakyChecks });
+  const routes = factoryRoutesFor({ port: mainGreen, mergeUpTree: () => fake.cleanMergeTree, store: ref, now: () => clock, sleep: tick, park, registry, versions: async () => true, snapshot: snapshotOf?.(mainGreen), flakyChecks });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases), landPrWorkflow()], routes, gatePollMs: 5 });
   hosts.push(host);
   return { host, fake, ref, store: ref.get(), services: routes.shepherd! };
@@ -1147,13 +1147,17 @@ describe("the Version Packages PR", () => {
     expect(w.store.byRun(runId)?.releaseReady).toBeNull();
   });
 
-  /** tp#1152: an auto seat without the release-merge grant gates at H1; the release head then moves to H2 while paused. */
+  /**
+   * tp#1152: an auto seat without the release-merge grant gates at H1; the release head then moves to H2 while paused, and
+   * H2 also changes a source file, which no changesets regeneration writes (a release-only re-head keeps the gate, TP-5591).
+   */
   async function releaseGateMoved(): Promise<{ w: World; runId: string }> {
     const { w, runId } = releaseWorld(async () => "trusted", AUTO_POLICY);
     await gateOpened(w.host, gateId(runId, "approve-merge"));
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain(`at head ${H1}`);
     expect(w.host.gates.get(gateId(runId, "approve-merge"))?.prompt).toContain("Policy shepherd-release/no-release-grant");
     setWidgetManifest(w.fake, H2);
+    w.fake.prFiles.set(1, [...RELEASE_FILES, { path: "packages/widget/src/index.ts", status: "modified" }]);
     w.fake.pushHead(1, H2);
     return { w, runId };
   }
@@ -1168,7 +1172,7 @@ describe("the Version Packages PR", () => {
     await gateOpened(w.host, gateId(runId, "approve-merge", 1));
     const prompt = w.host.gates.get(gateId(runId, "approve-merge", 1))?.prompt;
     expect(prompt).toContain(`at head ${H2}`);
-    expect(prompt).toContain("Policy shepherd-release/no-release-grant");
+    expect(prompt).toContain("Policy shepherd-release/preflight-blocked: the release cannot land yet: it changes files a release does not write: packages/widget/src/index.ts");
     expect(stepIds(w.host, runId)).toContain(`sh-release-preflight:${H2}`);
     expect(w.host.runtime.status(runId)?.status).not.toBe("failed");
     expect(w.fake.effects.merge).toBe(0);

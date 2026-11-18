@@ -6,7 +6,8 @@ import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.
 import { getActiveRoot, expandTilde } from '../utils/paths.js';
 import { readRegisteredWorktrees, type RegisteredWorktree } from '../utils/registered-worktrees.js';
 import { readFrontmatter } from '../utils/gray-matter-io.js';
-import { defineCommand } from '../registry/index.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
+import { visibilityFor } from '../sessions/visibility.js';
 
 const argsSchema = z.object({}).strict();
 
@@ -42,24 +43,20 @@ const STATE_ORDER: Record<BriefFrontmatter['state'], number> = {
   done: 3,
 };
 
-export interface ScanEntry {
+interface ScanEntry {
   slug: string;
   frontmatter: BriefFrontmatter;
   /** Registered worktrees, which moved to artifacts.yml in v4 (AW-67). */
   worktrees: RegisteredWorktree[];
 }
 
-export interface ScanError {
-  slug: string;
-  error: string;
-}
-
-export interface ScanResult {
+interface ScanResult {
   entries: ScanEntry[];
-  errors: ScanError[];
+  // Inline, not a named interface: list's default export infers this shape, and declaration emit cannot name a private type.
+  errors: { slug: string; error: string }[];
 }
 
-export async function scanInitiatives(activeRoot: string): Promise<ScanResult> {
+async function scanInitiatives(activeRoot: string): Promise<ScanResult> {
   let dirents: Dirent[];
   try {
     dirents = await fs.readdir(activeRoot, { withFileTypes: true });
@@ -68,7 +65,7 @@ export async function scanInitiatives(activeRoot: string): Promise<ScanResult> {
   }
 
   const entries: ScanEntry[] = [];
-  const errors: ScanError[] = [];
+  const errors: ScanResult['errors'] = [];
 
   for (const dirent of dirents) {
     if (!dirent.isDirectory()) continue;
@@ -90,6 +87,20 @@ export async function scanInitiatives(activeRoot: string): Promise<ScanResult> {
     }
   }
 
+  return { entries, errors };
+}
+
+/** The scan a caller may see: for a non-owner, withheld initiatives and their parse errors drop out. */
+export async function scanInitiativesForCaller(
+  activeRoot: string,
+  ctx: Pick<CommandContext, 'caller' | 'warnings'>,
+): Promise<ScanResult> {
+  const [scan, visible] = await Promise.all([
+    scanInitiatives(activeRoot),
+    visibilityFor({ ...ctx, activeRoot }),
+  ]);
+  const entries = scan.entries.filter((entry) => visible(entry.slug));
+  const errors = scan.errors.filter((error) => visible(error.slug));
   return { entries, errors };
 }
 
@@ -135,9 +146,9 @@ export default defineCommand({
   args: argsSchema,
   result: resultSchema,
   cli: {},
-  async run() {
+  async run(_args, ctx) {
     const activeRoot = getActiveRoot();
-    const { entries, errors } = await scanInitiatives(activeRoot);
+    const { entries, errors } = await scanInitiativesForCaller(activeRoot, ctx);
     const initiatives = [...entries].sort(compareInitiatives).map(({ slug, frontmatter }) => ({
       slug,
       title: frontmatter.title,

@@ -1,9 +1,9 @@
 import type { LedgerRow } from '@titan-design/decider';
 import { z } from 'zod';
-import { defineCommand } from '../registry/index.js';
-import { loadHumanOnlyInitiatives } from '../decider/human-only.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
 import { readLedgerRows } from '../decider/ledger.js';
 import { isUnclaimed, searchPrecedents } from '../decider/search.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 
 const ArgsSchema = z.object({
@@ -27,6 +27,9 @@ const HitSchema = z.object({
   options: z.array(z.string()),
   recommended: z.string().nullable(),
   answer: z.string().nullable(),
+  /** The owner's typed note beside the picked option. */
+  free_text: z.string().nullable(),
+  answered_at: z.string().nullable(),
   outcome: z.string().nullable(),
   score: z.number(),
   /** Where the row came from, in a form a reader can follow back. */
@@ -40,7 +43,7 @@ const ResultSchema = z.object({
 });
 type Result = z.infer<typeof ResultSchema>;
 
-function citationOf(row: LedgerRow): string {
+export function citationOf(row: LedgerRow): string {
   if (row.source !== 'transcript') return row.key;
   const session = row.locator?.sessionId ?? row.session_id ?? '?';
   const toolUse = row.locator?.toolUseId ?? row.tool_use_id ?? '?';
@@ -60,10 +63,19 @@ function toHit(row: LedgerRow, score: number): z.infer<typeof HitSchema> {
     options: row.options.map((o) => o.label),
     recommended: row.recommended,
     answer: row.answer,
+    free_text: row.free_text,
+    answered_at: row.answered_at,
     outcome: row.outcome,
     score,
     citation: citationOf(row),
   };
+}
+
+/** An unclaimed row names no initiative, so only the owner gets one (TP-5453 P6b). */
+function unclaimedFor(asked: boolean | undefined, ctx: CommandContext): boolean | undefined {
+  if (asked !== true || ctx.caller === 'owner') return asked;
+  ctx.warnings.push('include_unclaimed is served only to the owner: unclaimed precedents name no initiative');
+  return false;
 }
 
 export default defineCommand<Args, Result>({
@@ -88,16 +100,17 @@ export default defineCommand<Args, Result>({
     usage:
       'active-work precedent search <query> [--limit 8] [--initiative <slug>] [--class <c>] [--include-unclaimed]',
   },
-  async run(args) {
+  async run(args, ctx) {
     const activeRoot = getActiveRoot();
-    const humanOnly = await loadHumanOnlyInitiatives(activeRoot);
+    const isVisible = await visibilityFor({ ...ctx, activeRoot });
+    const includeUnclaimed = unclaimedFor(args.include_unclaimed, ctx);
     const { rows, malformed } = await readLedgerRows(activeRoot);
     const hits = await searchPrecedents(rows, args.query, {
       limit: args.limit,
       initiative: args.initiative,
       category: args.class,
-      includeUnclaimed: args.include_unclaimed,
-      humanOnly,
+      includeUnclaimed,
+      isVisible,
     });
     return {
       query: args.query,

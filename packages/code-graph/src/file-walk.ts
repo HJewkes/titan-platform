@@ -1,7 +1,7 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
+import { isExcludedDir, shouldIncludeFile, type FilterLanguage } from "@titan-design/code-parser";
 
 /**
  * Recursively collect the source files under `rootDirs` that pass the ingest
@@ -15,7 +15,7 @@ import { isExcludedDir, shouldIncludeFile } from "@titan-design/code-parser";
  */
 export async function walkSourceFiles(
   rootDirs: readonly string[],
-  languages: readonly string[],
+  languages: readonly FilterLanguage[],
 ): Promise<string[]> {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -33,7 +33,7 @@ function isVirtualenv(entries: readonly Dirent[]): boolean {
 async function collectFiles(
   dir: string,
   rootDir: string,
-  languages: readonly string[],
+  languages: readonly FilterLanguage[],
   seen: Set<string>,
   out: string[],
 ): Promise<void> {

@@ -128,7 +128,7 @@ export const agentGraphNodeActivity = z.object({ category: agentActivityCategory
 export type NodeActivity = z.infer<typeof agentGraphNodeActivity>;
 
 export const agentGraphNode = z.object({
-  /** Stable across a respawn of the same name: the roster id, else the broker agent id, else `name:<name>`. */
+  /** The roster id, else the broker agent id, else `name:<name>`. A respawn of the same name replaces the older record, so the id follows the newest spawn. */
   id: z.string().min(1),
   name: z.string(),
   /** The matching roster entry's `id`, so a view can join the two; null for a name with no roster row. */

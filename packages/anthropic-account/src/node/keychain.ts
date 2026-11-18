@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 export const KEYCHAIN_SERVICE = "Claude Code-credentials";
-export const SECURITY_BIN = "/usr/bin/security";
+const SECURITY_BIN = "/usr/bin/security";
 // errSecItemNotFound: `security` exits 44 when no item carries the service name.
 const ITEM_NOT_FOUND = 44;
 const SECURITY_TIMEOUT_MS = 10_000;
@@ -31,7 +31,7 @@ export interface KeychainOptions {
   home?: string;
 }
 
-export type KeychainRead = { status: "missing" } | { status: "too-large" } | { status: "read"; bytes: Buffer };
+type KeychainRead = { status: "missing" } | { status: "too-large" } | { status: "read"; bytes: Buffer };
 
 // rate-limits.sh resolves both dirs with `pwd -P`, so symlinks are followed here too. A dir
 // that does not exist cannot be resolved and is hashed as its absolute path.

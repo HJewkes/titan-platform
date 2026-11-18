@@ -53,6 +53,15 @@ describe("optional consumer allocation contracts", () => {
     expect((await allocator.check(request(root, "writer-b"))).refusals).toEqual(["writer-b: 1/1"]);
     await expect(allocator.allocate(request(root, "writer-b"))).rejects.toBeInstanceOf(HostBudgetError);
   });
+  it("budgetError receives the counted trees for the agent's allocation group", async () => {
+    const root = repo(); const a = tree(root, "reader-a"); const b = tree(root, "reader-b"); tree(root, "writer-a");
+    const seen: (readonly string[])[] = [];
+    const allocator = createWorktreeAllocator({ ...grouped,
+      budgetError: (_allocated, _budget, _name, trees) => { seen.push(trees); return new Error("full"); } });
+    await allocator.check(request(root, "reader-c"));
+    expect(seen).toHaveLength(1);
+    expect([...seen[0] ?? []].sort()).toEqual([a, b].sort());
+  });
   it("applies the same grouping and current budget when reattaching", async () => {
     const root = repo(); tree(root, "reader-a"); tree(root, "reader-b");
     const worktree = path.join(root, ".worktrees", "writer-a");

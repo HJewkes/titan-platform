@@ -31,6 +31,15 @@ await captureFrames({ url, fps: 30, width: 1920, height: 1080, workers: 8, spill
 await encoder.finish();
 ```
 
+For a few moments instead of a video, `stills` opens the page once and returns a PNG per second
+asked, in the order asked; it seeks them in time order, since virtual time only moves forward:
+
+```ts
+import { stills } from "@titan-design/frame-capture";
+
+const [hook, close] = await stills({ url, width: 1920, height: 1080 }, [1.5, 42]);
+```
+
 With `workers` above 1, pass `beatStartsS` (the seconds at which the page lays out a fresh
 scene) so every chunk starts on a beat: the render then matches a sequential one frame for
 frame. Without it, chunks split by frame count and can start mid-beat.

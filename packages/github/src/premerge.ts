@@ -1,6 +1,6 @@
 import { approvedHeadWalk, type CleanMergeTree } from "./approved-head-walk.js";
 import { ciVerdict, loadRequiredContexts } from "./ci-verdict.js";
-import type { GitHubPort, PullRequest, RepoSlug } from "./port.js";
+import type { GitHubPort, PullRequest, RepoSlug } from "./port-types.js";
 import { GITHUB_ACTIONS_APP_ID, mergeReadiness, type MergeBlockReason } from "./readiness.js";
 
 interface PremergeInput {

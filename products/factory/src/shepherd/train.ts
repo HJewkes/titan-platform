@@ -3,7 +3,7 @@ import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { Db, Migration } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type StepRoute, type WorkflowContext, type WorkflowStatus } from "@titan-design/workflow";
 import { z } from "zod";
-import { redactForEvidence } from "../redact.js";
+import { failedStep } from "./failure-class.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HOLD_POLL_MS, type HeldCheck, type HoldTiming } from "./hold-timing.js";
 
@@ -98,7 +98,7 @@ export function mergeTrainRef(now: () => number): MergeTrainRef {
   };
 }
 
-export interface TrainDeps {
+interface TrainDeps {
   train: MergeTrainRef;
   port: GitHubPort;
   /** Why a PR's merge must wait; a holder whose merge waits gives the train up, so a hold or a freeze never wedges the repo. */
@@ -131,7 +131,7 @@ export function rideTrain(route: StepRoute, deps: TrainDeps): StepRoute {
         try {
           wait = await boardingWait(deps, target, input.runId, input.signal);
         } catch (error) {
-          return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
+          return failedStep(route.match, error);
         }
         if (wait === undefined) return route.runner.run(input);
         return codeRoute(route.match, deps.now, async () => ({ done: false, skipped: "train", mergeSha: "", train: wait })).runner.run(input);
@@ -155,7 +155,7 @@ export function leaveTrainToWait(route: StepRoute, train: MergeTrainRef): StepRo
         try {
           train.get().leave(WaitTarget.parse(JSON.parse(input.prompt)).repo, input.runId);
         } catch (error) {
-          return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
+          return failedStep(route.match, error);
         }
         return route.runner.run(input);
       },

@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
-import { consoleLogger, daemonPaths, readPidFile, startDaemon, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
+import { consoleLogger, daemonPaths, readPidFile, startDaemon, systemdListenFd, type DaemonHandle, type EventHub, type Logger, type StartDaemonOptions } from "@titan-design/daemon";
 import type { Db } from "@titan-design/store-sqlite";
 import { routedRunner } from "@titan-design/workflow";
 import { behindMain, type BehindMain } from "./behind-main.js";
@@ -36,6 +36,7 @@ import { seatCheckout } from "./shepherd/seat-checkout.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
+import { callerForSurface } from "./caller.js";
 import type { FactoryContext, NeedsSources } from "./context.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { startStandingAnswerSweep } from "./owner-ops/standing-answers.js";
@@ -77,13 +78,15 @@ const CHECKOUT_SWEEP_MS = 3_600_000;
 const DEFAULT_SOURCES: SourcesReader = () => resolveSources({});
 const FACTORY_VERSION = String(readPath(createRequire(import.meta.url)("../package.json"), "version"));
 
-export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, PackageSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
+export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, PackageSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions, Pick<FactoryContext, "needsAllowed"> {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
   stateDir?: string;
   /** Defaults to 7410; 0 binds an ephemeral port. */
   port?: number;
   /** Bind address; defaults to 127.0.0.1. */
   hostname?: string;
+  /** A listening socket this process already owns, such as the one systemd passes; serve adopts it instead of binding `port`. */
+  listenFd?: number;
   logger?: Logger;
   /** How often runs waiting on a gate have their PR checked for a merge or close elsewhere; defaults to 5 minutes. */
   goneSweepMs?: number;
@@ -202,10 +205,12 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
 
 /** Start, then run until SIGTERM, SIGINT or `stop` aborts, then close. Resolves after shutdown completes. */
 export async function serveFactoryUntilSignal(options: FactoryServerOptions, stop?: AbortSignal): Promise<void> {
+  // Read before anything spawns, so systemdListenFd's scrub of LISTEN_* reaches every child.
+  const listenFd = options.listenFd ?? systemdListenFd(process.env, process.pid);
   const restoreConsole = timestampConsole();
   const agentChatTiming = logAgentChatCalls({ log: options.logger ?? consoleLogger });
   try {
-    const server = await startUnlessLive(() => startFactoryServer(options), options.logger ?? consoleLogger, options.probe);
+    const server = await startUnlessLive(() => startFactoryServer({ ...options, listenFd }), options.logger ?? consoleLogger, options.probe);
     if (server === null) return;
     const reason = await untilStopped(stop);
     (options.logger ?? consoleLogger).info({ signal: reason }, "shutting down");
@@ -267,11 +272,12 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const needsSources = options.needsSources ?? keptNeedsSources(process.env, host.gates);
   return {
     registry: createFactoryRegistry(log),
-    createContext: () => factoryContext(host, options.routes, proofs.aud, needsSources),
+    createContext: (surface) => factoryContext(host, options.routes, callerForSurface(surface), { aud: proofs.aud, needsSources, needsAllowed: options.needsAllowed }),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,
     host: options.hostname,
+    listenFd: options.listenFd,
     toolPrefix: TOOL_PREFIX,
     mcpName: "titan-factory",
     health: () => serveHealth(host, options, { github, build, routeFor, ownerKeys: proofs.keys, start: start(), notify, ingress: ingress(), passStamp, bot: bot(), reconciler: reconciler() }),

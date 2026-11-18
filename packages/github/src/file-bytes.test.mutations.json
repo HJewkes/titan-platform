@@ -31,7 +31,7 @@
     },
     {
       "name": "fileBytes passes the path to the wire unvalidated",
-      "file": "packages/github/src/port.ts",
+      "file": "packages/github/src/github-port.ts",
       "find": "wire.getContentBytes(repoOf(repo), checkPath(path),",
       "replace": "wire.getContentBytes(repoOf(repo), path,",
       "kills": ["fileBytes over the fake refuses a path that escapes the repo before any wire call"]

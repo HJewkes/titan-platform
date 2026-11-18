@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NodeRef, Provenance, ProvenanceKind, Severity, SnapshotRef, Span } from "./schemas.js";
+import { BaselineFields, NodeRef, Provenance, ProvenanceKind, Severity, SnapshotRef, Span } from "./schemas.js";
 
 /** Most rows one `findings.list` page returns; a table pages with `offset`. */
 export const FINDINGS_PAGE_MAX = 500;
@@ -10,11 +10,6 @@ export const EXCERPT_LINE_CAP = 80;
 export const FindingStatus = z.enum(["new", "carryover", "resolved", "worsened", "improved"]);
 
 export const FindingSort = z.enum(["severity", "excess", "value", "path", "rule"]);
-
-export const BaselineFields = {
-  baselineSnapshotId: z.number().int().optional(),
-  comparable: z.boolean().optional(),
-};
 
 export const Finding = z.object({
   /** Opaque and stable across snapshots while the rule, node, and destination are unchanged. */

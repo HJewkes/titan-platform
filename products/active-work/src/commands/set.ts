@@ -7,7 +7,7 @@ import { withFileLock } from '../utils/fs-atomic.js';
 import { readRawFrontmatter, writeFrontmatter } from '../utils/gray-matter-io.js';
 import { today } from '../utils/today.js';
 import { NotFoundError, ValidationError } from '../errors.js';
-import { defineCommand } from '../registry/index.js';
+import { defineCommand, type CommandContext } from '../registry/index.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -41,6 +41,19 @@ function setPath(target: Record<string, unknown>, dotted: string, value: unknown
   cursor[parts[parts.length - 1]!] = value;
 }
 
+/**
+ * Who agents may read is the owner's call (TP-5453 P6): an agent caller cannot set
+ * `visibility`, so it cannot widen its own read access through this verb.
+ */
+function assertOwnerMayWrite(field: string, caller: CommandContext['caller']): void {
+  const top = field.split('.').find((part) => part.length > 0);
+  if (top === 'visibility' && caller === 'agent') {
+    throw new ValidationError(
+      'visibility is set by the owner from their own terminal, not by an agent',
+    );
+  }
+}
+
 export default defineCommand({
   name: 'set',
   description: 'Set a single field on an initiative brief.md frontmatter.',
@@ -51,6 +64,7 @@ export default defineCommand({
     usage: 'active-work set <slug> <field> <value>',
   },
   async run(args, ctx) {
+    assertOwnerMayWrite(args.field, ctx.caller);
     const dir = path.join(ctx.activeRoot, args.slug);
     const briefPath = path.join(dir, 'brief.md');
     try {

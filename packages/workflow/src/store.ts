@@ -21,7 +21,8 @@ export function workflowRunTableDdl(name: string = DEFAULT_RUN_TABLE): string {
       owner_generation    INTEGER NOT NULL DEFAULT 0,
       owner_runtime_id    TEXT,
       owner_lease_until   TEXT,
-      definition_version  TEXT
+      definition_version  TEXT,
+      error_class         TEXT
     );
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_status`)} ON ${t}(status);
     CREATE INDEX IF NOT EXISTS ${quoteIdent(`${name}_owner_lease`)} ON ${t}(owner_lease_until);
@@ -68,6 +69,15 @@ export function workflowDefinitionVersionMigration(version: number, name: string
   };
 }
 
+/** Adds a failed run's structured class when an earlier workflowMigration already created the table. */
+export function workflowErrorClassMigration(version: number, name: string = DEFAULT_RUN_TABLE): Migration {
+  return {
+    version,
+    name: `workflow-error-class:${name}`,
+    up: (db) => addColumn(db, name, "error_class", `${quoteIdent(name)} ADD COLUMN error_class TEXT`),
+  };
+}
+
 /** A pinned run cannot be stored in a table that would silently drop its pin. */
 export class WorkflowStoreSchemaOutdated extends Error {
   constructor(readonly table: string) {
@@ -99,6 +109,7 @@ interface RawRunRow {
   owner_runtime_id: string | null;
   owner_lease_until: string | null;
   definition_version?: string | null;
+  error_class?: string | null;
 }
 
 const STATUSES: ReadonlySet<string> = new Set<WorkflowStatus>(["running", "paused", "cancelling", "recovery_required", "completed", "failed", "cancelled"]);
@@ -110,6 +121,7 @@ export const ACTIVE_STATUSES: readonly WorkflowStatus[] = ["running", "paused", 
 /** Durable workflow rows with independent runtime ownership and revision fencing. */
 export class WorkflowRunStore {
   private readonly table: string;
+  private classed = false;
 
   constructor(private readonly db: Db, private readonly name: string = DEFAULT_RUN_TABLE) {
     this.table = quoteIdent(name);
@@ -167,17 +179,24 @@ export class WorkflowRunStore {
   save(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void {
     const timestamps = leaseTimestamps(leaseUntil, at);
     const nextRevision = run.revision + 1;
+    const classed = this.hasErrorClass();
     const result = this.db.prepare(
       `UPDATE ${this.table}
        SET params = @params, status = @status, current_step = @currentStep, step_results = @stepResults,
-           active_steps = @activeSteps, completed_at = @completedAt, error = @error,
+           active_steps = @activeSteps, completed_at = @completedAt, error = @error${classed ? ", error_class = @errorClass" : ""},
            revision = @nextRevision, owner_lease_until = @leaseUntil
        WHERE id = @id AND revision = @revision AND owner_runtime_id = @runtimeId
          AND owner_generation = @generation AND owner_lease_until > @at`,
-    ).run({ ...columns(run), ...fence, nextRevision, ...timestamps });
+    ).run({ ...columns(run), ...fence, nextRevision, ...timestamps, ...(classed ? { errorClass: run.errorClass ?? null } : {}) });
     if (result.changes !== 1) throw new WorkflowOwnershipLostError(run.id);
     run.revision = nextRevision;
     run.owner = { ...fence, leaseUntil: timestamps.leaseUntil };
+  }
+
+  /** A table that predates `workflowErrorClassMigration` keeps working; only a seen column is cached, so a later migration is picked up. */
+  private hasErrorClass(): boolean {
+    this.classed ||= hasColumn(this.db, this.name, "error_class");
+    return this.classed;
   }
 
   renew(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void {
@@ -276,6 +295,7 @@ function toRun(raw: RawRunRow): WorkflowRun {
     startedAt: raw.started_at,
     completedAt: raw.completed_at,
     error: raw.error,
+    ...(raw.error_class == null ? {} : { errorClass: raw.error_class }),
   };
 }
 

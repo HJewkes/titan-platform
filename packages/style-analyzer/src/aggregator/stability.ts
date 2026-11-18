@@ -91,10 +91,5 @@ export const UNRATED_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 export function lookupStability(type: string): Stability {
-  if (STABILITY_MAP[type]) return STABILITY_MAP[type];
-
-  const category = type.indexOf(".") > 0 ? type.substring(0, type.indexOf(".")) : type;
-  if (STABILITY_MAP[category]) return STABILITY_MAP[category];
-
-  return "medium";
+  return STABILITY_MAP[type] ?? "medium";
 }

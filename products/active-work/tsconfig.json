@@ -11,5 +11,5 @@
     "noUncheckedIndexedAccess": false
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "__tests__", "src/dashboard"]
+  "exclude": ["node_modules", "dist", "src/dashboard"]
 }

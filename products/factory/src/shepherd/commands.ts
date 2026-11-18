@@ -20,7 +20,7 @@ import { prsCommand } from "./prs-command.js";
 import { kindMove, testOnlyHint } from "./register-kind.js";
 import type { KindMove } from "./task-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
-import { endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
+import { cancelSupersededGates, pendingGateIds, endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
 import { lastReadHead } from "./last-read-head.js";
 import { sizeFlagFor, type SliceFlag } from "./size-flag.js";
 import { resyncShepherd, type ResyncReport } from "./resync.js";
@@ -41,7 +41,10 @@ import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { waitingCommand } from "./waiting.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
 import { visualWeekCommand } from "./visual-week-command.js";
+import { visualFeedbackCommand } from "./visual-feedback-command.js";
+import { visualFeedbackNotesCommand } from "./visual-feedback-notes-command.js";
 import { watchCommand } from "./watch-command.js";
+import { ownerMeterCommand } from "./owner-meter-command.js";
 import { timelineEntries, type PrTimeline } from "./view.js";
 import type { WatchRow } from "./view-schema.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows, withOrder } from "./watch-rows.js";
@@ -84,7 +87,7 @@ function servicesOf(ctx: FactoryContext): ShepherdServices {
 function refresh(store: ShepherdStore, existing: Registration, args: RegisterArgs, policy: EffectivePolicy, move: KindMove): Registered {
   const { runId } = existing;
   const { task, implementer, registrant, reviewer, kind, head: headSha, base } = args;
-  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base, lastSlice: args.lastSlice };
+  const meta = { task, implementer, registrant, reviewer, policy, kind, slice: sliceAfter(existing, args), headSha, base, lastSlice: args.lastSlice, reverts: args.reverts };
   try {
     store.update(runId, { ...meta, ...move });
   } catch (error) {
@@ -98,7 +101,9 @@ function refresh(store: ShepherdStore, existing: Registration, args: RegisterArg
 /** `onStart` writes the registration in the transaction that inserts the run, so neither commits without the other. */
 function startRun(ctx: FactoryContext, args: RegisterArgs, branch: string | undefined, policy: EffectivePolicy, onStart: (runId: string) => void): string {
   const target = { repo: args.repo, ...(args.pr !== undefined && { pr: String(args.pr) }), ...(branch !== undefined && { branch }) };
-  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task }, { onStart });
+  // `workflow_run.params.taskVerified = "false"` is the one durable mark of a key stored without a complete index.
+  const unverified: Record<string, string> = args.taskUnverified === true ? { taskVerified: "false" } : {};
+  return ctx.host.runtime.start(SHEPHERD_WORKFLOW, { ...target, policy: JSON.stringify(policy), task: args.task, ...unverified }, { onStart });
 }
 
 /** A dead run's registration moves to a new run, which starts at the pull request's current head; any other run comes back unchanged. */
@@ -121,7 +126,11 @@ export async function restartRegistered(ctx: FactoryContext, store: ShepherdStor
     }
     return refresh(store, winner, args, policy, move);
   }
-  if (isReplayDiverged(previousRun)) endSuperseded(ctx.host, previousRunId, runId);
+  if (isReplayDiverged(previousRun)) {
+    const pending = pendingGateIds(ctx.host, previousRunId);
+    endSuperseded(ctx.host, previousRunId, runId);
+    cancelSupersededGates(ctx.host, store, pending, runId, new Date(servicesOf(ctx).now?.() ?? Date.now()).toISOString());
+  }
   return { ...refresh(store, store.byRun(runId)!, seeded, policy, move), created: true, previousRunId, ...restart };
 }
 
@@ -175,7 +184,8 @@ async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promis
 export async function classifyRegistered(ctx: FactoryContext, registered: Registered, head?: string): Promise<Registered> {
   const services = servicesOf(ctx);
   const local = cachedByHead(services.prFiles ?? localPrFiles);
-  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { local, ...(head !== undefined && { head }) });
+  const lowTier = services.lowTierPolicy?.();
+  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { local, ...(head !== undefined && { head }), ...(lowTier && { lowTier }) });
   const held = g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
   const sizeFlag = await sizeFlagFor(services.port, head === undefined ? held.registration : { ...held.registration, headSha: head }, { local });
   return sizeFlag === undefined ? held : { ...held, sizeFlag };
@@ -363,7 +373,10 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.watch": watchCommand,
   "shepherd.visual-delta": visualDeltaCommand,
   "shepherd.visual-week": visualWeekCommand,
+  "shepherd.visual-week-feedback": visualFeedbackCommand,
+  "shepherd.visual-feedback-notes": visualFeedbackNotesCommand,
   "shepherd.brief": briefCommand,
+  "shepherd.ownerMeter": ownerMeterCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

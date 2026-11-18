@@ -9,7 +9,7 @@ import { H1, REPO, gateId, gateOpened } from "../test-support/land.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { CleanupResult } from "./cleanup.js";
 import { freezeStoreRef } from "./freeze.js";
-import { MainCiReads } from "./main-watch.js";
+import { MainCiReads } from "./main-ci-reads.js";
 import type { MainRedWiring } from "./main-red.js";
 import { readMainCi, SH_MAIN_CI_TIMEOUT_MS, type Classified, type MainCiInput } from "./post-merge.js";
 import { shepherdPrWorkflow } from "./pr.js";

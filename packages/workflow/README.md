@@ -258,10 +258,12 @@ model can return `usage` (a `StepUsage`) beside `result`: the route takes it off
 the stored record and reports it as the step's usage, so `mapItems` sums it and
 budgets against it like a dispatch's.
 
-Two options let a host shape what is stored. `envelope(record, step)` wraps
+Three options let a host shape what is stored. `envelope(record, step)` wraps
 the record, for example in an evidence envelope with a kind, a time and trace
 ids. `errorText(message)` rewrites a thrown message before it is recorded, so
-a redactor can keep secrets out of the store.
+a redactor can keep secrets out of the store. `errorClass(error)` reads the
+host's class off the thrown error itself and puts it on the failed outcome as
+`errorClass`.
 
 ```ts
 const routes = [
@@ -380,6 +382,18 @@ A fresh `workflowMigration` table has the `definition_version` column. An
 existing table needs `workflowDefinitionVersionMigration(n)` once. Until then
 unpinned runs keep working, and starting a pinned run throws
 `WorkflowStoreSchemaOutdated` rather than dropping the pin.
+
+## A failed run's class
+
+A failed step outcome may carry `errorClass`, a host-defined string. It rides on
+the `StepFailedError` the step raises. When a run rejects with an error that has
+a non-empty string `errorClass` field, the runtime stores it in
+`workflow_run.error_class`, and `WorkflowRun.errorClass` reads it back. A run
+whose rejection carried none has no `errorClass`. The class is set where the
+failure happened, so no reader has to classify the error text. A fresh
+`workflowMigration` table has the column. An existing table needs
+`workflowErrorClassMigration(n)` once. Until then the class is dropped and
+everything else is stored as before.
 
 ## Reading one workflow's runs
 

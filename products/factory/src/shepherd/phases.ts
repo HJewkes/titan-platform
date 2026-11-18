@@ -1,6 +1,6 @@
 import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort, RepoSlug } from "@titan-design/github";
-import type { OwnerBrief, ReviewShape } from "@titan-design/review-panel";
+import type { AuthorityLine, OwnerBrief, ReviewShape } from "@titan-design/review-panel";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { FixFirstEntry, FixRound } from "./fix-first-trail.js";
 import type { ReviewCause } from "./review-schemas.js";
@@ -12,9 +12,10 @@ import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
 import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./spawn-ports.js";
 import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./ports.js";
+import type { VisualGateMode } from "./visual-gate-config.js";
 
 /** Which PR, which head, and which land round a phase acts for. */
-export interface PhaseTarget {
+interface PhaseTarget {
   repo: RepoSlug;
   pr: number;
   round: number;
@@ -79,6 +80,8 @@ export interface PanelMember {
   profile?: string;
   /** The `Attests:` tokens of the member's MERGE; absent attests nothing. */
   attests?: readonly string[];
+  /** The `Authority:` line of an adversary member's MERGE (TP-5407); absent on any other member, and on one recorded before it was asked. */
+  authority?: AuthorityLine;
 }
 
 /** Shepherd's own MERGE at `head` that a seat reviewer's WAIT, or a seat read that can clear, still held when the seat wait ran out. */
@@ -150,12 +153,20 @@ export interface ShepherdDeps {
   stackRestack?: (repo: RepoSlug) => boolean;
   /** `on` repairs a run held only under a g10 class while the hold keeps gating its merge; absent means `off`. */
   heldRepair?: "off" | "on";
+  /** `shepherd.gateReset.lowTierPolicy` (TP-5403): whether a low-tier policy touch is held `g10-review`; absent means `shadow`. */
+  lowTierPolicy?: "off" | "shadow" | "on";
+  /** `shepherd.gateReset.ownerTier` (TP-5406): whether an owner-tier row gates the merge; the config reader turns an absent key into `shadow`, and unwired reads `on`. */
+  ownerTier?: "off" | "shadow" | "on";
+  /** `shepherd.gateReset.ownerValidate` (TP-5411): whether a task tagged owner-validate, or unread, gates the merge without the owner's task approval; unwired reads `on`. */
+  ownerValidate?: "off" | "shadow" | "on";
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. */
   noReproProceed?: "off" | "on";
   /** `record-fact` sends a NO_REPRO on a diff with no source path on to review, recorded on the run (TP-4275); absent means `keep-owner`. */
   nonSourceNoRepro?: "keep-owner" | "record-fact";
   /** `last-slice-only` closes a merged PR's task only on its last slice; absent means `keep`. */
   taskClose?: TaskClose;
+  /** `shepherd.visualGate` (TP-5408): `async` takes visual review off the merge gate; absent means `owner`. */
+  visualGate?: VisualGateMode;
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
   /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */

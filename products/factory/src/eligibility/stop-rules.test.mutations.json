@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the fix cap holds only past the cap, not at it",
+      "file": "products/factory/src/eligibility/stop-rules.ts",
+      "find": "if (fixRounds < rules.taskFixRounds) return undefined;",
+      "replace": "if (fixRounds <= rules.taskFixRounds) return undefined;",
+      "kills": [
+        "task-fix-cap 2 fix rounds on the latest run admit, and 3 refuse with a planner looking once"
+      ]
+    },
+    {
+      "name": "unread spend holds",
+      "file": "products/factory/src/eligibility/stop-rules.ts",
+      "find": "if (!spend.ok) return { unread: `task-spend-cap unread: ${spend.why}` };",
+      "replace": "if (!spend.ok) return { hold: { task: key, stage: \"stop\", codes: [\"task-spend-cap\"], details: [], numbers: {} } };",
+      "kills": [
+        "task-spend-cap unread spend does not hold, and is named on a row held for another reason"
+      ]
+    },
+    {
+      "name": "a checkpoint read at 5 also covers 10",
+      "file": "products/factory/src/eligibility/stop-rules.ts",
+      "find": "return merged >= PROGRAMME_MIN_PRS && merged % every === 0 && read?.has(merged) !== true;",
+      "replace": "return merged >= PROGRAMME_MIN_PRS && merged % every === 0 && (read?.size ?? 0) === 0;",
+      "kills": [
+        "programme-checkpoint 6 admit, and 10 with only the 5 checkpoint hold"
+      ]
+    }
+  ]
+}

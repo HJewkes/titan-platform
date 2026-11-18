@@ -3,18 +3,18 @@ import { Limits } from '@titan-design/agent-dispatch/limits';
 
 declare const HARD_STOP_CLASSES: readonly ["ruleset-write", "tag-move", "npm-publish", "broker-restart", "launchd-install", "dotfiles-merge", "config-edit", "force-push", "deploy", "spend-money", "third-party-message", "personal-data"];
 declare const hardStopClassSchema: z.ZodEnum<{
-    "ruleset-write": "ruleset-write";
-    "tag-move": "tag-move";
-    "npm-publish": "npm-publish";
     "broker-restart": "broker-restart";
-    "launchd-install": "launchd-install";
-    "dotfiles-merge": "dotfiles-merge";
     "config-edit": "config-edit";
-    "force-push": "force-push";
     deploy: "deploy";
-    "spend-money": "spend-money";
-    "third-party-message": "third-party-message";
+    "dotfiles-merge": "dotfiles-merge";
+    "force-push": "force-push";
+    "launchd-install": "launchd-install";
+    "npm-publish": "npm-publish";
     "personal-data": "personal-data";
+    "ruleset-write": "ruleset-write";
+    "spend-money": "spend-money";
+    "tag-move": "tag-move";
+    "third-party-message": "third-party-message";
 }>;
 declare const charterDefaultsSchema: z.ZodObject<{
     kind_weights: z.ZodRecord<z.ZodString, z.ZodNumber>;
@@ -61,18 +61,18 @@ declare const charterPolicySchema: z.ZodObject<{
     seats: z.ZodArray<z.ZodString>;
     hub: z.ZodString;
     hard_stops: z.ZodArray<z.ZodEnum<{
-        "ruleset-write": "ruleset-write";
-        "tag-move": "tag-move";
-        "npm-publish": "npm-publish";
         "broker-restart": "broker-restart";
-        "launchd-install": "launchd-install";
-        "dotfiles-merge": "dotfiles-merge";
         "config-edit": "config-edit";
-        "force-push": "force-push";
         deploy: "deploy";
-        "spend-money": "spend-money";
-        "third-party-message": "third-party-message";
+        "dotfiles-merge": "dotfiles-merge";
+        "force-push": "force-push";
+        "launchd-install": "launchd-install";
+        "npm-publish": "npm-publish";
         "personal-data": "personal-data";
+        "ruleset-write": "ruleset-write";
+        "spend-money": "spend-money";
+        "tag-move": "tag-move";
+        "third-party-message": "third-party-message";
     }>>;
     defaults: z.ZodObject<{
         kind_weights: z.ZodRecord<z.ZodString, z.ZodNumber>;
@@ -123,8 +123,8 @@ declare const charterPolicySchema: z.ZodObject<{
 }, z.core.$loose>;
 declare const charterPolicyErrorSchema: z.ZodObject<{
     code: z.ZodEnum<{
-        missing: "missing";
         invalid: "invalid";
+        missing: "missing";
     }>;
     path: z.ZodString;
     message: z.ZodString;
@@ -335,8 +335,8 @@ declare const AUTHORED_MAX_CHARS = 1500;
 declare const authoredContinuationSchema: z.ZodObject<{
     on: z.ZodEnum<{
         agent: "agent";
-        pr: "pr";
         msg: "msg";
+        pr: "pr";
         time: "time";
     }>;
     ref: z.ZodString;
@@ -356,8 +356,8 @@ declare const authoredBlockSchema: z.ZodObject<{
     continuations: z.ZodDefault<z.ZodArray<z.ZodObject<{
         on: z.ZodEnum<{
             agent: "agent";
-            pr: "pr";
             msg: "msg";
+            pr: "pr";
             time: "time";
         }>;
         ref: z.ZodString;
@@ -469,8 +469,8 @@ declare const coordinatorOwnerSchema: z.ZodObject<{
     digest_at: z.ZodOptional<z.ZodArray<z.ZodString>>;
     channels: z.ZodOptional<z.ZodArray<z.ZodEnum<{
         console: "console";
-        telegram: "telegram";
         matrix: "matrix";
+        telegram: "telegram";
     }>>>;
     decider: z.ZodOptional<z.ZodObject<{
         enabled: z.ZodBoolean;
@@ -562,18 +562,18 @@ declare const coordinatorSeatSchema: z.ZodObject<{
 }, z.core.$loose>;
 declare const coordinatorPolicySchema: z.ZodObject<{
     hard_stops: z.ZodArray<z.ZodEnum<{
-        "ruleset-write": "ruleset-write";
-        "tag-move": "tag-move";
-        "npm-publish": "npm-publish";
         "broker-restart": "broker-restart";
-        "launchd-install": "launchd-install";
-        "dotfiles-merge": "dotfiles-merge";
         "config-edit": "config-edit";
-        "force-push": "force-push";
         deploy: "deploy";
-        "spend-money": "spend-money";
-        "third-party-message": "third-party-message";
+        "dotfiles-merge": "dotfiles-merge";
+        "force-push": "force-push";
+        "launchd-install": "launchd-install";
+        "npm-publish": "npm-publish";
         "personal-data": "personal-data";
+        "ruleset-write": "ruleset-write";
+        "spend-money": "spend-money";
+        "tag-move": "tag-move";
+        "third-party-message": "third-party-message";
     }>>;
     hard_stop_repos: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodArray<z.ZodString>>>;
     human_only_tag: z.ZodOptional<z.ZodString>;
@@ -627,8 +627,8 @@ declare const coordinatorConfigSchema: z.ZodObject<{
         digest_at: z.ZodOptional<z.ZodArray<z.ZodString>>;
         channels: z.ZodOptional<z.ZodArray<z.ZodEnum<{
             console: "console";
-            telegram: "telegram";
             matrix: "matrix";
+            telegram: "telegram";
         }>>>;
         decider: z.ZodOptional<z.ZodObject<{
             enabled: z.ZodBoolean;
@@ -799,8 +799,8 @@ declare const coordinatorConfigSchema: z.ZodObject<{
             hand_reserve: z.ZodOptional<z.ZodNumber>;
             brief_gate: z.ZodOptional<z.ZodEnum<{
                 off: "off";
-                shadow: "shadow";
                 on: "on";
+                shadow: "shadow";
             }>>;
         }, z.core.$strict>>>;
         overrides: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -835,8 +835,8 @@ declare const coordinatorConfigSchema: z.ZodObject<{
         pace: z.ZodOptional<z.ZodObject<{
             mode: z.ZodEnum<{
                 off: "off";
-                shadow: "shadow";
                 on: "on";
+                shadow: "shadow";
             }>;
             buffer_points: z.ZodOptional<z.ZodNumber>;
             finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
@@ -844,18 +844,18 @@ declare const coordinatorConfigSchema: z.ZodObject<{
     }, z.core.$strict>;
     policy: z.ZodObject<{
         hard_stops: z.ZodArray<z.ZodEnum<{
-            "ruleset-write": "ruleset-write";
-            "tag-move": "tag-move";
-            "npm-publish": "npm-publish";
             "broker-restart": "broker-restart";
-            "launchd-install": "launchd-install";
-            "dotfiles-merge": "dotfiles-merge";
             "config-edit": "config-edit";
-            "force-push": "force-push";
             deploy: "deploy";
-            "spend-money": "spend-money";
-            "third-party-message": "third-party-message";
+            "dotfiles-merge": "dotfiles-merge";
+            "force-push": "force-push";
+            "launchd-install": "launchd-install";
+            "npm-publish": "npm-publish";
             "personal-data": "personal-data";
+            "ruleset-write": "ruleset-write";
+            "spend-money": "spend-money";
+            "tag-move": "tag-move";
+            "third-party-message": "third-party-message";
         }>>;
         hard_stop_repos: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodArray<z.ZodString>>>;
         human_only_tag: z.ZodOptional<z.ZodString>;
@@ -903,8 +903,8 @@ declare const coordinatorConfigSchema: z.ZodObject<{
 }, z.core.$loose>;
 declare const coordinatorConfigErrorSchema: z.ZodObject<{
     code: z.ZodEnum<{
-        missing: "missing";
         invalid: "invalid";
+        missing: "missing";
         reference: "reference";
     }>;
     path: z.ZodString;
@@ -1060,4 +1060,77 @@ declare function editableField(surface: string, path: string): EditableField | u
 /** Checks one proposed value against its row's schema; never throws. */
 declare function checkEditableValue(surface: string, path: string, value: unknown): EditableValueResult;
 
-export { AUTHORED_MAX_CHARS, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type ChainError, type ChainResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type ConfigEditResult, type ConfigRevision, type ConfigSurface, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, type DocumentChange, EDITABLE_FIELDS, type EditableField, type EditableValue, type EditableValueResult, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type PrefixScopes, type ReloadClass, type ResolvedSeatPolicy, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, applyEdit, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, checkEditableValue, configRevisionSchema, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, diffDocuments, documentSha, editableField, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, renderAuthored, renderSeatBook, resolveSeatPolicy, revisionSha, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema, verifyChain };
+declare const ownerApprovalSchema: z.ZodObject<{
+    decision: z.ZodString;
+    ruleSha256: z.ZodString;
+}, z.core.$strict>;
+declare const riskContractSchema: z.ZodObject<{
+    id: z.ZodString;
+    programme: z.ZodOptional<z.ZodString>;
+    kind: z.ZodEnum<{
+        authority: "authority";
+        migration: "migration";
+        policy: "policy";
+        security: "security";
+    }>;
+    rule: z.ZodString;
+    delta: z.ZodEnum<{
+        mixed: "mixed";
+        narrower: "narrower";
+        "strictly-stricter": "strictly-stricter";
+        wider: "wider";
+    }>;
+    paths: z.ZodArray<z.ZodString>;
+    requires: z.ZodArray<z.ZodEnum<{
+        "allowed-rows-pinned": "allowed-rows-pinned";
+        "fix-proof": "fix-proof";
+        "guard-fuzz": "guard-fuzz";
+        "parse-budget": "parse-budget";
+    }>>;
+    release: z.ZodEnum<{
+        "owner-live": "owner-live";
+        seat: "seat";
+        "seat-adversary": "seat-adversary";
+        shepherd: "shepherd";
+    }>;
+    ownerApproval: z.ZodOptional<z.ZodObject<{
+        decision: z.ZodString;
+        ruleSha256: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+/** A plan that cites a programme contract instead of restating it. */
+declare const riskContractRefSchema: z.ZodObject<{
+    id: z.ZodString;
+    programme: z.ZodString;
+}, z.core.$strict>;
+type OwnerApproval = z.infer<typeof ownerApprovalSchema>;
+type RiskContract = z.infer<typeof riskContractSchema>;
+type RiskContractRef = z.infer<typeof riskContractRefSchema>;
+type RiskContractRead = {
+    contract: RiskContract | RiskContractRef;
+    problems?: undefined;
+} | {
+    contract?: undefined;
+    problems: string[];
+};
+type ResolvedRiskContract = {
+    contract: RiskContract;
+    problems?: undefined;
+} | {
+    contract?: undefined;
+    problems: string[];
+};
+type ApprovalState = "approved" | `unmet:${string}`;
+/** The plan's `risk-contract` block, or why it is missing, duplicated, unreadable or the wrong shape. */
+declare function readRiskContract(planText: string): RiskContractRead;
+/** sha256 of the rule after NFC normalisation and whitespace collapsing, so reflowing the sentence keeps its approval. */
+declare function ruleDigest(rule: string): string;
+/** `approved` only when the owner's decision is recorded and the rule is the sentence the owner approved. */
+declare function approvalState(contract: RiskContract, decisionsText: string): ApprovalState;
+/**
+ * The full contract a plan's block stands for. A block with no `programme` is its own contract; otherwise the
+ * programme file (read through the host's `read`) holds it, and a restated field that differs from it is a problem.
+ */
+declare function resolveProgramme(contract: RiskContract | RiskContractRef, read: (path: string) => string | undefined): ResolvedRiskContract;
+
+export { AUTHORED_MAX_CHARS, type ApprovalState, type AuthoredBlock, type AuthoredContinuation, type AuthoredError, type AuthoredResult, type ChainError, type ChainResult, type CharterDefaults, type CharterPolicy, type CharterPolicyError, type CharterPolicyResult, type ConfigEditResult, type ConfigRevision, type ConfigSurface, type CoordinatorConfig, type CoordinatorConfigError, type CoordinatorConfigResult, type CoordinatorOwner, type CoordinatorPolicy, type CoordinatorSeat, type DocumentChange, EDITABLE_FIELDS, type EditableField, type EditableValue, type EditableValueResult, HARD_STOPS, HARD_STOP_CLASSES, type HardStop, type HardStopClass, type OpenQuestion, type OwnerApproval, type PrefixScopes, type ReloadClass, type ResolvedRiskContract, type ResolvedSeatPolicy, type RiskContract, type RiskContractRead, type RiskContractRef, SEAT_EVENT_KINDS, type SeatConcurrency, type SeatConfig, type SeatEvent, type SeatFoldError, type SeatFoldOptions, type SeatGenerationActivity, type SeatRepo, type SeatSpend, type SeatState, type SessionFacts, type StandingRule, applyEdit, approvalState, authoredBlockSchema, authoredContinuationSchema, charterDefaultsSchema, charterPolicyErrorSchema, charterPolicySchema, checkCoordinatorConfig, checkEditableValue, configRevisionSchema, coordinatorConfigErrorSchema, coordinatorConfigSchema, coordinatorOwnerSchema, coordinatorPolicySchema, coordinatorSeatSchema, diffDocuments, documentSha, editableField, emptySeatState, foldSeatEvents, hardStopClassSchema, hardStopsIn, importAutonomyTree, openQuestionSchema, ownerApprovalSchema, parseAuthored, parseCharterPolicy, projectSeatGeneration, readRiskContract, renderAuthored, renderSeatBook, resolveProgramme, resolveSeatPolicy, revisionSha, riskContractRefSchema, riskContractSchema, ruleDigest, scratchPathOf, seatBackgroundSchema, seatClaimSchema, seatConcurrencySchema, seatConfigSchema, seatEventSchema, seatFoldErrorSchema, seatHoldSchema, seatRepoSchema, seatSpendSchema, seatStateSchema, sessionFactsPrSchema, sessionFactsSchema, standingRuleSchema, verifyChain };

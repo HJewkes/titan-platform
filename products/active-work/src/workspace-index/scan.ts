@@ -1,6 +1,7 @@
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
-import { listInitiativeSlugs } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { initiativeIsAgentVisible } from '../sessions/visibility.js';
 import { toRelative } from './refs.js';
 
 /**
@@ -13,7 +14,7 @@ import { toRelative } from './refs.js';
  * design exists to avoid.
  */
 
-export type WorkspaceClass = 'initiative' | 'note' | 'task' | 'session' | 'source';
+export type WorkspaceClass = 'initiative' | 'note' | 'task' | 'session' | 'source' | 'plan';
 
 export interface WorkspaceFile {
   class: WorkspaceClass;
@@ -63,6 +64,19 @@ async function taskFiles(tasksDir: string): Promise<string[]> {
 }
 
 /**
+ * Outcomes, bets and intent digests (TP-5453 P10). Freezes and out-of-scope records stay out: they
+ * are looked up by id through `plan.*`, not found by text.
+ */
+async function planFiles(planDir: string): Promise<string[]> {
+  const [outcomes, bets, intents] = await Promise.all([
+    filesIn(path.join(planDir, 'outcomes'), ['.yml']),
+    filesIn(path.join(planDir, 'bets'), ['.yml']),
+    filesIn(path.join(planDir, 'intents'), ['.md']),
+  ]);
+  return [...outcomes, ...bets, ...intents];
+}
+
+/**
  * `sources/` top level only, matching `listSources`. `sources/notes/` is the
  * durable-notes store with its own class, and one large `sources/` subtree
  * alone holds thousands of ingested files that active-work has never called sources.
@@ -70,17 +84,19 @@ async function taskFiles(tasksDir: string): Promise<string[]> {
 async function collectSlug(activeRoot: string, slug: string): Promise<[WorkspaceClass, string][]> {
   const dir = path.join(activeRoot, slug);
   const brief = path.join(dir, 'brief.md');
-  const [notes, tasks, sessions, sources] = await Promise.all([
+  const [notes, tasks, sessions, sources, plans] = await Promise.all([
     filesIn(path.join(dir, 'sources', 'notes'), ['.md']),
     taskFiles(path.join(dir, 'tasks')),
     filesIn(path.join(dir, 'sessions'), ['.md']),
     filesIn(path.join(dir, 'sources'), ['.md']),
+    planFiles(path.join(dir, 'plan')),
   ]);
   return [
     ...notes.map((p): [WorkspaceClass, string] => ['note', p]),
     ...tasks.map((p): [WorkspaceClass, string] => ['task', p]),
     ...sessions.map((p): [WorkspaceClass, string] => ['session', p]),
     ...sources.map((p): [WorkspaceClass, string] => ['source', p]),
+    ...plans.map((p): [WorkspaceClass, string] => ['plan', p]),
     ...((await exists(brief)) ? [['initiative', brief] as [WorkspaceClass, string]] : []),
   ];
 }
@@ -123,9 +139,21 @@ export async function scanWorkspaceSlug(activeRoot: string, slug: string): Promi
   return described.filter((file): file is WorkspaceFile => file !== null);
 }
 
+/**
+ * An owner-only initiative keeps only its brief, so owner tooling can still list it; its
+ * tasks, notes, sessions and sources never enter the agent-searchable index (TP-5453 P6).
+ */
+async function indexableFiles(activeRoot: string, slug: string): Promise<WorkspaceFile[]> {
+  const [files, visible] = await Promise.all([
+    scanWorkspaceSlug(activeRoot, slug),
+    initiativeIsAgentVisible(activeRoot, slug),
+  ]);
+  return visible ? files : files.filter((file) => file.class === 'initiative');
+}
+
 /** Every indexable file under the active root, sorted by relative path. */
 export async function scanWorkspace(activeRoot: string): Promise<WorkspaceFile[]> {
   const slugs = await listInitiativeSlugs(activeRoot);
-  const perSlug = await Promise.all(slugs.map((slug) => scanWorkspaceSlug(activeRoot, slug)));
+  const perSlug = await Promise.all(slugs.map((slug) => indexableFiles(activeRoot, slug)));
   return perSlug.flat().sort((a, b) => a.path.localeCompare(b.path));
 }

@@ -1,0 +1,502 @@
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+
+import { createScheduler, passRunner, startSessionIndexWatch } from './session-index-watch.js';
+import type { WatchDeps } from './watch-deps.js';
+import { withRefreshLock } from '../session-index/refresh-lock.js';
+import type { MachinePressure } from '../utils/machine-pressure.js';
+import { FIXTURE_LINES, SESSION, renderTranscript } from '../test-support/session-index/fixture.js';
+import { runRefresh, type RefreshOptions, type RefreshSummary } from '../session-index/refresh.js';
+import { RefreshScheduler } from '../session-index/scheduler.js';
+import { createDirtySet } from '../session-index/dirty-set.js';
+import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
+import { rebuildGraph } from '../session-index/rebuild.js';
+import { graphTotals } from '../session-index/rebuild-carry.js';
+
+const probe = { reads: new Array<MachinePressure>() };
+
+// The real probe would run sysctl; each read pops a scripted sample, then the machine is calm.
+const readPressure = async (): Promise<MachinePressure> =>
+  probe.reads.shift() ?? { swapUsedPct: 0, pressureLevel: 1 };
+
+// A fixture transcript carries a PR url; keep the pass off the real `gh`.
+const offlineRefresh: WatchDeps['refresh'] = (options) =>
+  runRefresh({ ...options, skipPrOutcomes: true });
+
+function deps(over: Partial<WatchDeps> = {}): WatchDeps {
+  return { readPressure, refresh: offlineRefresh, gate: { idle: async () => {} }, ...over };
+}
+
+const watchedRoot = z.object({ root: z.string() });
+const passLine = z.object({
+  bytesRead: z.number(),
+  rowsWritten: z.number(),
+  dbBytes: z.number(),
+});
+
+const log = { info: vi.fn(), warn: vi.fn() };
+
+let home: string;
+const opened: WorkspaceGraph[] = [];
+
+function refreshSummary(overrides: Partial<RefreshSummary>): RefreshSummary {
+  return {
+    kind: 'full',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    durationMs: 0,
+    transcripts: 0,
+    scanned: 0,
+    filesOpened: 0,
+    bytesRead: 0,
+    rowsWritten: 0,
+    dbBytes: 0,
+    phases: {},
+    indexed: 0,
+    rewound: 0,
+    unchanged: 0,
+    quarantined: 0,
+    missing: 0,
+    reconciledMissing: 0,
+    facetsBackfilled: 0,
+    facetBacklog: 0,
+    episodesWritten: 0,
+    episodeBacklog: null,
+    factsAdded: 0,
+    turnsRolledUp: 0,
+    tasksRequested: 0,
+    tasksApplied: 0,
+    prsPolled: 0,
+    workspace: null,
+    preserved: { restored: 0, merged: 0, skipped: 0 },
+    errors: [],
+    ...overrides,
+  };
+}
+
+// The runner hands the graph to the mocked refresh untouched, so any real graph will do.
+async function openUnusedGraph(): Promise<WorkspaceGraph> {
+  const graph = openGraph(path.join(home, 'unused-graph.sqlite3'));
+  opened.push(graph);
+  return graph;
+}
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+  log.info.mockClear();
+  log.warn.mockClear();
+  probe.reads.length = 0;
+  home = mkdtempSync(path.join(os.tmpdir(), 'aw-index-watch-'));
+  process.env.HOME = home;
+});
+
+afterEach(() => {
+  for (const graph of opened.splice(0)) graph.db.close();
+  vi.unstubAllEnvs();
+  delete process.env.AW_INDEX_WATCH;
+  rmSync(home, { recursive: true, force: true });
+});
+
+describe('startSessionIndexWatch', () => {
+  it('returns null and logs rather than throwing when the index cannot be opened', async () => {
+    const graph = await import('../session-index/graph.js');
+    vi.spyOn(graph, 'openGraph').mockImplementation(() => {
+      throw new Error('better-sqlite3 ABI mismatch');
+    });
+
+    expect(startSessionIndexWatch(log, { deps: deps() })).toBeNull();
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error) }),
+      expect.stringContaining('transcript indexing disabled'),
+    );
+  });
+
+  it('can be switched off entirely with AW_INDEX_WATCH=0', () => {
+    process.env.AW_INDEX_WATCH = '0';
+
+    expect(startSessionIndexWatch(log, { deps: deps() })).toBeNull();
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('starts a non-blocking initial refresh and close aborts it without a failure', async () => {
+    writeFileSync(path.join(home, 'ignored.txt'), 'x', 'utf8');
+
+    const watcher = startSessionIndexWatch(log, { deps: deps() });
+
+    expect(watcher).not.toBeNull();
+    // Construction returns immediately; the refresh is un-awaited so the
+    // daemon can bind its port before a cold corpus finishes indexing.
+    expect(watcher!.status()).toMatchObject({ running: true });
+    await watcher!.close();
+    expect(watcher!.status()).toMatchObject({ running: false, pending: false, last: null });
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('close() while the pass waits on a lock held elsewhere returns without waiting it out', async () => {
+    let letGo!: () => void;
+    let entered!: () => void;
+    const inside = new Promise<void>((resolve) => (entered = resolve));
+    const held = withRefreshLock(async () => {
+      entered();
+      await new Promise<void>((resolve) => (letGo = resolve));
+    });
+    await inside;
+    let releasedByTimer = false;
+    const releaseLater = setTimeout(() => {
+      releasedByTimer = true;
+      letGo();
+    }, 3_000);
+    const watcher = startSessionIndexWatch(log, { deps: deps() });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    await watcher!.close();
+    const closedWhileHeld = !releasedByTimer;
+    clearTimeout(releaseLater);
+    letGo();
+    await held;
+
+    expect(closedWhileHeld).toBe(true);
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('watches every discovered root', async () => {
+    const roots = ['.claude', 'agents'].map((name) => path.join(home, name, 'projects'));
+    for (const root of roots) mkdirSync(root, { recursive: true });
+    vi.stubEnv('CLAUDE_CONFIG_DIRS', roots.map((root) => path.dirname(root)).join(path.delimiter));
+
+    const watcher = startSessionIndexWatch(log, { deps: deps() });
+    await watcher!.close();
+
+    const watched = log.info.mock.calls
+      .filter(([, msg]) => msg === 'watching transcripts for session indexing')
+      .map(([obj]) => watchedRoot.parse(obj).root);
+    expect(watched).toEqual(roots);
+  });
+
+  it('the watcher sweeps the episode backlog on its first pass, every tenth pass, and after a pass that left a backlog', async () => {
+    // What each pass reports: a backlog count after a sweep, null without one, or a failure.
+    const outcomes: (number | null | Error)[] = [
+      0,
+      ...Array<null>(9).fill(null),
+      3,
+      0,
+      new Error('pass failed'),
+      0,
+      null,
+    ];
+    const sweeps: (boolean | undefined)[] = [];
+    const refresh = (options: RefreshOptions): Promise<RefreshSummary> => {
+      sweeps.push(options.episodeSweep);
+      const outcome = outcomes[sweeps.length - 1] ?? null;
+      if (outcome instanceof Error) return Promise.reject(outcome);
+      return Promise.resolve(refreshSummary({ episodeBacklog: outcome }));
+    };
+    vi.stubEnv('AW_INDEX_POLL_MS', '1');
+    vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');
+
+    const watcher = startSessionIndexWatch(log, { deps: deps({ refresh }) });
+    await vi.waitFor(() => expect(sweeps.length).toBeGreaterThanOrEqual(outcomes.length), {
+      timeout: 5_000,
+    });
+    await watcher!.close();
+
+    expect(sweeps.slice(0, outcomes.length)).toEqual([
+      true,
+      ...Array<boolean>(9).fill(false),
+      true,
+      true,
+      false,
+      true,
+      false,
+    ]);
+  });
+
+  it('a delta pass that meets the lock held keeps the dirty paths for the next pass', async () => {
+    const root = path.join(home, '.claude', 'projects');
+    vi.stubEnv('CLAUDE_CONFIG_DIRS', path.dirname(root));
+    const visited: string[][] = [];
+    const refresh = (options: RefreshOptions): Promise<RefreshSummary> => {
+      visited.push((options.transcripts ?? []).map((t) => t.absolutePath));
+      return Promise.resolve(refreshSummary({ kind: 'delta' }));
+    };
+    const dirty = createDirtySet();
+    dirty.add(root, path.join('demo', 't1.jsonl'));
+    const signal = new AbortController().signal;
+    const runner = passRunner(openUnusedGraph, dirty, log, signal, deps({ refresh }));
+
+    let letGo = (): void => {};
+    let entered = (): void => {};
+    const inside = new Promise<void>((resolve) => (entered = resolve));
+    const held = withRefreshLock(async () => {
+      entered();
+      await new Promise<void>((resolve) => (letGo = resolve));
+    });
+    await inside;
+
+    await expect(runner.run('delta')).rejects.toMatchObject({ code: 'ELOCKED' });
+    const sizeAfterSkip = dirty.size;
+    letGo();
+    await held;
+    await runner.run('delta');
+
+    expect(sizeAfterSkip).toBe(1);
+    expect(visited).toEqual([[path.join(root, 'demo', 't1.jsonl')]]);
+    expect(dirty.size).toBe(0);
+  });
+
+  it('a persistently failing delta logs one warning per backoff, not one per reader', async () => {
+    let failing = true;
+    const run = vi.fn().mockImplementation(async () => {
+      if (failing) throw new Error('delta broke');
+      return { kind: 'delta', errors: [], phases: {} };
+    });
+    const runner = { run, lastMaxLoopStallMs: () => null };
+    let clock = 0;
+    const scheduler = createScheduler(runner, createDirtySet(), log, new AbortController().signal, {
+      now: () => clock,
+      readPressure,
+    });
+
+    await scheduler.runNow(1_000);
+    const readers = await Promise.all([1, 2, 3, 4].map(() => scheduler.runNow(1_000)));
+
+    expect(readers).toEqual(['stale', 'stale', 'stale', 'stale']);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(Error), backoffMs: 1_000 }),
+      expect.any(String),
+    );
+
+    failing = false;
+    clock += 999;
+    expect(await scheduler.runNow(1_000)).toBe('stale');
+    expect(run).toHaveBeenCalledTimes(1);
+    clock += 1;
+    await scheduler.runNow(1_000);
+    await scheduler.runNow(1_000);
+    const recovered = log.info.mock.calls.filter(([, msg]) => /recovered/.test(String(msg)));
+    expect(recovered).toHaveLength(1);
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    await scheduler.close();
+  });
+
+  it('a hold-cap release logs the cap, not a resume', async () => {
+    vi.stubEnv('AW_INDEX_GATE_RECHECK_MS', '60000');
+    probe.reads.push(...Array.from({ length: 40 }, () => ({ swapUsedPct: 80, pressureLevel: 1 })));
+    const run = vi.fn().mockResolvedValue({ kind: 'full', errors: [], phases: {} });
+    let clock = 0;
+    const scheduler = createScheduler(
+      { run, lastMaxLoopStallMs: () => null },
+      createDirtySet(),
+      log,
+      new AbortController().signal,
+      {
+        now: () => clock,
+        sleep: async (ms) => {
+          clock += ms;
+        },
+        readPressure,
+      },
+    );
+
+    scheduler.trigger();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await scheduler.close();
+
+    const messages = log.info.mock.calls.map(([, msg]) => String(msg));
+    expect(messages).toContain('session index released: hold cap 1800000 ms reached');
+    expect(messages).not.toContain('session index resumed');
+  });
+
+  it('a delta pass forwards onIndexed to the refresh', async () => {
+    const refresh = (options: RefreshOptions): Promise<RefreshSummary> => {
+      options.onIndexed?.();
+      return Promise.resolve(refreshSummary({ kind: 'delta' }));
+    };
+    const signal = new AbortController().signal;
+    const runner = passRunner(openUnusedGraph, createDirtySet(), log, signal, deps({ refresh }));
+    const onIndexed = vi.fn();
+
+    await runner.run('delta', onIndexed);
+
+    expect(onIndexed).toHaveBeenCalledTimes(1);
+  });
+
+  it('runNow reads stale at once while a full pass waits on a lock another process holds', async () => {
+    let entered = (): void => {};
+    let letGo = (): void => {};
+    const inside = new Promise<void>((resolve) => (entered = resolve));
+    const held = withRefreshLock(async () => {
+      entered();
+      await new Promise<void>((resolve) => (letGo = resolve));
+    });
+    await inside;
+    const abort = new AbortController();
+    const runner = passRunner(openUnusedGraph, createDirtySet(), log, abort.signal, deps());
+    const waiting = vi.fn();
+    const scheduler = new RefreshScheduler(
+      (kind, onIndexed, onLockWait) =>
+        runner.run(kind, onIndexed, (isWaiting) => {
+          if (isWaiting) waiting();
+          onLockWait(isWaiting);
+        }),
+      { minIntervalMs: 1 },
+    );
+    scheduler.trigger();
+    await vi.waitFor(() => expect(waiting).toHaveBeenCalled());
+
+    // A read that waited for the budget's timer would still be pending at the next loop turn.
+    const nextTurn = new Promise((resolve) => setImmediate(() => resolve('still waiting')));
+    const freshness = await Promise.race([scheduler.runNow(800), nextTurn]);
+    abort.abort(new Error('test over'));
+    letGo();
+    await held;
+    await scheduler.close();
+
+    expect(freshness).toBe('stale');
+  });
+
+  describe('with transcripts on disk', () => {
+    const project = () => path.join(home, '.claude', 'projects', 'demo');
+
+    /** Each copy gets its own prompt and request ids, so no two sessions share a turn or a request. */
+    const writeWatchTranscript = (n: number): void => {
+      const lines = FIXTURE_LINES.map((fixture, i) => ({
+        ...fixture,
+        ...(typeof fixture.uuid === 'string' ? { uuid: `${fixture.uuid}-${n}` } : {}),
+        ...(fixture.type === 'assistant' ? { requestId: `req-${n}-${i}` } : {}),
+      }));
+      const body = renderTranscript(lines).replaceAll(SESSION, `sess-watch-${n}`);
+      writeFileSync(path.join(project(), `t${n}.jsonl`), body, 'utf8');
+    };
+
+    beforeEach(() => {
+      mkdirSync(project(), { recursive: true });
+      for (const n of [1, 2, 3]) writeWatchTranscript(n);
+      vi.stubEnv('CLAUDE_CONFIG_DIRS', path.join(home, '.claude'));
+      vi.stubEnv('AW_INDEX_POLL_MS', '3600000');
+    });
+
+    const passLines = () =>
+      log.info.mock.calls.filter(([, msg]) => msg === 'session index pass').map(([obj]) => obj);
+
+    it('logs one session index pass line with what the pass opened and read', async () => {
+      const watcher = startSessionIndexWatch(log, { deps: deps() });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
+      await watcher!.close();
+
+      expect(passLines()[0]).toMatchObject({
+        kind: 'full',
+        transcripts: 3,
+        scanned: 3,
+        filesOpened: 3,
+        bytesRead: expect.any(Number),
+        rowsWritten: expect.any(Number),
+        dbBytes: expect.any(Number),
+        durationMs: expect.any(Number),
+        maxStallMs: expect.any(Number),
+        phases: expect.objectContaining({
+          discover: expect.any(Number),
+          corpus: expect.any(Number),
+        }),
+        prsPolled: 0,
+        errors: [],
+        errorCount: 0,
+      });
+      const line = passLine.parse(passLines()[0]);
+      expect(line.bytesRead).toBeGreaterThan(0);
+      expect(line.rowsWritten).toBeGreaterThan(0);
+      expect(line.dbBytes).toBeGreaterThan(0);
+    });
+
+    it('logs the pass kind the refresh reports', async () => {
+      const refresh = (): Promise<RefreshSummary> =>
+        Promise.resolve(refreshSummary({ kind: 'delta' }));
+
+      const watcher = startSessionIndexWatch(log, { deps: deps({ refresh }) });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
+      await watcher!.close();
+
+      expect(passLines()[0]).toMatchObject({ kind: 'delta' });
+    });
+
+    it('logs one pause and one resume while memory pressure holds the pass', async () => {
+      vi.stubEnv('AW_INDEX_GATE_RECHECK_MS', '1');
+      probe.reads.push(
+        { swapUsedPct: 80, pressureLevel: 1 },
+        { swapUsedPct: 80, pressureLevel: 1 },
+        { swapUsedPct: 10, pressureLevel: 1 },
+      );
+
+      const watcher = startSessionIndexWatch(log, { deps: deps() });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
+      await watcher!.close();
+
+      const messages = log.info.mock.calls.map(([, msg]) => String(msg));
+      expect(messages.filter((msg) => msg.startsWith('session index paused: '))).toEqual([
+        'session index paused: swap 80% used (limit 60%)',
+      ]);
+      expect(messages.filter((msg) => msg === 'session index resumed')).toHaveLength(1);
+      expect(messages.indexOf('session index resumed')).toBeLessThan(
+        messages.indexOf('session index pass'),
+      );
+    });
+
+    it('a transcript append starts no pass; the poll does', async () => {
+      const debounceMs = 100;
+      vi.stubEnv('AW_INDEX_DEBOUNCE_MS', String(debounceMs));
+      vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');
+      let pollTick: () => void = () => {};
+      const watcher = startSessionIndexWatch(log, {
+        deps: deps(),
+        startPoll: (tick) => {
+          pollTick = tick;
+          return () => {};
+        },
+      });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
+
+      const transcript = path.join(home, '.claude', 'projects', 'demo', 't1.jsonl');
+      appendFileSync(transcript, renderTranscript(FIXTURE_LINES.slice(0, 1)), 'utf8');
+      await new Promise((resolve) => setTimeout(resolve, 3 * debounceMs));
+      const afterAppend = passLines().length;
+      pollTick();
+      await vi.waitFor(() => expect(passLines()).toHaveLength(2));
+      await watcher!.close();
+
+      expect(afterAppend).toBe(1);
+      expect(passLines()[1]).toMatchObject({ kind: 'full' });
+    });
+
+    it('after a miner rebuild swap the watcher writes its next pass to the new file, whose turn and request totals equal the old one', async () => {
+      vi.stubEnv('AW_INDEX_MIN_INTERVAL_MS', '1');
+      let pollTick: () => void = () => {};
+      const watcher = startSessionIndexWatch(log, {
+        deps: deps(),
+        startPoll: (tick) => {
+          pollTick = tick;
+          return () => {};
+        },
+      });
+      await vi.waitFor(() => expect(passLines()).toHaveLength(1));
+
+      const rebuilt = await rebuildGraph();
+      writeWatchTranscript(4);
+      pollTick();
+      await vi.waitFor(() => expect(passLines()).toHaveLength(2));
+      await watcher!.close();
+
+      expect(rebuilt).toMatchObject({ swapped: true, nextTotals: rebuilt.liveTotals });
+      expect(rebuilt.liveTotals.turns).toBeGreaterThan(0);
+      expect(rebuilt.liveTotals.requestCount).toBeGreaterThan(0);
+      const backup = graphTotals(rebuilt.backupPath!);
+      expect(backup).toEqual(rebuilt.liveTotals);
+      const swapped = graphTotals(defaultGraphPath());
+      expect(swapped.turns).toBe(backup.turns + backup.turns / 3);
+      expect(swapped.requestCount).toBe(backup.requestCount + backup.requestCount / 3);
+    });
+  });
+});

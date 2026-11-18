@@ -13,7 +13,7 @@ Every spoken line is heard once, at speaking pace, so write it the way a narrato
 
 - Contract as people talk: it's, don't, you'll, that's.
 - Vary sentence length. Put a short sentence beside a long one.
-- Give each sentence one idea, but let some sentences run when the thought needs the room.
+- Let a sentence run as long as its step of reasoning runs, and keep short ones for thoughts that are short.
 - Talk to the viewer as "you": say what they'd see, try or expect.
 - The narrator speaks as "we" for narrator and viewer together, as in "we can see" or "let's
   follow one task", and never as "I". Keep "we" off the makers.

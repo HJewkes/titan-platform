@@ -8,6 +8,7 @@ import { declareScriptReadings } from "../heteronym-readings.js";
 import { leadBeatLines, leadBeats, uncuedTargets, type LeadBeat } from "../lead-beats.js";
 import { LANES_CHAPTER, type CoverageManifest } from "../lint-coverage.js";
 import type { Stamped, LedgerStamp } from "../ledger-stamp.js";
+import { cueStandIns } from "../cue-stand-ins.js";
 import { CUE_KIND_ROLES, unknownCueKinds } from "../pace-items.js";
 import { budgetSection, planFaults, planHint, retimeOverBudget } from "../script-budget.js";
 import { parseScript } from "../script-load.js";
@@ -76,7 +77,7 @@ function laneLine(lane: CoverageManifest["lanes"][number], coverage: CoverageMan
 }
 
 /** Per lane, the threads a script names and the rollup fact that counts the rest, so Q-E21 is met in the draft. */
-export const coverageSection = (coverage: CoverageManifest): string =>
+const coverageSection = (coverage: CoverageManifest): string =>
   `## Coverage (coverage.json)
 
 Every merged PR of the day is named or counted under its lane. Name each thread below by what it did, citing its PR fact ids in the beat that names it; the PR numbers below go on screen, never in spoken. Count the rest of a lane in a "${LANES_CHAPTER}" chapter beat that cites the lane's rollup fact and says or shows the lane's merged total.
@@ -174,9 +175,10 @@ function cueFault(script: ScriptV1, plan: ScriptPlan): string | undefined {
  */
 function cueKindFault(script: ScriptV1): string | undefined {
   const kinds = Object.keys(CUE_KIND_ROLES).join(", ");
-  const faults = script.beats.flatMap((beat, i) =>
-    unknownCueKinds(beat).map((kind) => `beats.${i}.visual.cues: cue target kind "${kind}" in ${beat.id} is not one of ${kinds}`),
-  );
+  const faults = script.beats.flatMap((beat, i) => [
+    ...unknownCueKinds(beat).map((kind) => `beats.${i}.visual.cues: cue target kind "${kind}" in ${beat.id} is not one of ${kinds}`),
+    ...cueStandIns(beat).map(({ target, replacement }) => `beats.${i}.visual.cues: cue target "${target}" in ${beat.id} is terminal or timeline content under a generic kind: use ${replacement}:`),
+  ]);
   return faults.length > 0 ? faults.join("; ") : undefined;
 }
 

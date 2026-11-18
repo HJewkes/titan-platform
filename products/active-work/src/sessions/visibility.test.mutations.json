@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the charter's human-only list no longer reaches the verdict",
+      "file": "products/active-work/src/sessions/visibility.ts",
+      "find": "const listed = humanOnly === 'unknown' ? 'unknown' : humanOnly.has(slug);",
+      "replace": "const listed = humanOnly === 'unknown' ? 'unknown' : false;",
+      "kills": [
+        "visibilityFor shows an agent only initiatives the brief and the charter both allow",
+        "withheldSlugs withholds human-only and owner-only initiatives alike"
+      ]
+    },
+    {
+      "name": "an unreadable root shows an agent everything",
+      "file": "products/active-work/src/sessions/visibility.ts",
+      "find": "    return SERVE_NONE;",
+      "replace": "    return SERVE_ALL;",
+      "kills": ["visibilityFor shows an agent nothing from an active root it cannot read"]
+    },
+    {
+      "name": "a name not on disk is shown to an agent",
+      "file": "products/active-work/src/sessions/visibility.ts",
+      "find": "  return brand((initiative) => initiative !== null && shown.has(initiative));",
+      "replace": "  return brand((initiative) => initiative !== null && (shown.has(initiative) || !verdicts.some((verdict) => verdict.slug === initiative)));",
+      "kills": ["visibilityFor never shows an agent a name from history that is no longer on disk"]
+    }
+  ]
+}

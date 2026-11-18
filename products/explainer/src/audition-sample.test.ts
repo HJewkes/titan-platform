@@ -6,6 +6,7 @@ import { loadDoctrine } from "./doctrine-load.js";
 import { buildMaterialMap } from "./material-map.js";
 import { loadProfiles, profileFor, structureFor } from "./profile-load.js";
 
+const ABT = "Builds are slow, but the cache keys steps, so reruns are free.";
 const set = loadProfiles();
 const profile = profileFor(set, "repo-argument");
 /** Synthetic: a pending decision, a central problem and three parallel lints. */
@@ -21,8 +22,8 @@ function validReply() {
   return pool.slots.map((slot, i) => {
     const blocks = ctx.blocks.get(slot.structure)!;
     return {
-      structure: slot.structure, system: slot.system, likelihood: 0.3, sentence: "s", hook: { fact: "F1", line: "l" },
-      blocks: blocks.map((b) => ({ id: b.id, question: "q", facts: ["F2"], seconds: 30, beat: b.beats[0]!, covers: i === 0 ? ["takeaway"] : [] })),
+      structure: slot.structure, system: slot.system, likelihood: 0.3, sentence: ABT, hook: { fact: "F1", line: "l" },
+      blocks: blocks.map((b) => ({ id: b.id, question: "q", facts: ["F2"], seconds: Math.round(profile.runtime.targetS / blocks.length), beat: b.beats[0]!, covers: i === 0 ? ["takeaway"] : [] })),
       payoff: blocks[1]!.id, signatureLayer: "x", cuts: [],
     };
   });
@@ -57,6 +58,15 @@ describe("audition sampling reply", () => {
     expect(check([{ ...a, payoff: "nowhere" }, b, c]).issues).toEqual(["spines.0.payoff: nowhere is not a block id"]);
   });
 
+  it("refuses a spine whose seconds miss the runtime band, naming the total and the band", () => {
+    const [a, b, c] = validReply();
+    const short = { ...a!, blocks: a!.blocks.map((x) => ({ ...x, seconds: 5 })) };
+
+    const { issues } = check([short, b, c]);
+
+    expect(issues).toEqual([expect.stringMatching(/^spines\.0: blocks total \d+ s, outside the runtime band 210-300 s/)]);
+  });
+
   it("refuses a reply that is not JSON, or a likelihood outside (0, 1]", () => {
     expect(checkSample(ctx, "no object here").issues).toEqual(["the reply holds no JSON object"]);
     expect(check(validReply().map((s) => ({ ...s, likelihood: 0 })))).toMatchObject({ issues: expect.arrayContaining([expect.stringMatching(/^spines\.0\.likelihood/)]) });
@@ -70,8 +80,8 @@ describe("audition sampling reply", () => {
     const blocks = new Map(slots.map((s) => [s.structure, slotBlocks(daily, structureFor(set.structures, s.structure))]));
     const dailyCtx: SampleContext = { slots, structures: set.structures, profile: daily, map: dailyMap, facts, blocks };
     const spines = slots.map((slot) => ({
-      structure: slot.structure, system: slot.system, likelihood: 0.3, sentence: "s", hook: { fact: "F1", line: "l" },
-      blocks: blocks.get(slot.structure)!.map((b) => ({ id: b.id, question: "q", facts: ["F2"], seconds: 15, beat: b.id === "stats" ? "metrics-panel" : b.beats[0]!, covers: [] })),
+      structure: slot.structure, system: slot.system, likelihood: 0.3, sentence: ABT, hook: { fact: "F1", line: "l" },
+      blocks: blocks.get(slot.structure)!.map((b) => ({ id: b.id, question: "q", facts: ["F2"], seconds: Math.round(daily.runtime.targetS / blocks.get(slot.structure)!.length), beat: b.id === "stats" ? "metrics-panel" : b.beats[0]!, covers: [] })),
       payoff: "goals", signatureLayer: "x", cuts: [],
     }));
 

@@ -13,9 +13,7 @@ export type {
   RecoverableStepRunner,
   SeedResult,
   StepDispatchAck,
-  StepFailureDetail,
   StepOperation,
-  StepOutputFailureKind,
   StepReconcileOutcome,
   StepResult,
   StepRunInput,
@@ -30,12 +28,9 @@ export type {
   WorkflowRun,
   WorkflowStatus,
 } from "./types.js";
+export type { StepFailureDetail, StepOutputFailureKind } from "./step-errors.js";
 export {
-  AuthorityDeniedError,
-  AuthorityRefusedError,
   GATE_CANCELLED_SIGNAL,
-  StepFailedError,
-  StepOutputInvalidError,
   WorkflowCancelledError,
   WorkflowNonDeterminismError,
   WorkflowNotOwnedError,
@@ -43,6 +38,7 @@ export {
   WorkflowSchemaDriftError,
   workflowStepRequestKey,
 } from "./types.js";
+export { AuthorityDeniedError, AuthorityRefusedError, StepFailedError, StepOutputInvalidError } from "./step-errors.js";
 export type { SignalMatcher, SignalParser, SignalSetParser } from "./signals.js";
 export { DEFAULT_SIGNAL_PATTERNS, EMPTY_OUTPUT_SIGNAL, createSignalParser, createSignalSetParser, parseSignal, parseSignals } from "./signals.js";
 export type { TemplateRenderer } from "./prompt.js";
@@ -53,6 +49,7 @@ export {
   WorkflowRunStore,
   WorkflowStoreSchemaOutdated,
   workflowDefinitionVersionMigration,
+  workflowErrorClassMigration,
   workflowMigration,
   workflowNameIndexMigration,
   workflowOwnershipMigration,

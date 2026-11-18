@@ -1,6 +1,6 @@
 import type { AgentIdentity } from "@titan-design/authority";
 import type { GitHubPort } from "@titan-design/github";
-import type { ReviewerAgent } from "@titan-design/review-panel";
+import type { AuthorityLine, ReviewerAgent } from "@titan-design/review-panel";
 import { judgeAttestations } from "../registry/attest.js";
 import { readClaims } from "./attest-read.js";
 import type { DeploySkew } from "./attest-skew.js";
@@ -8,14 +8,22 @@ import { errorClass } from "./error-class.js";
 import { G10_ADVERSARY_CLASS, holdClassOf } from "./g10-release.js";
 import { independentOfRun, type Lineage } from "./lineage.js";
 import { separateLineages } from "./reviewer-lineage.js";
-import { transient, whileBrokerBooting, whileRosterSlow, type BrokerDownTiming } from "./review-wait.js";
+import { clearReviewWait, noteReviewWait, transient, untilRosterRead, type BrokerDownTiming, type RosterNote } from "./review-wait.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 
-/** The `Attests:` tokens of the accepted MERGE and, on a panel, the adversary member's own MERGE and whether the plan had one. */
+/**
+ * The `Attests:` tokens of the accepted MERGE and, on a panel, the adversary member's own MERGE and whether the plan had one.
+ * `authority` is that MERGE's `Authority:` line (TP-5407); absent where the member wrote none or was recorded before it was asked.
+ */
 export interface AttestVerdicts {
   attests: string[];
-  adversary?: { reviewer: AgentIdentity; head: string; attests: string[] };
+  adversary?: { reviewer: AgentIdentity; head: string; attests: string[]; authority?: AuthorityLine };
   adversaryPlanned?: true;
+}
+
+/** Whether the run owes an adversary MERGE: the panel planned one, or the registration's hold is a g10-adversary hold. */
+export function adversaryRequired(attest: AttestVerdicts | undefined, holdReason: string | null | undefined): boolean {
+  return attest?.adversaryPlanned === true || holdClassOf(holdReason) === G10_ADVERSARY_CLASS;
 }
 
 export interface AttestReaders {
@@ -69,15 +77,34 @@ async function runFacts(readers: AttestReaders, runId: string): Promise<RunFacts
   }
 }
 
-/** How long a roster or lineage read is asked again; the same waits the reviewer dispatch spends on its own roster read. */
+/** Each round of a roster or lineage read spends the waits the reviewer dispatch spends on its own roster read. */
 interface RosterPatience {
   timing: BrokerDownTiming;
   budgetMs: number;
   signal: AbortSignal;
 }
 
-const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience) => () =>
-  whileRosterSlow(timing, signal, budgetMs, () => whileBrokerBooting(timing, signal, read));
+/** The step already holds a MERGE, so a roster unread for a whole round is read again rather than failing the run (TP-5086). */
+const patiently = <T>(read: () => Promise<T>, { timing, budgetMs, signal }: RosterPatience, note?: RosterNote) => () => untilRosterRead(timing, signal, budgetMs, read, note);
+
+/** The run's pull request, or undefined when the store is unbound or the run has none; a note is best effort and must not fail the step. */
+function prOf(store: ShepherdStoreRef, runId: string): number | undefined {
+  try {
+    return store.get().byRun(runId)?.pr ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A run held at the evidence step shows its roster wait in status, next to the other review waits. */
+function rosterNote(store: ShepherdStoreRef, subject: AttestSubject): RosterNote {
+  return (text) => {
+    const pr = prOf(store, subject.runId);
+    if (pr === undefined) return;
+    if (text === undefined) clearReviewWait(subject.repo, pr);
+    else noteReviewWait(subject.repo, pr, `waiting for the reviewer roster at the merge evidence step: ${text}`);
+  };
+}
 
 export interface AttestSkewWiring {
   /** Main's registry commits the running build lacks; absent reads no skew, so the attest step judges at once (TP-4752). */
@@ -91,9 +118,11 @@ interface JudgeWiring extends AttestSkewWiring {
 
 /** The evidence step's judge, naming meeters from the dispatch's roster and the wired lineage, each read with `patience`. */
 export function attestJudge(port: GitHubPort, store: ShepherdStoreRef, { dispatch, lineage, deploySkew }: JudgeWiring, patience: RosterPatience) {
-  const reads = { ...(dispatch && { roster: patiently(() => dispatch.roster(), patience) }), ...(lineage && { lineage: patiently(lineage, patience) }) };
-  const readers: AttestReaders = { store, ...reads, ...(deploySkew && { deploySkew }) };
-  return (subject: AttestSubject, baseRef: string) => attestAtHead(port, readers, subject, baseRef);
+  return (subject: AttestSubject, baseRef: string) => {
+    const note = rosterNote(store, subject);
+    const reads = { ...(dispatch && { roster: patiently(() => dispatch.roster(), patience, note) }), ...(lineage && { lineage: patiently(lineage, patience, note) }) };
+    return attestAtHead(port, { store, ...reads, ...(deploySkew && { deploySkew }) }, subject, baseRef);
+  };
 }
 
 /**
@@ -117,7 +146,7 @@ export async function attestAtHead(port: GitHubPort, readers: AttestReaders, sub
     head: subject.head,
     correctness: { reviewer: rowOf(subject.resolver), attests: subject.attest?.attests ?? [], head: subject.verdict.head, carried: subject.verdict.head !== subject.head },
     ...(adversary && { adversary: { reviewer: rowOf(adversary.reviewer), attests: adversary.attests, head: adversary.head } }),
-    adversaryRequired: subject.attest?.adversaryPlanned === true || holdClassOf(registration.holdReason) === G10_ADVERSARY_CLASS,
+    adversaryRequired: adversaryRequired(subject.attest, registration.holdReason),
     independent: (agent) => independentOfRun(agent, registration, lineage, authors),
     separate: (a, b) => separateLineages(a, b, lineage.rows),
   });

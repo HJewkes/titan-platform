@@ -5,6 +5,7 @@ import { getInitiativeDir } from '../utils/paths.js';
 import { today } from '../utils/today.js';
 import { ValidationError, NotFoundError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
+import { slugifyLabel } from '../utils/slug.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -24,20 +25,6 @@ const ResultSchema = z.object({
 
 type Args = z.infer<typeof ArgsSchema>;
 type Result = z.infer<typeof ResultSchema>;
-
-/**
- * Slugify a label or topic for use in a filename.
- *
- * Lowercases, replaces non-alphanumeric runs with `-`, trims leading/trailing
- * dashes. Falls back to `untitled` when the result is empty.
- */
-export function slugifyLabel(input: string): string {
-  const cleaned = input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return cleaned.length > 0 ? cleaned : 'untitled';
-}
 
 function deriveFilename(args: Args): string {
   switch (args.type) {

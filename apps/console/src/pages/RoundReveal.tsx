@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Alert, Button, ButtonText, HStack, Pill, Typography, VStack } from "@titan-design/react-ui";
 import { z } from "zod";
 import type { ConsoleCommands } from "../../server/commands.js";
-import { RecommendationSchema } from "../../server/review-schema-0.3/schema.js";
+import { RecommendationSchema } from "@titan-design/review-schema";
 import { agrees } from "../../server/round-feedback.js";
 import type { Question } from "../../server/round-schema.js";
 import type { RoundDetail } from "../../server/rounds.js";

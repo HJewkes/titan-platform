@@ -1,4 +1,4 @@
-import { kitDdl, spanFtsTablesDdl, type Migration } from '@titan-design/store-sqlite';
+import { cacheBlobTableDdl, kitDdl, spanFtsTablesDdl, type Migration } from '@titan-design/store-sqlite';
 import { MIGRATIONS as SESSION_GRAPH_MIGRATIONS } from '@titan-design/session-graph';
 
 /**
@@ -139,19 +139,6 @@ const DOMAIN_DDL = `
 `;
 
 /**
- * Every workspace table, in an order safe to clear. The watermark table is not
- * derived, so it is rewound rather than emptied — same rule the session graph
- * states for `transcript`.
- */
-export const WORKSPACE_TABLES = [
-  'note',
-  'workspace_task',
-  'session_record',
-  'source',
-  'initiative',
-] as const;
-
-/**
  * active-work's migrations live in a fixed band far above the chain they extend.
  *
  * They used to be numbered positionally off `SESSION_GRAPH_MIGRATIONS` (TP-35),
@@ -163,6 +150,8 @@ export const WORKSPACE_TABLES = [
 export const WORKSPACE_MIGRATION_VERSION = 1001;
 export const PRESERVE_MIGRATION_VERSION = 1002;
 export const WORKSPACE_SPANS_MIGRATION_VERSION = 1003;
+const PLAN_MIGRATION_VERSION = 1004;
+const CACHE_BLOB_MIGRATION_VERSION = 1005;
 
 /**
  * The kit indexes `search_span` on `owner_ref` alone, and its UNIQUE index
@@ -177,7 +166,7 @@ const SPAN_SOURCE_INDEX = `
   CREATE INDEX IF NOT EXISTS idx_search_span_source ON search_span(source_id);
 `;
 
-export const WORKSPACE_MIGRATIONS: Migration[] = [
+const WORKSPACE_MIGRATIONS: Migration[] = [
   {
     version: WORKSPACE_MIGRATION_VERSION,
     name: 'workspace index tables',
@@ -230,10 +219,35 @@ const WORKSPACE_SPANS_MIGRATION: Migration = {
   },
 };
 
+/** Planning records (TP-5453 P10): outcomes, bets and intent digests, one row per file. */
+const PLAN_MIGRATION: Migration = {
+  version: PLAN_MIGRATION_VERSION,
+  name: 'plan record table',
+  up: (db) =>
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS plan_record (
+        path        TEXT PRIMARY KEY,
+        plan_ref    TEXT NOT NULL UNIQUE,
+        initiative  TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        title       TEXT
+      );
+    `),
+};
+
+/** Content-addressed bytes of ingested sources (TP-6338). */
+const CACHE_BLOB_MIGRATION: Migration = {
+  version: CACHE_BLOB_MIGRATION_VERSION,
+  name: 'cache blob table',
+  up: (db) => db.exec(cacheBlobTableDdl()),
+};
+
 /** The full chain the graph file is migrated to: the package's, then active-work's. */
 export const MIGRATIONS: Migration[] = [
   ...SESSION_GRAPH_MIGRATIONS,
   ...WORKSPACE_MIGRATIONS,
   PRESERVE_MIGRATION,
   WORKSPACE_SPANS_MIGRATION,
+  PLAN_MIGRATION,
+  CACHE_BLOB_MIGRATION,
 ];

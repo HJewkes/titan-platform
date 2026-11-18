@@ -16,12 +16,14 @@ export interface MainRules {
 /**
  * `rules` is undefined for no rules and for an unreadable answer alike, so an API failure can never narrow the checks that
  * judge a red main; `readable` tells the two apart. Main-only contexts join the required ones, so a check that runs only on
- * main, such as a test shard, still freezes it when red (TP-4401).
+ * main, such as a test shard, still freezes it when red (TP-4401). PR-only contexts leave them: no push ever runs one, so
+ * main would read pending forever and never queue its redeploy (TP-5485). Nothing required left keeps the all-checks rule.
  */
 export async function readMainRules(port: GitHubPort, repo: RepoSlug, base: string): Promise<{ rules: MainRules | undefined; readable: boolean }> {
   const [read, mainOnly] = await Promise.all([readBaseRequiredChecks(port, repo, base), readMainOnlyContexts(port, repo, base)]);
   if (!read.readable || !mainOnly.readable) return { rules: undefined, readable: false };
-  const { contexts: required, pins } = read.checks;
+  const { contexts: ruled, pins } = read.checks;
+  const required = ruled.filter((name) => !mainOnly.prOnly.includes(name));
   if (required.length === 0) return { rules: undefined, readable: true };
   const contexts = [...new Set([...required, ...mainOnly.contexts])];
   return { rules: { contexts, pins: pins ?? {} }, readable: true };

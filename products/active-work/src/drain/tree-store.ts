@@ -38,7 +38,7 @@ const PartitionSchema = z.object({
   templateIds: z.array(z.tuple([z.number().int().positive(), z.string().min(1)])),
 });
 
-export const TreeSnapshotFileSchema = z.object({
+const TreeSnapshotFileSchema = z.object({
   version: z.literal(1).default(1),
   partitions: z.array(PartitionSchema).default([]),
 });

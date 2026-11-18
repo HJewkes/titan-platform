@@ -41,7 +41,7 @@ function parseItem(line: string): FollowUp | FollowUpsWarning {
 }
 
 /** The `- ` lines directly under the heading, up to the first line that is blank, hidden or not a bullet. */
-function bulletsAfter(lines: readonly (string | null)[], heading: number): string[] {
+export function bulletsAfter(lines: readonly (string | null)[], heading: number): string[] {
   const bullets: string[] = [];
   for (const line of lines.slice(heading + 1)) {
     if (line == null || !line.startsWith("- ")) break;

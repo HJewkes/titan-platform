@@ -87,16 +87,46 @@ describe("factory rows", () => {
       "shepherd.gateReset.nonSourceNoRepro",
       "shepherd.gateReset.heldRepair",
       "shepherd.gateReset.twoMergeRelease",
+      "shepherd.gateReset.lowTierPolicy",
+      "shepherd.gateReset.ownerTier",
+      "shepherd.gateReset.ownerValidate",
+      "shepherd.backPressure.laneOpenPrs",
+      "shepherd.backPressure.ownerQueue",
+      "shepherd.backPressure.inflowWeeks",
       "shepherd.review.adversaryProfile",
       "shepherd.review.fallbackConfigDirs",
       "shepherd.review.maxConcurrent",
       "shepherd.taskClose",
+      "shepherd.visualGate",
     ]);
+  });
+
+  it("bounds each back-pressure limit to a whole number in its range", () => {
+    expect(checkEditableValue("factory", "shepherd.backPressure.laneOpenPrs", 3).ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.backPressure.laneOpenPrs", 0).ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.backPressure.ownerQueue", 10.5).ok).toBe(false);
+    expect(checkEditableValue("factory", "shepherd.backPressure.inflowWeeks", 13).ok).toBe(false);
+  });
+
+  it("takes ownerTier as off, shadow or on only", () => {
+    for (const mode of ["off", "shadow", "on"]) expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", mode).ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", "owner")).toEqual(expect.objectContaining({ ok: false, reason: "invalid" }));
+    expect(checkEditableValue("factory", "shepherd.gateReset.ownerTier", true).ok).toBe(false);
+  });
+
+  it("takes ownerValidate as off, shadow or on only", () => {
+    for (const mode of ["off", "shadow", "on"]) expect(checkEditableValue("factory", "shepherd.gateReset.ownerValidate", mode).ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.gateReset.ownerValidate", "owner")).toEqual(expect.objectContaining({ ok: false, reason: "invalid" }));
   });
 
   it("takes taskClose as keep or last-slice-only only", () => {
     expect(checkEditableValue("factory", "shepherd.taskClose", "last-slice-only").ok).toBe(true);
     expect(checkEditableValue("factory", "shepherd.taskClose", "on").ok).toBe(false);
+  });
+
+  it("takes visualGate as owner or async only", () => {
+    expect(checkEditableValue("factory", "shepherd.visualGate", "async").ok).toBe(true);
+    expect(checkEditableValue("factory", "shepherd.visualGate", "on").ok).toBe(false);
   });
 
   it("accepts a profile name and refuses one that reads as a flag or a path", () => {

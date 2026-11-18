@@ -44,7 +44,7 @@ afterAll(() => rmSync(SCRATCH, { recursive: true, force: true }));
 const hosts: FactoryHost[] = [];
 afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
-const block = (verdict: string, head: string) => `Probes: an empty list -> refused\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
+const block = (verdict: string, head: string) => `Probes: an empty list -> refused\nAuthority: unchanged\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
 const fixFirstText = (items: string, head: string) => `${items}\n\nDefect class: unnormalised command words.\n\n${block("FIX_FIRST", head)}`;
 
 const ok = (stdout: string) => ({ code: 0, stdout, stderr: "" });

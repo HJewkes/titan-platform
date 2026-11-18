@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
-import { runRefresh, withRefreshLock, type RefreshLockHolder } from '../session-index/refresh.js';
+import { withRefreshLock, type RefreshLockHolder } from '../session-index/refresh-lock.js';
+import { runRefresh } from '../session-index/refresh.js';
 
 /**
  * `active-work miner refresh` — bring the session-signal index up to date with
@@ -37,6 +38,7 @@ const WorkspaceSchema = z.object({
     source: z.number(),
   }),
   edges: z.object({ holds: z.number(), mentions: z.number(), sharesTag: z.number() }),
+  oversizedSources: z.number(),
   orphanRatio: z.number(),
   legacySpansRetired: z.number(),
 });

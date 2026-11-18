@@ -5,6 +5,7 @@ import * as graph from "../packages/code-graph/dist/index.js";
 import {
   countLoc,
   describeOutcome,
+  failedTurboTasks,
   failureSummary,
   runVerdict,
   locRuleFrom,
@@ -129,6 +130,30 @@ describe("relatedTestArgs", () => {
   });
 });
 
+const deadCheck = (indexedFiles, seedExists) =>
+  planCommands({ base: "origin/base", changed: ["packages/a/src/x.ts"], workspace: [{ dir: "packages/a/", name: "a", deps: [] }], hasTimeout: true, indexedFiles, seedExists }).find((step) => step.label.startsWith("dead:check"));
+
+describe("dead:check cold fallback", () => {
+  it("forbids a cold fallback on a seeded run past the file budget", () => {
+    const step = deadCheck(() => 1641, () => true);
+
+    expect(step.env.DEAD_CHECK_DEFER_COLD).toBe("1");
+  });
+
+  it("leaves the cold fallback allowed on a seeded run within the file budget", () => {
+    const step = deadCheck(() => 10, () => true);
+
+    expect(step.env.DEAD_CHECK_DEFER_COLD).toBeUndefined();
+  });
+
+  it("a deferred-cold exit defers dead:check to CI instead of failing", () => {
+    const step = deadCheck(() => 10, () => false);
+
+    expect(describeOutcome(step, 76).ok).toBe(true);
+    expect(describeOutcome({ label: "lint", cmd: "pnpm" }, 76).ok).toBe(false);
+  });
+});
+
 describe("planCommands", () => {
   const workspace = [{ dir: "packages/a/", name: "a", deps: [] }];
   const plan = planCommands({ base: "origin/main", changed: ["packages/a/src/x.ts"], workspace, hasTimeout: true });
@@ -223,5 +248,33 @@ describe("planCommands", () => {
 
   it("plans nothing when nothing changed", () => {
     expect(planCommands({ base: "b", changed: [], workspace })).toEqual([]);
+  });
+});
+
+describe("build step output", () => {
+  const workspace = [{ dir: "packages/a/", name: "a", deps: [] }];
+  const transcript = [
+    "@scope/lib#build: cache hit, replaying logs",
+    "@scope/lib#build:  ERROR  command (/repo/packages/lib) /bin/pnpm run build exited (2)",
+    "@scope/other#build: command (/repo/packages/other) /bin/pnpm run build exited (2)",
+    " Tasks:    1 successful, 2 total",
+    "Failed:    @scope/lib#build",
+    " ERROR  run failed: command  exited (2)",
+  ].join("\n");
+
+  it("the build step asks turbo for errors-only logs", () => {
+    const build = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace }).find((s) => s.label === "build");
+    expect(build.args).toContain("--output-logs=errors-only");
+  });
+
+  it("a failed build names the failing package and task in the summary", () => {
+    const build = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace }).find((s) => s.label === "build");
+    expect(failedTurboTasks(transcript)).toEqual(["@scope/lib#build", "@scope/other#build"]);
+    expect(describeOutcome(build, 1, null, transcript).message).toBe("build failed (exit status 1): @scope/lib#build, @scope/other#build");
+  });
+
+  it("a failed build with no parsable task falls back to the exit status", () => {
+    const build = planCommands({ base: "b", changed: ["packages/a/src/x.ts"], workspace }).find((s) => s.label === "build");
+    expect(describeOutcome(build, 1, null, "boom").message).toBe("build failed (exit status 1)");
   });
 });

@@ -35,6 +35,14 @@ const FILES: Record<string, string> = {
     `  const other = await import(name);\n` +
     `  return mod.C + (other ? 1 : 0);\n` +
     `}\n`,
+  // TP-5155: a template literal with no substitution names its module statically;
+  // one with a substitution does not, and must yield no edge.
+  "/repo/src/dyn-template.ts":
+    `export async function load(n: string) {\n` +
+    "  const { P } = await import(`./multi.js`);\n" +
+    "  const other = await import(`./${n}.js`);\n" +
+    `  return P + (other ? 1 : 0);\n` +
+    `}\n`,
   // Destructured dynamic import (C-68): the lazy-command-loading pattern. `P`
   // and the aliased `Q: qq` each credit their origin symbol in multi.ts; the
   // namespace `const ns = await import(...)` binds no specific export, so it

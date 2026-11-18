@@ -13,7 +13,7 @@ import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
 
 /** Naming conventions written by `source add`; see `deriveFilename` there. */
-export type SourceType = 'pr' | 'deepdive' | 'session' | 'pointer';
+type SourceType = 'pr' | 'deepdive' | 'session' | 'pointer';
 
 export interface SourceEntry {
   /** Filename including `.md`. */
@@ -25,7 +25,7 @@ export interface SourceEntry {
 }
 
 /** Resolve the sources directory for an initiative directory. */
-export function getSourcesDir(initiativeDir: string): string {
+function getSourcesDir(initiativeDir: string): string {
   return path.join(initiativeDir, 'sources');
 }
 
@@ -111,7 +111,8 @@ export function extractSourceReferences(body: string): string[] {
   const matches = body.matchAll(/sources\/([A-Za-z0-9._/-]+\.md)/g);
   const seen = new Set<string>();
   for (const match of matches) {
-    seen.add(match[1]);
+    const ref = match.at(1);
+    if (ref !== undefined) seen.add(ref);
   }
   return [...seen].sort();
 }

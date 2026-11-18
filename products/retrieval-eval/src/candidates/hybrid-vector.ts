@@ -51,11 +51,13 @@ export async function buildIndex(documents: NoteDocument[], embedder: Embedder):
   return index;
 }
 
-export interface HybridOptions {
+interface HybridOptions {
   activeRoot: string;
   /** The lexical half; the hybrid fuses against whatever this returns. */
   lexical: Candidate;
   embedder?: Embedder;
+  /** The row label; lets two embedders run as separate arms. */
+  name?: string;
   /** Injectable so a test can build the seam without touching the workspace. */
   documents?: NoteDocument[];
 }
@@ -76,7 +78,7 @@ export async function hybridVector(options: HybridOptions): Promise<Candidate> {
   const dense = vectorRetriever(embedder, index, { name: "vector" });
   const excerpts = new Map(documents.map((document) => [document.ref, document.text.slice(0, EXCERPT_CHARS).length]));
   return {
-    name: "hybrid-fts-vector",
+    name: options.name ?? "hybrid-fts-vector",
     async search(query, limit, context) {
       const depth = limit * DEPTH_MULTIPLIER;
       const lexical = await options.lexical.search(query, depth, context);

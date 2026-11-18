@@ -1,13 +1,16 @@
 import { FileListTruncatedError, PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { shepherdPathTouches } from "./g10-class-rules.js";
+import { lowTierPolicyTouch, type LowTierMode, type LowTierPolicy } from "./g10-low-tier.js";
 import { holdClassOf } from "./g10-release.js";
 import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
 import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
+import { prChangedLines } from "./reviewer-roles.js";
+import { ownerHoldOf } from "./risk-tier.js";
 import { adversaryTouches, requiredSignoffs } from "./signoffs.js";
-import type { ShepherdStore } from "./store.js";
+import type { Registration, ShepherdStore } from "./store.js";
 
 /** Each lost compare-and-swap means another hold or release landed; the run is read again and the G10 hold restacked on it. */
 const CAS_ATTEMPTS = 5;
@@ -29,6 +32,15 @@ interface HoldTarget {
   head?: string;
   base?: string;
   pause?: Pause;
+  /** The run behind the read; absent (a file read with no run) never goes low tier. */
+  registered?: RegisteredRead;
+}
+
+/** What the registration adds to the low-tier read (TP-5403): the run's visual globs, the owner's own hold, and the switch. */
+interface RegisteredRead {
+  visualPaths?: readonly string[];
+  ownerHold: string | undefined;
+  mode: LowTierMode;
 }
 
 interface HoldFiles {
@@ -38,6 +50,8 @@ interface HoldFiles {
   head?: string;
   /** The wait before a file list that disagrees with its count is read again; absent means a real timer. */
   pause?: Pause;
+  /** `shepherd.gateReset.lowTierPolicy`; absent means `shadow`, which changes no hold. */
+  lowTier?: LowTierMode;
 }
 
 /**
@@ -49,11 +63,30 @@ function signoffFactsOf(files: readonly PrFile[]): { touches: string[]; paths: s
   return { touches: shepherdPathTouches(files), paths };
 }
 
-/** Review policy 458: only a PR that needs an adversary sign-off is held; size, migration and a security kind pick its correctness reviewer instead. */
-function reasonFor(files: readonly PrFile[]): string | undefined {
+/** Only a policy touch on a run, with the switch not off, is judged; the line count is the head's own, a file with no counts unread. */
+function lowTierOf(files: readonly PrFile[], facts: { touches: string[]; paths: string[] }, registered: RegisteredRead | undefined): LowTierPolicy | undefined {
+  if (registered === undefined || registered.mode === "off" || !facts.touches.includes("policy")) return undefined;
+  const { visualPaths, ownerHold } = registered;
+  const changedLines = prChangedLines(files);
+  if (changedLines === undefined) return { eligible: false, kept: "changed lines unread" };
+  return lowTierPolicyTouch({ paths: facts.paths, changedLines, unread: undefined, ownerHold, ...(visualPaths && { visualPaths }) });
+}
+
+/**
+ * Review policy 458: only a PR that needs an adversary sign-off is held; size, migration and a security kind pick its correctness
+ * reviewer instead. A low-tier policy touch (TP-5403) needs only the correctness sign-off, so it is held `g10-review`; a policy
+ * touch kept from low tier names the first fact that kept it, and `shadow` names the review it would have had.
+ */
+function reasonFor(files: readonly PrFile[], registered?: RegisteredRead): string | undefined {
   const facts = signoffFactsOf(files);
   if (!requiredSignoffs(facts).includes("adversary")) return undefined;
-  return `g10-adversary: ${adversaryTouches(facts.touches).join(", ")} touch`;
+  const adversary = `g10-adversary: ${adversaryTouches(facts.touches).join(", ")} touch`;
+  const low = lowTierOf(files, facts, registered);
+  if (low === undefined) return adversary;
+  if (!low.eligible) return `${adversary} (kept: ${low.kept})`;
+  const tables = low.tables.join(", ");
+  if (registered?.mode === "shadow") return `${adversary} (shadow: low tier ${tables})`;
+  return requiredSignoffs({ ...facts, lowTier: true }).includes("adversary") ? adversary : `g10-review: low-tier policy touch (${tables})`;
 }
 
 /**
@@ -80,7 +113,7 @@ async function filesWithRetry(port: GitHubPort, target: HoldTarget, local: PrFil
  */
 export async function g10HoldAt(port: GitHubPort, target: HoldTarget, local: PrFilesRead = localPrFiles): Promise<string | undefined> {
   try {
-    return reasonFor(await filesWithRetry(port, target, local, target.pause ?? realPause));
+    return reasonFor(await filesWithRetry(port, target, local, target.pause ?? realPause), target.registered);
   } catch (error) {
     return `${UNREAD_FILES_PREFIX}${error instanceof Error ? error.name : "error"})`;
   }
@@ -140,6 +173,11 @@ export async function applyRegistrationHold(port: GitHubPort, store: ShepherdSto
   }
 }
 
+const registeredRead = (registration: Registration, mode: LowTierMode = "shadow"): RegisteredRead => {
+  const visualPaths = registration.policy.visualPaths;
+  return { ownerHold: ownerHoldOf(registration), mode, ...(visualPaths && { visualPaths }) };
+};
+
 /**
  * A run whose hold history cannot be read could have any class, so `applyRegistrationHold` holds it adversary instead,
  * unless an adversary hold already gates it: that hold, often a seat's with its reviewer, is kept as it stands.
@@ -149,7 +187,8 @@ async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, run
   if (!registration || registration.pr === null || wasG10Held(store, runId, "g10-adversary:")) return undefined;
   const head = files.head ?? registration.headSha ?? undefined;
   const { repo, pr, base } = registration;
-  const target = { repo, pr, ...(head !== undefined && { head }), ...(files.pause && { pause: files.pause }), ...(base !== null && { base }) };
+  const registered = registeredRead(registration, files.lowTier);
+  const target = { repo, pr, registered, ...(head !== undefined && { head }), ...(files.pause && { pause: files.pause }), ...(base !== null && { base }) };
   const wanted = await g10HoldAt(port, target, files.local);
   if (wanted === undefined) return undefined;
   for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {

@@ -1,5 +1,6 @@
 import type { AgentIdentity, ConversationIdentity, ExecutionIdentity } from "./index.js";
 import type { ExecutionTransition, HandoffIdentity, LifecycleExecutionTarget } from "./lifecycle.js";
+import { SHA256_HEX } from "./id-encoding.js";
 import {
   cloneExecution,
   fail,
@@ -14,8 +15,6 @@ import {
 
 type PrepareTransition = Extract<ExecutionTransition<unknown>, { kind: "prepare" }>;
 type Target<K extends LifecycleExecutionTarget["kind"]> = Extract<LifecycleExecutionTarget, { kind: K }>;
-
-const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 /** Validates the prepared identity against its target and returns the execution to store. */
 export function preparedExecution(transition: PrepareTransition): ExecutionIdentity {
@@ -99,7 +98,7 @@ function validateBrief(brief: HandoffIdentity["brief"]): void {
 }
 
 /** The namespace an observed conversation must fall in; undefined for resume, which pins the whole identity. */
-export function targetNamespace(target: LifecycleExecutionTarget): string | undefined {
+function targetNamespace(target: LifecycleExecutionTarget): string | undefined {
   return target.kind === "resume" ? undefined : target.namespace;
 }
 

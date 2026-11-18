@@ -25,7 +25,7 @@ export interface LoadChurnOptions {
   untilEpoch?: number;
 }
 
-export const DEFAULT_WINDOW_DAYS = 30;
+const DEFAULT_WINDOW_DAYS = 30;
 export const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/;
 const NUMSTAT_FIRST_RE = /^(\d+|-)$/;
 

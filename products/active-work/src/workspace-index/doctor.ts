@@ -24,14 +24,19 @@ const INDEXED_REFS = `
   UNION ALL SELECT task_ref,    path FROM workspace_task
   UNION ALL SELECT session_ref, path FROM session_record
   UNION ALL SELECT source_ref,  path FROM source
+  UNION ALL SELECT plan_ref,    path FROM plan_record
   ORDER BY path
 `;
 
 export async function checkWorkspaceIndex(
   graph: WorkspaceGraph,
   activeRoot: string,
+  shown: (relativePath: string) => boolean,
 ): Promise<WorkspaceIndexHealth> {
-  const indexed = graph.db.prepare<[], { ref: string; path: string }>(INDEXED_REFS).all();
+  const indexed = graph.db
+    .prepare<[], { ref: string; path: string }>(INDEXED_REFS)
+    .all()
+    .filter((row) => shown(row.path));
   const results = await Promise.all(
     indexed.map(async (row) => ((await opens(toAbsolute(activeRoot, row.path))) ? null : row)),
   );

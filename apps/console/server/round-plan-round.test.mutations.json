@@ -22,8 +22,8 @@
     {
       "name": "the parsed round loses its planApprovals",
       "file": "apps/console/server/round-schema.ts",
-      "find": "...(planApprovals !== undefined && { planApprovals }) };",
-      "replace": "};",
+      "find": "...(planApprovals !== undefined && { planApprovals }), ...(kind !== undefined && { kind }) };",
+      "replace": "...(kind !== undefined && { kind }) };",
       "kills": [
         "a plan round built by owner-queue records one plan approval per approve pick, with the ask's task, repo, gate and scope, and none for Revise"
       ]

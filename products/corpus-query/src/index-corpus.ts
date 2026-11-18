@@ -64,6 +64,15 @@ function listFiles(root: string): string[] {
     .sort();
 }
 
+/** Path first: a file the layout rejects by name is never read. */
+function readDocument(root: string, relPath: string, layout: CorpusLayout): { bytes: Buffer; text: string; meta: ChapterMeta } | undefined {
+  if (!layout.accepts(relPath)) return undefined;
+  const bytes = readFileSync(path.join(root, relPath));
+  const text = bytes.toString("utf8");
+  const meta = layout.describe(relPath, text);
+  return meta && { bytes, text, meta };
+}
+
 /** Bring the index in line with the files under `root`: new and changed files are (re)indexed, vanished ones purged. */
 export function indexCorpus(db: Db, root: string, layout: CorpusLayout): IndexStats {
   migrateIndex(db);
@@ -73,13 +82,12 @@ export function indexCorpus(db: Db, root: string, layout: CorpusLayout): IndexSt
   const seen = new Set<string>();
 
   for (const relPath of listFiles(root)) {
-    const bytes = readFileSync(path.join(root, relPath));
-    const text = bytes.toString("utf8");
-    const meta = layout.describe(relPath, text);
-    if (!meta) {
+    const read = readDocument(root, relPath, layout);
+    if (!read) {
       stats.skipped++;
       continue;
     }
+    const { bytes, text, meta } = read;
     stats.documents++;
     seen.add(relPath);
     if (meta.title === "") stats.headerless++;

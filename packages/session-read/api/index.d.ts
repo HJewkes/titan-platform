@@ -220,6 +220,10 @@ type SessionEvent = (EventBase & {
     number: number | null;
     repo: string | null;
     url: string | null;
+    /** The head branch the command half names; null on the result half. */
+    headRef: string | null;
+    /** The `--base` the command half names; null on the result half. */
+    base: string | null;
 }) | (EventBase & {
     kind: "review_verdict";
     toolUseId: string;
@@ -514,6 +518,12 @@ declare const RELATIONS: {
     readonly PRODUCED: "produced";
     /** session --edited_by_human--> file: an `edited_text_file` attachment. */
     readonly EDITED_BY_HUMAN: "edited_by_human";
+    /**
+     * pr --built_on--> branch: the head branch a `gh pr create` opened the PR from,
+     * re-derived (TP-80) by joining the command's `--head`/`-H` (or the checked-out
+     * branch) to the result's PR number on the tool-use id; `attrs.base` holds `--base`.
+     */
+    readonly BUILT_ON: "built_on";
 };
 type Relation = (typeof RELATIONS)[keyof typeof RELATIONS];
 /** Refs derive from transcript content alone, never from a database id, so they are stable across rebuilds. */
@@ -585,8 +595,8 @@ declare function parseReviewVerdicts(text: string): ReviewVerdictMatch[];
  * - An optional fourth line `CI-policy: unchanged` or `CI-policy: weakened <key>(, <key>)*` (TP-2407) is read only
  *   directly after Head and only on MERGE. Keys come from a closed set, each at most once. Unlike every other rule here,
  *   the label is looked for on every raw line, fenced, indented, commented out or not, and a line is labelled when it
- *   folds to `cipolicy...` (see `foldCiPolicyLine`: NFKC, lower case, every non-alphanumeric and any list number gone)
- *   and the label is not glued to an identifier character, as in `ci-policy-changes.ts` (see `ciPolicyLabelRest`).
+ *   folds to `cipolicy...` (see `foldLabelledLine`: NFKC, lower case, every non-alphanumeric and any list number gone)
+ *   and the label is not glued to an identifier character, as in `ci-policy-changes.ts` (see `labelledLineRest`).
  *   With no labelled line `ciPolicy` is undefined. A labelled line whose rest folds to `weakened` and known keys reads
  *   weakened wherever it sits; the canonical unchanged line counts only as the one labelled line, exact and visible at
  *   Head+1; any other labelled line reads `{ kind: "malformed" }`. Across lines the strictest reading wins: weakened
@@ -648,6 +658,16 @@ declare function ciPolicyLabelledLines(text: string): CiPolicyLabelledLine[];
  * labelled line is canonical, all are returned, since the reviewer then wrote the label twice.
  */
 declare function refusedLines(text: string, refusal: VerdictBlockRefusal | "ci_policy_malformed"): string[];
+
+/** Folds rather than matching a list of decorations, so a decoration no one listed still reads as labelled: NFKC, lower case, every non-alphanumeric and any leading list number gone. */
+declare function foldLabelledLine(raw: string): string;
+/**
+ * The folded text after `label` when `raw` is a line labelled `label` through any decoration (a bullet, bold, a quote
+ * marker, any case, a full-width colon), or undefined for an unlabelled line. A label glued to an identifier character
+ * (`ci-policy-changes.ts`, `ciPolicyAt`) is a code name, not the label (TP-3237), unless its rest starts `strictValue`:
+ * the strict reading is never dropped, however it is spelt. Every reviewer-verdict label reads through this one fold.
+ */
+declare function labelledLineRest(raw: string, label: string, strictValue?: string): string | undefined;
 
 /**
  * Authoritative repo attribution for a filesystem path (AW-91).
@@ -839,6 +859,12 @@ declare function toAbsolutePath(displayPath: string): string;
  * directory that disappears mid-walk is skipped rather than aborting the scan.
  */
 declare function discoverTranscripts(root?: string): Promise<DiscoveredTranscript[]>;
+/**
+ * Rebuild the record `discoverTranscripts` would have produced for one file,
+ * without walking the tree. Returns null for a path discovery would not list:
+ * outside every root, not `.jsonl`, or deeper than `<project>/<session>/subagents`.
+ */
+declare function transcriptFromPath(absolutePath: string, roots: readonly TranscriptRoot[], home?: string): DiscoveredTranscript | null;
 /**
  * ~/.claude plus every ~/.claude-profiles/<name> that has a projects dir; CLAUDE_CONFIG_DIRS overrides.
  * Mirrored accounts from `CLAUDE_TRANSCRIPT_MIRRORS` follow either way.
@@ -1034,6 +1060,12 @@ interface RecoveredMessage {
     text: string;
     at: string | null;
 }
+interface RecoveredCompactions {
+    /** Every compaction in the transcript, whether or not it carried summary text. */
+    count: number;
+    /** At most the last three summaries, oldest first; a compaction with no summary text is counted but not listed. */
+    lastSummaries: string[];
+}
 interface SessionRecovery {
     conversation: ConversationIdentity;
     startedAt: string | null;
@@ -1047,6 +1079,7 @@ interface SessionRecovery {
     /** In call order; the cap keeps the most recent. */
     chatSends: CappedList<RecoveredMessageTarget>;
     agentSpawns: CappedList<RecoveredMessageTarget>;
+    compactions: RecoveredCompactions;
     /** The last owner-typed messages, oldest first; tool results and injected blocks are excluded. */
     ownerMessages: RecoveredMessage[];
     lastAssistantMessage: RecoveredMessage | null;
@@ -1067,9 +1100,13 @@ declare class RecoveryFacts {
     private readonly git;
     private readonly chatSends;
     private readonly agentSpawns;
+    private compactionCount;
+    private boundaryAwaitingSummary;
+    private readonly compactionSummaries;
     constructor(root: string);
     add(observation: NormalizedSessionObservation): void;
-    result(): Pick<SessionRecovery, "agentName" | "filesWritten" | "activeWorkCalls" | "gitCommands" | "chatSends" | "agentSpawns">;
+    result(): Pick<SessionRecovery, "agentName" | "filesWritten" | "activeWorkCalls" | "gitCommands" | "chatSends" | "agentSpawns" | "compactions">;
+    private addCompaction;
     private addFile;
     private addCommand;
     private addChat;
@@ -1274,7 +1311,7 @@ declare function bashSignals(command: string, git: GitIntent | null): AuditSigna
 /** agent-chat opens an injected orientation block with this line. */
 declare const ORIENTATION_HEADER = "# Orientation: active-work initiative \"";
 /** `none` is a definite "no id links", distinct from a session no task-aware resolver has seen. */
-type AssignmentSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "none";
+type AssignmentSource = "spawn-meta" | "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "none";
 interface AssignmentInput {
     readonly agentName: string;
     readonly brief: string;
@@ -1282,6 +1319,8 @@ interface AssignmentInput {
     readonly isKnown: (taskId: string) => boolean;
     /** Length of the injected orientation block, from agent-chat's `agent_spawned` meta `briefing_chars`. */
     readonly briefingChars?: number;
+    /** The spawn's recorded `meta.task`, bare (`TP-7`) or initiative-qualified (`demo/TP-7`). */
+    readonly spawnTask?: string;
 }
 interface Assignment {
     readonly taskIds: readonly string[];
@@ -1293,7 +1332,10 @@ interface Assignment {
  * A recorded `briefingChars` wins over the heading rules, which break when agent-chat renames a heading.
  */
 declare function orientationEnd(brief: string, briefingChars?: number): number | null;
-/** The task ids a spawned session was assigned, and which rule found them. */
+/**
+ * The task ids a spawned session was assigned, and which rule found them. The spawner's recorded
+ * `meta.task` wins: it is written at the source, where the name and brief rules only read prose.
+ */
 declare function assignedTaskIds(input: AssignmentInput): Assignment;
 
 type RequestSection = "tools" | "system" | "messages";
@@ -1334,4 +1376,4 @@ interface FirstRequest {
  */
 declare function readFirstRequest(path: string): Promise<FirstRequest | null>;
 
-export { type Assignment, type AssignmentInput, type AssignmentSource, type AuditEvent, type AuditEventBase, type AuditEventKind, type AuditSignal, type BranchRow, CI_POLICY_KEYS, CLAUDE_CHECKPOINT_VERSION, CLAUDE_DECODER_ID, CLAUDE_TRANSCRIPT_FORMAT, CODEX_CHECKPOINT_VERSION, CODEX_DECODER_ID, CODEX_ROLLOUT_FORMAT, type CacheBreakpoint, type CappedList, type ChannelTag, type CiPolicy, type CiPolicyKey, type CiPolicyLabelledLine, type ClaudeToolCallLine, type ClaudeToolLine, type ClaudeToolResultLine, ClaudeTranscriptDecoder, type CodexReadResult, CodexRolloutDecoder, CodexSourceCollisionError, type ContextSource, DEFAULT_EMIT_POLICY, type DiscoverCodexSourcesOptions, type DiscoveredTranscript, EXTRACT_VERSION, type EchoState, type Emit, type EmitPolicy, type EventBase, EventFolder, type EventOf, type ExtractOptions, type ExtractResult, type FindClaudeSessionSourceInput, type FirstRequest, type FirstRequestUsage, type GitIntent, HASH_PREFIX_CHARS, IGNORED_PATH, INJECTED_MARKERS, type Inbound, type InboundDelivery, type InjectedMarker, type InjectedMarkerName, type LineContext, LineReader, type LineSpan, MARKER_SCAN_CHARS, MIN_ATTACHMENT_CHARS, ORIENTATION_HEADER, type QueueOperation, RECOVERY_FIRST_LINE_CHARS, RECOVERY_LIST_CAP, RECOVERY_MESSAGE_CHARS, RECOVERY_OWNER_MESSAGES, RECOVERY_TAIL_BYTES, RELATIONS, type ReadClaudeTextOptions, type ReadCodexOptions, type ReadCodexTextOptions, type ReadOptions, type ReadRecentSessionTurnsOptions, type ReadResult, type ReadSessionEventTextOptions, type RecentObservedValue, type RecentSessionReadError, type RecentSessionTurn, type RecentSessionTurns, type RecentSessionUnknown, type RecentTurnKind, type RecentTurnProjection, type RecentTurnRepresentation, type RecentTurnRole, type RecentUnknownReason, type RecoverSessionOptions, type RecoveredCommand, type RecoveredMessage, type RecoveredMessageTarget, RecoveryFacts, type Relation, type RepoIdentity, type RepoRelativePath, type RequestBlock, type RequestSection, type ReviewVerdictMatch, SPAN_TEXT_CAP, type SessionEvent, type SessionEventKind, type SessionEventRef, SessionIdentityError, type SessionIdentityErrorCode, type SessionPatch, type SessionRecovery, type SessionRow, type SessionSourceLookup, type SessionSummary, SessionSummaryAccumulator, type SessionTextRequest, type SessionToolSummary, SessionUsageAccumulator, type SessionUsageSummary, type ShellWord, type SignalKind, type SpanField, TASK_ID, TRANSCRIPT_MIRRORS_ENV, type TaskIntent, type ToolFamily, type ToolFamilyResult, type TranscriptDelta, TranscriptParseError, type TranscriptRequest, type TranscriptRoot, type Verdict, type VerdictBlockRefusal, type VerdictBlockResult, type VerdictBlockVerdict, type WakeCause, agentRef, artifactRef, assertClaudeSessionSource, assignedTaskIds, bashSignals, branchRef, ciPolicyLabelledLines, classifyInbound, claudeProjectSlug, claudeSourceFromPath, claudeSourceId, claudeTranscriptRoots, clearRepoCache, codexHome, codexSourceId, commandCwd, commandHeads, contentHash, decodeClaudeToolLines, discoverAllTranscripts, discoverCodexSources, discoverTranscripts, distinctRequests, expandHome, extractTranscript, fileRef, findClaudeSessionSource, findInjectedMarker, foldEvents, hasMarker, legacyClaudeSessionRef, normalizedSearchText, orientationEnd, parseChannelTag, parseFileRef, parseGitIntent, parseOriginUrl, parsePrCreateTitle, parseReviewVerdicts, parseTaskId, parseTaskIntent, parseTaskIntents, parseVerdictBlock, prRef, readClaudeObservations, readClaudeText, readCodexObservations, readCodexText, readFirstRequest, readRecentSessionTurns, readRecentSessionTurnsSync, readSessionEventText, readSessionObservations, readSessionSourceText, readSessionText, readTranscriptEvents, realCommand, recoverSession, refusedLines, repoForCwd, repoNameFromRemoteUrl, resolveRepo, scopedConversationItemRef, searchText, sessionRef, simpleCommandHead, sourceForCause, splitCommands, splitPipelines, summarizeSession, taskRef, thinkingTokens, toAbsolutePath, toRepoRelative, toolFamily, toolUseSignals, transcriptsRoot, visibleLines };
+export { type Assignment, type AssignmentInput, type AssignmentSource, type AuditEvent, type AuditEventBase, type AuditEventKind, type AuditSignal, type BranchRow, CI_POLICY_KEYS, CLAUDE_CHECKPOINT_VERSION, CLAUDE_DECODER_ID, CLAUDE_TRANSCRIPT_FORMAT, CODEX_CHECKPOINT_VERSION, CODEX_DECODER_ID, CODEX_ROLLOUT_FORMAT, type CacheBreakpoint, type CappedList, type ChannelTag, type CiPolicy, type CiPolicyKey, type CiPolicyLabelledLine, type ClaudeToolCallLine, type ClaudeToolLine, type ClaudeToolResultLine, ClaudeTranscriptDecoder, type CodexReadResult, CodexRolloutDecoder, CodexSourceCollisionError, type ContextSource, DEFAULT_EMIT_POLICY, type DiscoverCodexSourcesOptions, type DiscoveredTranscript, EXTRACT_VERSION, type EchoState, type Emit, type EmitPolicy, type EventBase, EventFolder, type EventOf, type ExtractOptions, type ExtractResult, type FindClaudeSessionSourceInput, type FirstRequest, type FirstRequestUsage, type GitIntent, HASH_PREFIX_CHARS, IGNORED_PATH, INJECTED_MARKERS, type Inbound, type InboundDelivery, type InjectedMarker, type InjectedMarkerName, type LineContext, LineReader, type LineSpan, MARKER_SCAN_CHARS, MIN_ATTACHMENT_CHARS, ORIENTATION_HEADER, type QueueOperation, RECOVERY_FIRST_LINE_CHARS, RECOVERY_LIST_CAP, RECOVERY_MESSAGE_CHARS, RECOVERY_OWNER_MESSAGES, RECOVERY_TAIL_BYTES, RELATIONS, type ReadClaudeTextOptions, type ReadCodexOptions, type ReadCodexTextOptions, type ReadOptions, type ReadRecentSessionTurnsOptions, type ReadResult, type ReadSessionEventTextOptions, type RecentObservedValue, type RecentSessionReadError, type RecentSessionTurn, type RecentSessionTurns, type RecentSessionUnknown, type RecentTurnKind, type RecentTurnProjection, type RecentTurnRepresentation, type RecentTurnRole, type RecentUnknownReason, type RecoverSessionOptions, type RecoveredCommand, type RecoveredMessage, type RecoveredMessageTarget, RecoveryFacts, type Relation, type RepoIdentity, type RepoRelativePath, type RequestBlock, type RequestSection, type ReviewVerdictMatch, SPAN_TEXT_CAP, type SessionEvent, type SessionEventKind, type SessionEventRef, SessionIdentityError, type SessionIdentityErrorCode, type SessionPatch, type SessionRecovery, type SessionRow, type SessionSourceLookup, type SessionSummary, SessionSummaryAccumulator, type SessionTextRequest, type SessionToolSummary, SessionUsageAccumulator, type SessionUsageSummary, type ShellWord, type SignalKind, type SpanField, TASK_ID, TRANSCRIPT_MIRRORS_ENV, type TaskIntent, type ToolFamily, type ToolFamilyResult, type TranscriptDelta, TranscriptParseError, type TranscriptRequest, type TranscriptRoot, type Verdict, type VerdictBlockRefusal, type VerdictBlockResult, type VerdictBlockVerdict, type WakeCause, agentRef, artifactRef, assertClaudeSessionSource, assignedTaskIds, bashSignals, branchRef, ciPolicyLabelledLines, classifyInbound, claudeProjectSlug, claudeSourceFromPath, claudeSourceId, claudeTranscriptRoots, clearRepoCache, codexHome, codexSourceId, commandCwd, commandHeads, contentHash, decodeClaudeToolLines, discoverAllTranscripts, discoverCodexSources, discoverTranscripts, distinctRequests, expandHome, extractTranscript, fileRef, findClaudeSessionSource, findInjectedMarker, foldEvents, foldLabelledLine, hasMarker, labelledLineRest, legacyClaudeSessionRef, normalizedSearchText, orientationEnd, parseChannelTag, parseFileRef, parseGitIntent, parseOriginUrl, parsePrCreateTitle, parseReviewVerdicts, parseTaskId, parseTaskIntent, parseTaskIntents, parseVerdictBlock, prRef, readClaudeObservations, readClaudeText, readCodexObservations, readCodexText, readFirstRequest, readRecentSessionTurns, readRecentSessionTurnsSync, readSessionEventText, readSessionObservations, readSessionSourceText, readSessionText, readTranscriptEvents, realCommand, recoverSession, refusedLines, repoForCwd, repoNameFromRemoteUrl, resolveRepo, scopedConversationItemRef, searchText, sessionRef, simpleCommandHead, sourceForCause, splitCommands, splitPipelines, summarizeSession, taskRef, thinkingTokens, toAbsolutePath, toRepoRelative, toolFamily, toolUseSignals, transcriptFromPath, transcriptsRoot, visibleLines };

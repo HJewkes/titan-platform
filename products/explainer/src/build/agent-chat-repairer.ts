@@ -7,12 +7,12 @@ import { SAFE_FILE_STEM } from "./layer-tree.js";
 import { sessionSpend, UNKNOWN_SPEND } from "./session-spend.js";
 
 /** The agent-chat profile a repair runs under; its TSX variant is TP-2608's. */
-export const DEFAULT_REPAIR_PROFILE = "beat-builder";
+const DEFAULT_REPAIR_PROFILE = "beat-builder";
 const CLI_TIMEOUT_MS = 30_000;
 const DEFAULT_REPAIR_TIMEOUT_MS = 15 * 60_000;
 const DEFAULT_POLL_MS = 5_000;
 
-export interface AgentChatRepairerDeps {
+interface AgentChatRepairerDeps {
   /** The absolute path of the `agent-chat` binary. */
   agentChatBin: string;
   profile?: string;
@@ -28,7 +28,7 @@ export interface AgentChatRepairerDeps {
 }
 
 /** The brief, sent on stdin: the packet, the failing module and the gate's error, each fenced as data. */
-export function repairBrief({ packet, module, error }: RepairRequest, target: string): string {
+function repairBrief({ packet, module, error }: RepairRequest, target: string): string {
   return [
     `Repair the custom layer for beat ${packet.packet.beat_id} of an explainer video. Its module failed the build gate.`,
     `Write the whole repaired module to ${target}, and change nothing else. Keep the packet's anchors and every cue target's element id.`,

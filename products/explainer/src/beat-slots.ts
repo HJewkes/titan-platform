@@ -91,7 +91,7 @@ export const BEAT_SLOTS = {
     .object({ kind: z.enum(["bar", "line", "spark", "gauge"]), title: Label.optional(), unit: Label.optional(), cap: z.number().optional(), series: z.array(Point).min(1).max(12), ...ChartFrame })
     .strict(),
   list: z.object({ title: Label.optional(), rows: z.array(ListRow).min(1).max(5) }).strict(),
-  "verdict-card": z.object({ verdict: Line, call: Label, reasons: items(1, 3) }).strict(),
+  "verdict-card": z.object({ verdict: Line, call: Label.optional(), reasons: items(1, 3) }).strict(),
   "change-group": z.object({ groups: z.array(z.object({ id: Id, title: Label, why: Line, files: z.array(z.string().min(1)).min(1), pin: Id.optional() }).strict()).min(2).max(4) }).strict(),
   "diff-map": z.object({ nodes: z.array(Node.extend({ change: Change })).min(2).max(12), edges: z.array(Edge.extend({ change: Change })).max(16) }).strict(),
   "finding-card": z.object({ findings: z.array(Finding).min(1).max(4) }).strict(),
@@ -122,7 +122,15 @@ export const BEAT_SLOTS = {
   "kanban-flow": z.object({ columns: z.array(Node).min(2).max(6), cards: z.array(z.object({ id: Id, title: Label, from: Id, to: Id }).strict()).min(1).max(12) }).strict(),
   gantt: z
     .object({
-      tasks: z.array(z.object({ id: Id, label: Label, start: Day, end: Day, lane: Label.optional() }).strict()).min(1).max(12),
+      tasks: z
+        .array(
+          z
+            .object({ id: Id, label: Label, start: Day, end: Day, lane: Label.optional() })
+            .strict()
+            .refine((task) => task.end >= task.start, "a gantt task must not end before it starts"),
+        )
+        .min(1)
+        .max(12),
       milestones: z.array(z.object({ id: Id, label: Label, at: Day }).strict()).default([]),
     })
     .strict(),

@@ -1,10 +1,12 @@
+import type { CleanMergeTree } from "./approved-head-walk.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { GitExec } from "./exec.js";
 import type { ForcePush } from "./force-pushes.js";
+import type { PrOutcome } from "./pr-outcome.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { PullReview } from "./pull-reviews.js";
-import type { BranchCommit, CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port.js";
+import type { BranchCommit, CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port-types.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
 export interface FakeEffects {
@@ -16,6 +18,8 @@ export interface FakeEffects {
   updateRef: number;
   merge: number;
   rerunFailedJobs: number;
+  createReview: number;
+  dismissReview: number;
 }
 
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
@@ -51,6 +55,8 @@ export interface FakeGitHub {
   setRuns(sha: string, runs: CheckRun[]): void;
   /** A foreign push: moves the PR head without this run doing it. */
   pushHead(number: number, sha: string): void;
+  /** The tree a clean merge of `baseParent` into `reviewed` has: the tree of the merge commit the fake's update-branch makes. */
+  cleanMergeTree: CleanMergeTree;
   /** When set, update-branch answers HTTP 422 "merge conflict between base and head", as GitHub does when the base cannot merge in. */
   updateBranchConflict?: boolean;
   /** Faults the next update-branch calls throw, one per call; `lands` means the update happened before the answer was lost. */
@@ -107,8 +113,8 @@ export interface FakeGitHub {
   baseChanges: { number: number; base: string }[];
   /** The default branch's history for `listCommits`, in any order; it answers those at or after `since`, newest first. */
   history: (LoggedCommit & { committedAt: string })[];
-  /** `base...head` to the compare inputs; an unset pair compares as no change. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
-  compares: Map<string, { mergeBaseSha: string; files: string[]; totalCommits?: number; commits?: BranchCommit[] }>;
+  /** `base...head` to the compare inputs; an unset pair compares as no change. `renames` maps a new path to its previous one, which is listed too. Caps of 300 files and 250 commits apply; `totalCommits` defaults to the length of `commits`. */
+  compares: Map<string, { mergeBaseSha: string; files: string[]; renames?: Record<string, string>; totalCommits?: number; commits?: BranchCommit[] }>;
   /** PR number to its issue comments, in posting order. */
   comments: Map<number, IssueComment[]>;
   /** PR number to its inline review comments, resolved or not. */
@@ -119,4 +125,6 @@ export interface FakeGitHub {
   appLogin: string;
   /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
   forcePushes: Map<number, ForcePush[]>;
+  /** PR number to what `readPrOutcome` answers; unset reads the PR's own state with no reviews or commit dates, and a PR the fake lacks answers 404. */
+  outcomes: Map<number, PrOutcome>;
 }

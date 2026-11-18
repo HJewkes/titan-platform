@@ -180,6 +180,17 @@ describe("burndown-port-map drift check", () => {
     expect(result.stdout).toContain("drifted: a.ts");
   });
 
+  it("exits 1 and names a pinned portedFrom the clone does not hold instead of a raw git error", () => {
+    const missing = "b".repeat(40);
+    const box = movedSandbox(() => ({ ported: true, portedFrom: missing }));
+
+    const result = runCheck(box);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain(`unknown portedFrom: a.ts (ported) ${missing}`);
+    expect(result.stderr).not.toContain("fatal");
+  });
+
   it("splits claims into pinned and unpinned by a full 40-hex portedFrom", () => {
     const full = "a".repeat(40);
     const map = { files: [{ file: "x.ts", ported: true, portedFrom: full }, { file: "y.ts", ported: true, portedFrom: "abc1234" }, { file: "z.ts", ported: false }], leafPorts: [{ file: "w.ts" }] };

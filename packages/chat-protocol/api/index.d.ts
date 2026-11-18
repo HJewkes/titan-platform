@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * A byte-compatible subset of the Vercel AI SDK `UIMessagePart` union, vendored
  * rather than imported: tier 0 carries no runtime dependency beyond zod as a
- * peer. `ai` is a devDependency only, and `ai-compat.test.ts` round-trips a real
+ * peer. `ai` is a devDependency only, and `ai-sdk.test.ts` round-trips a real
  * `UIMessage` through these schemas so the subset cannot drift silently.
  *
  * Verified against ai@7.0.102.
@@ -93,8 +93,8 @@ declare const textPart: z.ZodObject<{
     type: z.ZodLiteral<"text">;
     text: z.ZodString;
     state: z.ZodOptional<z.ZodEnum<{
-        streaming: "streaming";
         done: "done";
+        streaming: "streaming";
     }>>;
     providerMetadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
 }, z.core.$strip>;
@@ -103,8 +103,8 @@ declare const reasoningPart: z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
     text: z.ZodString;
     state: z.ZodOptional<z.ZodEnum<{
-        streaming: "streaming";
         done: "done";
+        streaming: "streaming";
     }>>;
     providerMetadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
 }, z.core.$strip>;
@@ -141,13 +141,13 @@ declare const toolPart: z.ZodObject<{
     type: z.ZodCustom<`tool-${string}`, `tool-${string}`>;
     toolCallId: z.ZodString;
     state: z.ZodEnum<{
-        "input-streaming": "input-streaming";
-        "input-available": "input-available";
         "approval-requested": "approval-requested";
         "approval-responded": "approval-responded";
+        "input-available": "input-available";
+        "input-streaming": "input-streaming";
         "output-available": "output-available";
-        "output-error": "output-error";
         "output-denied": "output-denied";
+        "output-error": "output-error";
     }>;
     input: z.ZodOptional<z.ZodUnknown>;
     output: z.ZodOptional<z.ZodUnknown>;
@@ -173,8 +173,8 @@ declare const chatPart: z.ZodUnion<readonly [z.ZodObject<{
     type: z.ZodLiteral<"text">;
     text: z.ZodString;
     state: z.ZodOptional<z.ZodEnum<{
-        streaming: "streaming";
         done: "done";
+        streaming: "streaming";
     }>>;
     providerMetadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
 }, z.core.$strip>, z.ZodObject<{
@@ -182,8 +182,8 @@ declare const chatPart: z.ZodUnion<readonly [z.ZodObject<{
     id: z.ZodOptional<z.ZodString>;
     text: z.ZodString;
     state: z.ZodOptional<z.ZodEnum<{
-        streaming: "streaming";
         done: "done";
+        streaming: "streaming";
     }>>;
     providerMetadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
 }, z.core.$strip>, z.ZodObject<{
@@ -208,13 +208,13 @@ declare const chatPart: z.ZodUnion<readonly [z.ZodObject<{
     type: z.ZodCustom<`tool-${string}`, `tool-${string}`>;
     toolCallId: z.ZodString;
     state: z.ZodEnum<{
-        "input-streaming": "input-streaming";
-        "input-available": "input-available";
         "approval-requested": "approval-requested";
         "approval-responded": "approval-responded";
+        "input-available": "input-available";
+        "input-streaming": "input-streaming";
         "output-available": "output-available";
-        "output-error": "output-error";
         "output-denied": "output-denied";
+        "output-error": "output-error";
     }>;
     input: z.ZodOptional<z.ZodUnknown>;
     output: z.ZodOptional<z.ZodUnknown>;
@@ -306,49 +306,49 @@ interface ChatMessage {
     delivery?: DeliveryState[];
 }
 declare const messageRole: z.ZodEnum<{
+    assistant: "assistant";
     system: "system";
     user: "user";
-    assistant: "assistant";
 }>;
 declare const threadKind: z.ZodEnum<{
-    coach: "coach";
     "agent-run": "agent-run";
     bus: "bus";
+    coach: "coach";
     device: "device";
     harness: "harness";
 }>;
 declare const participantKind: z.ZodEnum<{
+    agent: "agent";
     device: "device";
     human: "human";
-    agent: "agent";
     service: "service";
 }>;
 declare const addressScheme: z.ZodEnum<{
-    telegram: "telegram";
-    imessage: "imessage";
     "agent-chat": "agent-chat";
+    imessage: "imessage";
     mcp: "mcp";
+    telegram: "telegram";
 }>;
 declare const participant: z.ZodObject<{
     id: z.ZodString;
     role: z.ZodEnum<{
+        assistant: "assistant";
         system: "system";
         user: "user";
-        assistant: "assistant";
     }>;
     displayName: z.ZodString;
     kind: z.ZodEnum<{
+        agent: "agent";
         device: "device";
         human: "human";
-        agent: "agent";
         service: "service";
     }>;
     address: z.ZodOptional<z.ZodObject<{
         scheme: z.ZodEnum<{
-            telegram: "telegram";
-            imessage: "imessage";
             "agent-chat": "agent-chat";
+            imessage: "imessage";
             mcp: "mcp";
+            telegram: "telegram";
         }>;
         value: z.ZodString;
     }, z.core.$strip>>;
@@ -356,9 +356,9 @@ declare const participant: z.ZodObject<{
 declare const chatThread: z.ZodObject<{
     id: z.ZodString;
     kind: z.ZodEnum<{
-        coach: "coach";
         "agent-run": "agent-run";
         bus: "bus";
+        coach: "coach";
         device: "device";
         harness: "harness";
     }>;
@@ -366,23 +366,23 @@ declare const chatThread: z.ZodObject<{
     participants: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         role: z.ZodEnum<{
+            assistant: "assistant";
             system: "system";
             user: "user";
-            assistant: "assistant";
         }>;
         displayName: z.ZodString;
         kind: z.ZodEnum<{
+            agent: "agent";
             device: "device";
             human: "human";
-            agent: "agent";
             service: "service";
         }>;
         address: z.ZodOptional<z.ZodObject<{
             scheme: z.ZodEnum<{
-                telegram: "telegram";
-                imessage: "imessage";
                 "agent-chat": "agent-chat";
+                imessage: "imessage";
                 mcp: "mcp";
+                telegram: "telegram";
             }>;
             value: z.ZodString;
         }, z.core.$strip>>;
@@ -390,21 +390,21 @@ declare const chatThread: z.ZodObject<{
     createdAt: z.ZodString;
 }, z.core.$strip>;
 declare const deliveryStatus: z.ZodEnum<{
-    pending: "pending";
     accepted: "accepted";
     delivered: "delivered";
-    read: "read";
     held: "held";
+    pending: "pending";
+    read: "read";
     undeliverable: "undeliverable";
 }>;
 declare const deliveryState: z.ZodObject<{
     participantId: z.ZodString;
     status: z.ZodEnum<{
-        pending: "pending";
         accepted: "accepted";
         delivered: "delivered";
-        read: "read";
         held: "held";
+        pending: "pending";
+        read: "read";
         undeliverable: "undeliverable";
     }>;
     at: z.ZodString;
@@ -432,11 +432,11 @@ declare const chatMessage: z.ZodObject<{
     delivery: z.ZodOptional<z.ZodArray<z.ZodObject<{
         participantId: z.ZodString;
         status: z.ZodEnum<{
-            pending: "pending";
             accepted: "accepted";
             delivered: "delivered";
-            read: "read";
             held: "held";
+            pending: "pending";
+            read: "read";
             undeliverable: "undeliverable";
         }>;
         at: z.ZodString;
@@ -446,17 +446,17 @@ declare const chatMessage: z.ZodObject<{
     threadId: z.ZodString;
     authorId: z.ZodString;
     role: z.ZodEnum<{
+        assistant: "assistant";
         system: "system";
         user: "user";
-        assistant: "assistant";
     }>;
     createdAt: z.ZodString;
     parts: z.ZodArray<z.ZodUnion<readonly [z.ZodObject<{
         type: z.ZodLiteral<"text">;
         text: z.ZodString;
         state: z.ZodOptional<z.ZodEnum<{
-            streaming: "streaming";
             done: "done";
+            streaming: "streaming";
         }>>;
         providerMetadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
     }, z.core.$strip>, z.ZodObject<{
@@ -464,8 +464,8 @@ declare const chatMessage: z.ZodObject<{
         id: z.ZodOptional<z.ZodString>;
         text: z.ZodString;
         state: z.ZodOptional<z.ZodEnum<{
-            streaming: "streaming";
             done: "done";
+            streaming: "streaming";
         }>>;
         providerMetadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
     }, z.core.$strip>, z.ZodObject<{
@@ -490,13 +490,13 @@ declare const chatMessage: z.ZodObject<{
         type: z.ZodCustom<`tool-${string}`, `tool-${string}`>;
         toolCallId: z.ZodString;
         state: z.ZodEnum<{
-            "input-streaming": "input-streaming";
-            "input-available": "input-available";
             "approval-requested": "approval-requested";
             "approval-responded": "approval-responded";
+            "input-available": "input-available";
+            "input-streaming": "input-streaming";
             "output-available": "output-available";
-            "output-error": "output-error";
             "output-denied": "output-denied";
+            "output-error": "output-error";
         }>;
         input: z.ZodOptional<z.ZodUnknown>;
         output: z.ZodOptional<z.ZodUnknown>;
@@ -529,17 +529,17 @@ declare const inboundChatMessage: z.ZodObject<{
     threadId: z.ZodString;
     authorId: z.ZodString;
     role: z.ZodEnum<{
+        assistant: "assistant";
         system: "system";
         user: "user";
-        assistant: "assistant";
     }>;
     createdAt: z.ZodString;
     parts: z.ZodArray<z.ZodUnion<readonly [z.ZodObject<{
         type: z.ZodLiteral<"text">;
         text: z.ZodString;
         state: z.ZodOptional<z.ZodEnum<{
-            streaming: "streaming";
             done: "done";
+            streaming: "streaming";
         }>>;
         providerMetadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
     }, z.core.$strip>, z.ZodObject<{
@@ -547,8 +547,8 @@ declare const inboundChatMessage: z.ZodObject<{
         id: z.ZodOptional<z.ZodString>;
         text: z.ZodString;
         state: z.ZodOptional<z.ZodEnum<{
-            streaming: "streaming";
             done: "done";
+            streaming: "streaming";
         }>>;
         providerMetadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
     }, z.core.$strip>, z.ZodObject<{
@@ -573,13 +573,13 @@ declare const inboundChatMessage: z.ZodObject<{
         type: z.ZodCustom<`tool-${string}`, `tool-${string}`>;
         toolCallId: z.ZodString;
         state: z.ZodEnum<{
-            "input-streaming": "input-streaming";
-            "input-available": "input-available";
             "approval-requested": "approval-requested";
             "approval-responded": "approval-responded";
+            "input-available": "input-available";
+            "input-streaming": "input-streaming";
             "output-available": "output-available";
-            "output-error": "output-error";
             "output-denied": "output-denied";
+            "output-error": "output-error";
         }>;
         input: z.ZodOptional<z.ZodUnknown>;
         output: z.ZodOptional<z.ZodUnknown>;
@@ -654,7 +654,7 @@ interface MessagingInbound {
     guid: string;
     text: string;
 }
-/** `SendInput`: a handle and a string. No attachments exist on this seam. */
+/** `SendInput`: a handle and a string. The core type also has optional `buttons`, which this seam ignores; no attachments exist here. */
 interface MessagingSendInput {
     handle: string;
     text: string;

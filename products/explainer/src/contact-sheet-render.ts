@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { chapterSheets, type SheetCell } from "./contact-sheet.js";
 import { sha256 } from "./workflow/artifacts.js";
+import { drawable } from "./label-text.js";
 
 /**
  * Draws the sheets ffmpeg-side: one still per cell with its label in a strip under the frame (a label drawn on the
@@ -14,9 +15,9 @@ export type FfmpegExec = (args: readonly string[]) => Promise<void>;
 
 export const LABEL_STRIP_PX = 32;
 export const DEFAULT_CELL_WIDTH = 640;
-export const DEFAULT_COLUMNS = 3;
+const DEFAULT_COLUMNS = 3;
 
-export interface SheetOptions {
+interface SheetOptions {
   columns?: number;
   cellWidth?: number;
 }
@@ -41,10 +42,7 @@ export interface SheetSet {
 
 const QUIET = ["-hide_banner", "-loglevel", "error", "-y"];
 
-// drawtext reads quotes, colons, backslashes and percents as syntax; beat ids never need them.
-const drawable = (label: string) => label.replace(/[^A-Za-z0-9 ._/-]/g, "_");
-
-export function cellArgs(video: string, cell: SheetCell, out: string, width: number): string[] {
+function cellArgs(video: string, cell: SheetCell, out: string, width: number): string[] {
   const strip = `pad=iw:ih+${LABEL_STRIP_PX}:0:0:color=0x111111`;
   const text = `drawtext=text='${drawable(cell.label)}':x=8:y=h-${LABEL_STRIP_PX - 7}:fontsize=18:fontcolor=white`;
   return [...QUIET, "-ss", cell.t.toFixed(3), "-i", video, "-frames:v", "1", "-vf", `scale=${width}:-2,${strip},${text}`, out];

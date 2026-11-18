@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a chapter rewrite that turns a hallmark row red is kept",
+      "file": "products/explainer/src/rewrite-pass.ts",
+      "find": " || row.check_id.startsWith(\"hallmark:\")",
+      "replace": "",
+      "kills": [
+        "chapterRefusal names a hallmark row that was green and turns red, though it is not in the guarded set"
+      ]
+    }
+  ]
+}

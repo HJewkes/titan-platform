@@ -38,7 +38,7 @@ export interface HeadScript {
 export type MainScript = "green" | "red" | "cancelled-superseded";
 
 /** How a replay settles: merged, paused on a gate, or waiting in the merge step on a hold. */
-export type ReplayOutcome = "merged" | "gated" | "held-in-merge";
+type ReplayOutcome = "merged" | "gated" | "held-in-merge";
 
 export interface Pinned {
   outcome: ReplayOutcome;

@@ -1,4 +1,4 @@
-import type { CheckRun, CommitStatus } from "./port.js";
+import type { CheckRun, CommitStatus } from "./port-types.js";
 import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 
 /**

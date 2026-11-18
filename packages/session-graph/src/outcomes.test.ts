@@ -4,7 +4,7 @@ import path from "node:path";
 import type { DiscoveredTranscript } from "@titan-design/session-read";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openSessionGraph, type SessionGraph } from "./graph.js";
-import { prsNeedingOutcome, type PrKey, type PrResolution, type PrResolver } from "./outcomes.js";
+import { prsNeedingOutcome, type PrDue, type PrResolution, type PrResolver } from "./outcomes.js";
 import { refreshCorpus } from "./refresh.js";
 
 const PR_REF = "pr:acme/demo#7";
@@ -28,7 +28,7 @@ function transcriptOf(lines: unknown[]): DiscoveredTranscript {
   return { projectDir: "p", absolutePath, displayPath: absolutePath, subagentId: null, account: null };
 }
 
-const answer = (resolution: PrResolution, asked: PrKey[][] = []): PrResolver => (prs) => (asked.push([...prs]), resolution);
+const answer = (resolution: PrResolution, asked: PrDue[][] = []): PrResolver => (prs) => (asked.push([...prs]), resolution);
 const prRow = () => graph.db.prepare("SELECT state, merged_at, closed_at, review_rounds, outcome_checked_at IS NOT NULL AS checked FROM pr").get();
 
 beforeEach(() => {
@@ -42,12 +42,12 @@ afterEach(() => {
 
 describe("PR outcome resolver", () => {
   it("fills pr state, merged_at, closed_at and review_rounds from the resolver", async () => {
-    const asked: PrKey[][] = [];
+    const asked: PrDue[][] = [];
     const resolvePrs = answer(new Map([[PR_REF, { state: "MERGED", mergedAt: "2026-09-02T10:00:00Z", closedAt: "2026-09-02T10:00:00Z", reviewRounds: 2 }]]), asked);
 
     const summary = await refreshCorpus(graph, [transcriptOf([prLink])], { resolvePrs });
 
-    expect(asked).toEqual([[{ prRef: PR_REF, repo: "acme/demo", number: 7 }]]);
+    expect(asked).toEqual([[{ prRef: PR_REF, repo: "acme/demo", number: 7, band: "unchecked", state: null, checkedAt: null }]]);
     expect(summary.prs).toEqual({ requested: 1, applied: 1, failed: false });
     expect(prRow()).toEqual({ state: "merged", merged_at: "2026-09-02T10:00:00Z", closed_at: "2026-09-02T10:00:00Z", review_rounds: 2, checked: 1 });
   });
@@ -86,7 +86,7 @@ describe("PR outcome resolver", () => {
   });
 
   it("stops asking about a PR once it is merged and checked, but keeps asking about an open one", async () => {
-    const asked: PrKey[][] = [];
+    const asked: PrDue[][] = [];
     const transcript = transcriptOf([prLink]);
     await refreshCorpus(graph, [transcript], { resolvePrs: answer(new Map([[PR_REF, { state: "open" }]]), asked) });
     await refreshCorpus(graph, [transcript], { resolvePrs: answer(new Map([[PR_REF, { state: "merged", commitTimes: [] }]]), asked) });
@@ -124,7 +124,7 @@ describe("PR commit times", () => {
   const commitTimes = () => graph.db.prepare<[], { commit_times: string | null }>("SELECT commit_times FROM pr").get()?.commit_times;
 
   it("a merged PR is offered again until a resolver sends commit times", async () => {
-    const asked: PrKey[][] = [];
+    const asked: PrDue[][] = [];
     const transcript = transcriptOf([prLink, mergeCommand]);
     await refreshCorpus(graph, [transcript], { resolvePrs: answer(new Map([[PR_REF, { state: "merged", reviewRounds: 1 }]]), asked) });
     await refreshCorpus(graph, [transcript], { resolvePrs: answer(new Map([[PR_REF, { state: "merged", commitTimes: ["2026-09-01T00:00:00Z"] }]]), asked) });
@@ -157,5 +157,28 @@ describe("PR commit times", () => {
     insert.run("pr:acme/widgets#4", 4, "merged", "2026-09-02T00:00:00Z", "[]");
 
     expect(prsNeedingOutcome(graph).map((pr) => pr.number)).toEqual([3, 2, 1]);
+  });
+
+  it("labels each due PR with its band, state and checked-at", () => {
+    const insert = graph.db.prepare("INSERT INTO pr (pr_ref, repo, number, state, outcome_checked_at, commit_times) VALUES (?, 'acme/widgets', ?, ?, ?, ?)");
+    insert.run("pr:acme/widgets#1", 1, "merged", "2026-09-02T00:00:00Z", null);
+    insert.run("pr:acme/widgets#2", 2, "open", "2026-09-02T00:00:00Z", "[]");
+    insert.run("pr:acme/widgets#3", 3, null, null, null);
+    insert.run("pr:acme/widgets#4", 4, "merged", "2026-09-02T00:00:00Z", "[]");
+
+    expect(prsNeedingOutcome(graph).map(({ number, band, state, checkedAt }) => ({ number, band, state, checkedAt }))).toEqual([
+      { number: 3, band: "unchecked", state: null, checkedAt: null },
+      { number: 2, band: "recheck", state: "open", checkedAt: "2026-09-02T00:00:00Z" },
+      { number: 1, band: "backfill", state: "merged", checkedAt: "2026-09-02T00:00:00Z" },
+    ]);
+  });
+
+  it("orders within a band by checked-at, then pr_ref", () => {
+    const insert = graph.db.prepare("INSERT INTO pr (pr_ref, repo, number, state, outcome_checked_at, commit_times) VALUES (?, 'acme/widgets', ?, 'open', ?, '[]')");
+    insert.run("pr:acme/widgets#12", 12, "2020-01-01T00:00:00Z");
+    insert.run("pr:acme/widgets#10", 10, "2021-01-01T00:00:00Z");
+    insert.run("pr:acme/widgets#11", 11, "2021-01-01T00:00:00Z");
+
+    expect(prsNeedingOutcome(graph).map((pr) => pr.number)).toEqual([12, 10, 11]);
   });
 });

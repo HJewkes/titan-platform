@@ -6,11 +6,10 @@
  * `active__` prefix (`task.add` -> `active__task__add`). Those names are public
  * contract — they appear in consumers' configs and in `~/.claude.json` — so the
  * prefix and the handshake identity are pinned here and asserted by
- * `__tests__/server/mcp-tool-names.test.ts`.
+ * `src/server/mcp-tool-names.test.ts`.
  */
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
-  attachHandlers as pkgAttachHandlers,
   createMcpServer as pkgCreateMcpServer,
   invokeTool as pkgInvokeTool,
   listTools as pkgListTools,
@@ -33,7 +32,7 @@ import { BUILD_VERSION } from '../version.js';
 const TOOL_NAME_PREFIX = 'active__';
 const NAMING = { prefix: TOOL_NAME_PREFIX } as const;
 
-export type McpTool = McpToolDescriptor;
+type McpTool = McpToolDescriptor;
 export type { ToolCallOutcome };
 
 /** The MCP identity and registry binding every entry point below shares. */
@@ -41,11 +40,13 @@ export function mcpOptions(): McpServerOptions<CommandContext> {
   return {
     registry,
     // The daemon shares this context with /rpc, whose one machine caller always sends a done_when.
+    // /rpc is named the owner because the console and the factory's needs inbox read through it;
+    // a loopback request carries no identity that could tell the owner from an agent (TP-5453 P6b).
     createContext: (surface) => ({
       activeRoot: getActiveRoot(),
       warnings: [],
       format: 'json',
-      caller: surface === 'mcp' ? 'agent' : undefined,
+      caller: surface === 'mcp' ? 'agent' : 'owner',
     }),
     formatError,
     toolPrefix: TOOL_NAME_PREFIX,
@@ -73,11 +74,6 @@ export function listTools(): McpTool[] {
 
 export async function invokeTool(toolName: string, rawArgs: unknown): Promise<ToolCallOutcome> {
   return pkgInvokeTool(mcpOptions(), toolName, rawArgs);
-}
-
-/** Wire MCP request handlers onto a server instance. Exposed for testing. */
-export function attachHandlers(server: Server): void {
-  pkgAttachHandlers(server, mcpOptions());
 }
 
 export function createMcpServer(): Server {

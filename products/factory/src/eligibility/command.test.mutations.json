@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a freeze stays in force after its date",
+      "file": "products/factory/src/eligibility/active-work.ts",
+      "find": "if (end.kind === \"date\") return today < end.date;",
+      "replace": "if (end.kind === \"date\") return true;",
+      "kills": [
+        "dispatch eligible a freeze in force refuses its tagged task, while a freeze whose end task is done or whose date passed does not"
+      ]
+    },
+    {
+      "name": "a freeze stays in force after its end task is done",
+      "file": "products/factory/src/eligibility/active-work.ts",
+      "find": "return !(await taskIsDone(client, end.task));",
+      "replace": "return true;",
+      "kills": [
+        "dispatch eligible a freeze in force refuses its tagged task, while a freeze whose end task is done or whose date passed does not"
+      ]
+    },
+    {
+      "name": "an unreadable task is dropped instead of refused",
+      "file": "products/factory/src/eligibility/active-work.ts",
+      "find": "refused: [...result.refused, ...unreadable]",
+      "replace": "refused: result.refused",
+      "kills": [
+        "dispatch eligible prints eligible tasks in bet order and refused tasks with their codes, calling only read commands"
+      ]
+    },
+    {
+      "name": "the tag filter is not passed to task.list",
+      "file": "products/factory/src/eligibility/active-work.ts",
+      "find": "...(query.tag !== undefined && { tag: query.tag }) };",
+      "replace": "};",
+      "kills": [
+        "dispatch eligible --tag narrows the candidates to one lane"
+      ]
+    },
+    {
+      "name": "an owner-ended freeze stays in force",
+      "file": "products/factory/src/eligibility/active-work.ts",
+      "find": "  if (freeze.ended_on !== undefined) return false;\n",
+      "replace": "",
+      "kills": [
+        "dispatch eligible a freeze the owner has ended no longer refuses its tagged task"
+      ]
+    }
+  ]
+}

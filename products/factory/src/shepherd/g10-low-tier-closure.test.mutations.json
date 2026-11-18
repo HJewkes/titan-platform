@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a file the walk reaches leaves the refusal closure list",
+      "file": "products/factory/src/shepherd/g10-low-tier-closure.json",
+      "find": "  \"packages/review-panel/src/glob.ts\",\n",
+      "replace": "",
+      "kills": [
+        "the low-tier refusal's own import closure keeps every file the walk reaches out of low tier"
+      ]
+    },
+    {
+      "name": "the classifier stops reading the refusal closure",
+      "file": "products/factory/src/shepherd/g10-low-tier.ts",
+      "find": "  if (gateInput !== undefined) return kept(`gate input ${gateInput}`);\n",
+      "replace": "",
+      "kills": [
+        "the low-tier refusal's own import closure keeps every file the walk reaches out of low tier"
+      ]
+    },
+    {
+      "name": "the refusal closure's own checks stop being held",
+      "file": "products/factory/src/shepherd/g10-class-rules.ts",
+      "find": "  ...[\"g10-low-tier-closure.test.ts\", \"g10-low-tier-closure.test.mutations.json\", \"g10-low-tier-closure.test-helpers.ts\", \"g10-low-tier-closure.json\"],\n",
+      "replace": "",
+      "kills": [
+        "the low-tier refusal's own import closure keeps its own completeness check out of low tier"
+      ]
+    }
+  ]
+}

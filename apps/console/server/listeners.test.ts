@@ -7,7 +7,6 @@ import type { RequestAuth } from "@titan-design/daemon";
 import { invokeCommand } from "@titan-design/registry";
 import { SHIP_OPTIONS as TD_SHIP_OPTIONS } from "@titan-design/review-schema";
 import type { AnswerOutcome, GateAnswerClient, GateAnswerRequest, Unreachable } from "./gate-answer.js";
-import { SHIP_OPTIONS as VENDORED_SHIP_OPTIONS } from "./review-schema-0.3/contract.js";
 import { createRoundListeners, type ListenerDeps, type RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
 import { FIXTURE_ROUNDS, PANELS_HEAD, TILES_HEAD, settledListeners, twoPrRound } from "./round-fixtures.js";
@@ -239,7 +238,6 @@ describe("the gate-answer listener after rounds.submit", () => {
 
     expect(ship.options).toEqual([...TD_SHIP_OPTIONS]);
     expect(ship.merge.ship).toEqual([TD_SHIP_OPTIONS[0]]);
-    expect([...VENDORED_SHIP_OPTIONS]).toEqual([...TD_SHIP_OPTIONS]);
   });
 
   describe("gate id anchoring", () => {

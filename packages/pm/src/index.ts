@@ -1,5 +1,33 @@
 export { DELIVERABLE_ID_REGEX, TaskSchema } from "./task.js";
+export { InitiativeVisibilitySchema, agentAccess, isAgentVisible } from "./visibility.js";
+export type { AgentAccess, AgentAccessInput, InitiativeBriefRef, InitiativeVisibility } from "./visibility.js";
 export type { Task } from "./task.js";
+export { resolveTaskKey } from "./task-key.js";
+export type { InitiativePrefix, TaskKeyEntry, TaskKeyIndex, TaskKeyRefusal, TaskKeyResolution } from "./task-key.js";
+export { betProblem, TaskRequireSchema } from "./provenance.js";
+export type { BetLookup, TaskRequire } from "./provenance.js";
+export {
+  BetSchema,
+  FreezeEndConditionSchema,
+  FreezeSchema,
+  INTENT_SECTIONS,
+  IntentLineSchema,
+  OutOfScopeSchema,
+  OutcomeSchema,
+  OwnerIntentRefSchema,
+  PredictionSchema,
+} from "./planning.js";
+export type {
+  Bet,
+  Freeze,
+  FreezeEndCondition,
+  IntentLine,
+  IntentSection,
+  OutOfScope,
+  Outcome,
+  OwnerIntentRef,
+  Prediction,
+} from "./planning.js";
 export {
   DELIVERABLE_STATUSES,
   DeliverableSchema,
@@ -54,3 +82,7 @@ export type {
   CategoryRegistry,
   StatusEntry,
 } from "./categories.js";
+export { INTENT_DIGEST_SCHEMA, parseIntentDigest } from "./intent-digest.js";
+export type { IntentDigestError, IntentDigestResult } from "./intent-digest.js";
+export { PREDICTION_CHECKS, checkPrediction, orderBetsForSheet } from "./prediction-check.js";
+export type { PredictionCheck, ScorecardWeekRow, SheetBet } from "./prediction-check.js";

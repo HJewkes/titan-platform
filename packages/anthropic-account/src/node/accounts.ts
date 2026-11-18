@@ -20,7 +20,7 @@ export interface ReadAccountsOptions extends DiscoverOptions, KeychainOptions {
 // On macOS Claude Code keeps the login in the Keychain, so a missing file is not a failure.
 function loginFailed(state: LoginState, platform: NodeJS.Platform): boolean {
   if (state.status === "missing") return platform !== "darwin";
-  return state.status === "refused" || (state.status === "expired" && !state.canRefresh);
+  return state.status === "refused" || state.status === "logged-out" || (state.status === "expired" && !state.canRefresh);
 }
 
 function keychainOptions(options: ReadAccountsOptions): KeychainOptions {

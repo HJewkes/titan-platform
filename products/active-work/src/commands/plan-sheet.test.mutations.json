@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a bet citing no intent line is not flagged",
+      "file": "products/active-work/src/plan/sheet.ts",
+      "find": "bets.filter((bet) => intentIds(bet).length === 0)",
+      "replace": "bets.filter(() => false)",
+      "kills": [
+        "weekly sheet flags a bet line that cites no intent line and defaults it to hold"
+      ]
+    },
+    {
+      "name": "a caller-supplied date moves the deadline",
+      "file": "products/active-work/src/commands/plan-sheet.ts",
+      "find": "      const day = today();",
+      "replace": "      const day = (args as { today?: string }).today ?? today();",
+      "kills": [
+        "weekly sheet records the defaults only through the explicit step, after the deadline by the host clock, and once"
+      ]
+    },
+    {
+      "name": "a bet with no check reads missed",
+      "file": "products/active-work/src/plan/sheet.ts",
+      "find": "return bet.prediction_check ?? 'unread';",
+      "replace": "return bet.prediction_check ?? 'missed';",
+      "kills": [
+        "weekly sheet with no prediction checks recorded every running bet reads unread"
+      ]
+    },
+    {
+      "name": "answered sheets are replaced or answered twice",
+      "file": "products/active-work/src/commands/plan-sheet.ts",
+      "find": "if ((await readSheetDecisions(activeRoot, initiative, sheetWeek)) !== null) {",
+      "replace": "if (false) {",
+      "kills": [
+        "weekly sheet records the defaults only through the explicit step, after the deadline by the host clock, and once",
+        "weekly sheet generate refuses to replace a sheet whose decisions are recorded, leaving it unchanged"
+      ]
+    },
+    {
+      "name": "only the initiative's own intent refs count",
+      "file": "products/active-work/src/plan/sheet.ts",
+      "find": ".filter((ref) => /^[a-z0-9-]+\\/I\\d+$/.test(ref))",
+      "replace": ".filter((ref) => ref.startsWith(`${bet.initiative}/I`))",
+      "kills": [
+        "weekly sheet accepts a bet citing a lane line when the lane is not the initiative"
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ValidationError } from '../errors.js';
-import { getProcessCommand, isProcessAlive } from '../server/lifecycle.js';
+import { getProcessCommand, isProcessAlive } from '@titan-design/daemon';
 
 /**
  * Which Claude session ids a running `claude` process holds right now.
@@ -14,7 +14,7 @@ import { getProcessCommand, isProcessAlive } from '../server/lifecycle.js';
  */
 export type LiveSessionIds = () => Promise<Set<string>>;
 
-export interface ProcessProbes {
+interface ProcessProbes {
   isAlive: (pid: number) => boolean;
   getComm: (pid: number) => string | null;
 }

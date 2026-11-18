@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
-import { RoundSchema } from "./review-schema-0.3/schema.js";
+import { RoundSchema } from "@titan-design/review-schema";
 import { hasUnboundMergeOffer, mergeBindingProblems } from "./round-merge-binding.js";
 
 const jsonObject = z.record(z.string(), z.unknown());

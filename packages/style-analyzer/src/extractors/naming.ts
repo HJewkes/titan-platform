@@ -1,4 +1,5 @@
 import type { Node } from "web-tree-sitter";
+import { TS_FUNCTION_DECLARATION } from "@titan-design/code-parser/node-kinds";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 
 const NAMING_PATTERNS: Record<string, RegExp> = {
@@ -91,7 +92,7 @@ export class NamingExtractor implements StyleExtractor {
       case "variable_declarator":
         this.processTypeScriptVariable(node, file, observations);
         break;
-      case "function_declaration":
+      case TS_FUNCTION_DECLARATION:
         this.observeDeclarationName(node, "naming.function", file, observations);
         break;
       case "interface_declaration":

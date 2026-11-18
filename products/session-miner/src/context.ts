@@ -1,3 +1,4 @@
+import type { Embedder } from "@titan-design/embed";
 import { PlaybookStore, type Reflector } from "@titan-design/memory";
 import type { BaseContext } from "@titan-design/registry";
 import { PRICE_TABLE, PRICE_TABLE_VERSION } from "@titan-design/session-analytics";
@@ -14,19 +15,22 @@ export interface MinerContext extends BaseContext {
   playbook(): PlaybookStore;
   /** Supplied by an embedder that wants batch reflection; absent means the deterministic path only. */
   reflector?: Reflector;
+  /** When present, playbook.recall blends vector similarity into its ranking; absent means keywords only. */
+  embedder?: Embedder;
   /** Set by the CLI; options that touch the local filesystem are refused on every other surface. */
   surface?: "cli";
   close(): void;
 }
 
-export interface MinerContextOptions {
+interface MinerContextOptions {
   format?: BaseContext["format"];
   reflector?: Reflector;
+  embedder?: Embedder;
   surface?: "cli";
 }
 
 export function createMinerContext(config: MinerConfig, options: BaseContext["format"] | MinerContextOptions = {}): MinerContext {
-  const { format = "json", reflector, surface } = typeof options === "string" ? { format: options } : options;
+  const { format = "json", reflector, embedder, surface } = typeof options === "string" ? { format: options } : options;
   let graph: SessionGraph | undefined;
   let playbook: PlaybookStore | undefined;
   const ctx: MinerContext = {
@@ -34,6 +38,7 @@ export function createMinerContext(config: MinerConfig, options: BaseContext["fo
     format,
     config,
     reflector,
+    embedder,
     surface,
     graph() {
       graph ??= openMinerGraph(config);

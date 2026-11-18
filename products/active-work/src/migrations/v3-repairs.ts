@@ -15,7 +15,7 @@ import { readRawFrontmatter, writeFrontmatter } from '../utils/gray-matter-io.js
  * file already fixed by hand is left alone and a re-run is a no-op.
  */
 
-export type RepairAction = 'retrack' | 'relocate' | 'skip';
+type RepairAction = 'retrack' | 'relocate' | 'skip';
 
 export interface RepairPlan {
   action: RepairAction;

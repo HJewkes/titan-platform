@@ -33,6 +33,7 @@ describe("parseFile", () => {
   });
 
   it("throws for unsupported language", async () => {
+    // @ts-expect-error "ruby" is not a GrammarLanguage; the runtime still guards
     await expect(parseFile("code", "test.rb", "ruby")).rejects.toThrow(
       "Unsupported language: ruby",
     );

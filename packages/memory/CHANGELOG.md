@@ -1,5 +1,28 @@
 # @titan-design/memory
 
+## 0.3.1
+
+### Patch Changes
+
+- 76028d9: The playbook store now skips bullet and feedback rows whose ref is not a `memory:` ref instead of reading them as bullets.
+- 98f29bd: Derive bullet ids in the store through `parseRef` instead of slicing the `memory:` prefix by length.
+- 6a76161: `PlaybookStore.supersededBy` now skips supersedes edges whose target ref is not a memory ref, so a foreign-kind edge reads as absent instead of returning its id as a bullet id.
+- 02ed42b: Narrow stored bullet attrs with a zod schema and type the feedback queries instead of casting.
+- Updated dependencies [42551ba]
+- Updated dependencies [42b6a21]
+- Updated dependencies [c58d555]
+- Updated dependencies [6c3c967]
+- Updated dependencies [d279098]
+- Updated dependencies [f996bb9]
+- Updated dependencies [c2bfa21]
+- Updated dependencies [a8bdbd2]
+- Updated dependencies [98a2861]
+- Updated dependencies [aef50d8]
+- Updated dependencies [c1f9297]
+  - @titan-design/retrieval@0.4.0
+  - @titan-design/store-sqlite@0.5.0
+  - @titan-design/embed@0.2.1
+
 ## 0.3.0
 
 ### Minor Changes

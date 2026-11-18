@@ -19,7 +19,7 @@ import { toolTypeFor } from './partition.js';
 
 type Json = Record<string, unknown>;
 
-export interface ExtractedBlob {
+interface ExtractedBlob {
   /** Drain-tree partition, via `toolTypeFor` on the originating tool name. */
   toolType: string;
   /** stdout+stderr, or the error text — never the surrounding JSON. */

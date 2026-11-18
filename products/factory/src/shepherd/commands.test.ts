@@ -249,7 +249,7 @@ describe("shepherd.register from facts", () => {
     const second = await registered(w, { ...facts, head: H2 });
 
     expect(first.g10Hold).toBeUndefined();
-    expect(second).toMatchObject({ g10Hold: "g10-adversary: policy touch", registration: { headSha: H2, base: "main" } });
+    expect(second).toMatchObject({ g10Hold: "g10-adversary: policy touch (kept: high: owner gate file products/factory/src/shepherd/g10-x.ts)", registration: { headSha: H2, base: "main" } });
   });
 
   it("refuses a head that is not a full sha", async () => {

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the merge-evidence route decides under the configured mode",
+      "file": "products/factory/src/shepherd/review.ts",
+      "find": "{ reviewAppId: wiring?.reviewAppId, visualGate, threshold:",
+      "replace": "{ reviewAppId: wiring?.reviewAppId, visualGate: deps.visualGate, threshold:",
+      "kills": [
+        "a visual PR under shepherd.visualGate async a visual PR of a visual-signoff task raises approve-merge on visual-path under async"
+      ]
+    }
+  ]
+}

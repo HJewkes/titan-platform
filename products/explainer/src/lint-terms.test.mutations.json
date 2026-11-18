@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an unspoken term is not failed",
+      "file": "products/explainer/src/lint-terms.ts",
+      "find": "at === -1 || !shownOnScreen",
+      "replace": "!shownOnScreen",
+      "kills": [
+        "Q-V19 a declared term is spoken and shown together fails a term its beat never speaks"
+      ]
+    },
+    {
+      "name": "a term missing from the screen is not failed",
+      "file": "products/explainer/src/lint-terms.ts",
+      "find": "!shownOnScreen(beat, term) || ",
+      "replace": "",
+      "kills": [
+        "Q-V19 a declared term is spoken and shown together fails a term spoken but missing from the beat's labels and chips"
+      ]
+    },
+    {
+      "name": "a cue far from the term is not failed",
+      "file": "products/explainer/src/lint-terms.ts",
+      "find": "|| !cueLandsOn(beat, at)",
+      "replace": "",
+      "kills": [
+        "Q-V19 a declared term is spoken and shown together fails a term whose nearest cue lands 3 s from its first spoken word"
+      ]
+    }
+  ]
+}

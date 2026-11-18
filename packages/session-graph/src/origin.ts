@@ -56,12 +56,14 @@ export interface ResolvedOrigin {
   routeFacts?: string | null;
   routeCandidate?: string | null;
   routeCandidateWanted?: string | null;
+  /** The launcher's execution ledger phase for this session: its outcome once terminal. */
+  executionPhase?: string | null;
 }
 
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
 export const NO_TASK_LINK = "none";
 
-export type TaskLinkSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | typeof NO_TASK_LINK;
+export type TaskLinkSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "spawn-meta" | typeof NO_TASK_LINK;
 
 /** A lifecycle event the launcher saw outside the transcript: `teleport`, `handoff`, `retired`, `exited`. */
 export interface ExternalEvent {
@@ -103,13 +105,18 @@ export interface OriginEnrichment {
 
 export const NO_ORIGINS: OriginEnrichment = Object.freeze({ requested: 0, applied: 0, events: 0, failed: false });
 
+/** Execution phases a launcher's ledger moves out of; a stored one means the session's outcome is not yet known. */
+const IN_FLIGHT_PHASES = ["prepared", "dispatching", "running", "cancel_requested", "recovery_required"] as const;
+
 /**
  * A session whose transcript grew after its origin was resolved may have been retired or handed off since.
- * A null `task_source` means no task-aware resolver has answered for the row yet.
+ * A null `task_source` means no task-aware resolver has answered for the row yet. An in-flight
+ * `execution_phase` is offered again because the ledger reaches its terminal phase after the transcript's last write.
  */
 const SESSIONS_NEEDING_ORIGIN = `
   SELECT s.session_id FROM session s LEFT JOIN session_origin o ON o.session_id = s.session_id
   WHERE o.session_id IS NULL OR o.resolved_at < s.ended_at OR o.task_source IS NULL
+    OR o.execution_phase IN (${IN_FLIGHT_PHASES.map((p) => `'${p}'`).join(", ")})
   ORDER BY s.session_id`;
 
 const camel = (column: string): string => column.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
@@ -117,7 +124,7 @@ const camel = (column: string): string => column.replace(/_(\w)/g, (_, c: string
 const ORIGIN_COLUMNS = [
   "origin_system", "agent_id", "agent_name", "parent_name", "parent_session_id", "profile", "model_alias", "surface", "isolation", "depth",
   "origin_kind", "config_dir", "spawn_cwd", "spawned_at", "brief_chars", "brief_excerpt", "brief_path", "launch_args", "resolved_at",
-  "experiment_id", "experiment_arm", "predecessor", "followup_kinds",
+  "experiment_id", "experiment_arm", "predecessor", "followup_kinds", "execution_phase",
   ...ORIGIN_ROUTE_COLUMNS,
 ] as const;
 
@@ -130,12 +137,12 @@ const UPSERT_ORIGIN = `
   INSERT INTO session_origin (session_id, origin_system, agent_id, agent_name, parent_name, parent_session_id,
     profile, model_alias, surface, isolation, depth, origin_kind, config_dir, spawn_cwd, spawned_at,
     brief_chars, brief_excerpt, brief_path, launch_args, task_ids, task_source, resolved_at,
-    experiment_id, experiment_arm, predecessor, followup_kinds,
+    experiment_id, experiment_arm, predecessor, followup_kinds, execution_phase,
     ${ORIGIN_ROUTE_COLUMNS.join(", ")})
   VALUES (@sessionId, @originSystem, @agentId, @agentName, @parentName, @parentSessionId,
     @profile, @modelAlias, @surface, @isolation, @depth, @originKind, @configDir, @spawnCwd, @spawnedAt,
     @briefChars, @briefExcerpt, @briefPath, @launchArgs, @taskIds, @taskSource, @resolvedAt,
-    @experimentId, @experimentArm, @predecessor, @followupKinds,
+    @experimentId, @experimentArm, @predecessor, @followupKinds, @executionPhase,
     ${ORIGIN_ROUTE_COLUMNS.map((c) => `@${camel(c)}`).join(", ")})
   ON CONFLICT (session_id) DO UPDATE SET ${ORIGIN_COLUMNS.map((c) => `${c} = excluded.${c}`).join(", ")},
     ${TASK_LINK_UPDATE}`;
@@ -202,6 +209,7 @@ function originRow(sessionId: string, o: ResolvedOrigin, resolvedAt: string): Re
     briefPath: o.briefPath ?? null, launchArgs: o.launchArgs ?? null,
     experimentId: o.experimentId ?? null, experimentArm: o.experimentArm ?? null, predecessor: o.predecessor ?? null,
     followupKinds: o.followupKinds ? JSON.stringify(o.followupKinds) : null,
+    executionPhase: o.executionPhase ?? null,
     ...routeColumns(o),
     ...taskLinkColumns(o),
   };
@@ -236,7 +244,7 @@ function projectOrigins(graph: SessionGraph, resolved: readonly string[]): void 
 }
 
 /** A launcher's name is the coordinator's own choice, so it outranks anything read from a brief. */
-const LINK_CONFIDENCE: Record<Exclude<TaskLinkSource, typeof NO_TASK_LINK>, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6 };
+const LINK_CONFIDENCE: Record<Exclude<TaskLinkSource, typeof NO_TASK_LINK>, number> = { name: 1, "name-over-brief": 1, "brief-anchor": 0.9, "brief-paragraph": 0.6, "spawn-meta": 1 };
 const LOWEST_CONFIDENCE = 0.6;
 const CONFIDENCE_BY_SOURCE: ReadonlyMap<string, number> = new Map(Object.entries(LINK_CONFIDENCE));
 

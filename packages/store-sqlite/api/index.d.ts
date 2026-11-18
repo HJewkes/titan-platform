@@ -51,7 +51,18 @@ interface Migration {
     /** Positive, unique, applied in ascending order. */
     version: number;
     name?: string;
+    /**
+     * The text that pins what this migration does, usually the SQL `up` runs. Its hash is
+     * recorded when the migration applies, and a later run whose definition hashes
+     * differently reports drift. The source of `up` is not hashed: a rebuild can rename
+     * identifiers in it without changing what it does.
+     */
+    definition?: string;
     up: (db: Db) => void;
+}
+interface RunMigrationsOptions {
+    /** What an edited, already-applied migration does: throw (the default) or emit a process warning and go on. */
+    onDrift?: "error" | "warn";
 }
 declare class MigrationIdentityError extends Error {
     readonly version: number;
@@ -59,13 +70,25 @@ declare class MigrationIdentityError extends Error {
     readonly declaredName: string;
     constructor(version: number, recordedName: string, declaredName: string);
 }
+/**
+ * Thrown when an applied migration's definition no longer hashes to what was recorded:
+ * someone edited a shipped migration, so databases that already ran it differ from new ones.
+ *
+ * Adapted from beads (MIT), `internal/storage/schema/content_skew.go`.
+ */
+declare class MigrationDriftError extends Error {
+    readonly version: number;
+    readonly recordedHash: string;
+    readonly declaredHash: string;
+    constructor(version: number, recordedHash: string, declaredHash: string);
+}
 declare function appliedVersions(db: Db): number[];
 /**
- * Apply every migration not yet recorded in `_migration`, each in its own
+ * Apply every migration not yet recorded in the migration table, each in its own
  * transaction so a failure leaves the database at the last good version.
  * Returns the versions applied this call.
  */
-declare function runMigrations(db: Db, migrations: readonly Migration[]): number[];
+declare function runMigrations(db: Db, migrations: readonly Migration[], options?: RunMigrationsOptions): number[];
 
 /**
  * The cross-domain identity grammar: `<kind>:<id>`, where `kind` is a short
@@ -92,6 +115,8 @@ interface KitSelection {
     edge?: string | true;
     cacheBlob?: string | true;
     spanFts?: string | true;
+    /** Add the trigram twin to the `spanFts` tables; needs `spanFts`. */
+    spanFtsTrigram?: true;
     watermark?: string | true;
 }
 /** The DDL for a selection of kit tables, in dependency-safe order. Every statement is `IF NOT EXISTS`. */
@@ -228,10 +253,17 @@ interface CacheHit {
     value: Buffer;
     meta: Record<string, unknown> | null;
 }
+/** One model's footprint in a namespace, as `models()` lists it. */
+interface CacheModelRows {
+    model: string;
+    rows: number;
+}
 declare class CacheBlobTable {
     private readonly getStmt;
     private readonly putStmt;
     private readonly countStmt;
+    private readonly deleteStmt;
+    private readonly modelsStmt;
     constructor(db: Db, { name }?: CacheBlobOptions);
     get(key: CacheKey): CacheHit | undefined;
     /** Store once; a second put for the same key is a no-op. Returns true when written. */
@@ -239,6 +271,10 @@ declare class CacheBlobTable {
     /** Get, or compute and store. The compute runs only on a miss. */
     getOrCompute(key: CacheKey, compute: () => Buffer | string, meta?: Record<string, unknown>): Buffer;
     count(namespace: string, model: string): number;
+    /** Drop every row stored under `(namespace, model)`, such as vectors from a retired model. Returns the rows deleted. */
+    delete(namespace: string, model: string): number;
+    /** The models holding rows in `namespace`, sorted by name, so a caller can find identities it no longer uses. */
+    models(namespace: string): CacheModelRows[];
 }
 
 /**
@@ -258,8 +294,19 @@ interface SpanFtsOptions {
      * orphan behaviour stay as they were.
      */
     contentlessDelete?: boolean;
+    /**
+     * Also create `<name>_tri`, a contentless trigram twin of the FTS table, so
+     * `searchTrigram` can find a substring inside a token (`Retriever` in
+     * `pgTextRetriever`). Spans only get a twin row when indexed with
+     * `{ trigram: true }`. Default false: no twin table exists.
+     */
+    trigram?: boolean;
 }
-declare function spanFtsTablesDdl({ name, contentlessDelete }?: SpanFtsOptions): string;
+interface IndexOptions {
+    /** Also write the trigram twin row; needs the table's `trigram` option. */
+    trigram?: boolean;
+}
+declare function spanFtsTablesDdl({ name, contentlessDelete, trigram }?: SpanFtsOptions): string;
 interface SpanInput {
     /** The entity this text belongs to, e.g. `session:abc`. */
     ownerRef: string;
@@ -299,6 +346,7 @@ interface SpanScope {
 declare class SpanFtsTables {
     private readonly db;
     private readonly tableNames;
+    private readonly twin;
     private readonly insertSpan;
     private readonly findSpan;
     private readonly insertFts;
@@ -314,7 +362,7 @@ declare class SpanFtsTables {
     private readonly countSpans;
     private readonly countFts;
     private readonly indexTxn;
-    constructor(db: Db, { name, contentlessDelete }?: SpanFtsOptions);
+    constructor(db: Db, { name, contentlessDelete, trigram }?: SpanFtsOptions);
     /**
      * Index `text` for a span, storing only the locator. Returns the span id.
      *
@@ -322,7 +370,14 @@ declare class SpanFtsTables {
      * whose row `clearIndex` removed puts the row back, which is what makes
      * clear-then-re-stream a rebuild. Only the conflict path pays the rowid probe.
      */
-    index(span: SpanInput, text: string): number;
+    index(span: SpanInput, text: string, { trigram }?: IndexOptions): number;
+    /**
+     * Substring search over the trigram twin, joined through the span table like
+     * `search`. FTS5 trigram matches need at least three characters; a shorter
+     * term matches nothing. Only spans indexed with `{ trigram: true }` can hit.
+     */
+    searchTrigram(expression: string, limit?: number, scope?: SpanScope): SpanHit[];
+    private requireTwin;
     /**
      * FTS5 MATCH, joined through the span table so stranded FTS rows never surface.
      *
@@ -347,7 +402,10 @@ declare class SpanFtsTables {
     purgeOwner(ownerRef: string): number;
     /** Drop every span of one source (transcript or file), with the same FTS behaviour as `purgeOwner`. */
     purgeSource(sourceId: number): number;
-    /** Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream. */
+    /**
+     * Fraction of FTS rows with no span behind them; a high value means it is time to `clearIndex` and re-stream.
+     * With a trigram twin, the worse of the two tables' ratios.
+     */
     orphanRatio(): number;
     /**
      * Empty the FTS index, keeping every span row. Re-streaming each surviving
@@ -411,4 +469,4 @@ declare class WatermarkTable {
     list(): WatermarkRow[];
 }
 
-export { type CacheBlobOptions, CacheBlobTable, type CacheHit, type CacheKey, type Db, type EdgeInput, type EdgeRow, EdgeTable, type EdgeTableOptions, type EntityInput, type EntityRow, EntityTable, type KitSelection, MIGRATION_TABLE_NAME, type Migration, MigrationIdentityError, type OpenOptions, type ParsedRef, SQL_NOW, SchemaTooNewError, type SpanFtsOptions, SpanFtsTables, type SpanHit, type SpanInput, type SpanScope, type TableName, type WatermarkAdvance, type WatermarkOptions, type WatermarkRow, type WatermarkStatus, WatermarkTable, appliedVersions, assertSchemaVersion, cacheBlobTableDdl, contentHashOf, edgeTableDdl, entitySnapTableDdl, entityTableDdl, hasColumn, hasTable, isRef, kitDdl, kitMigration, nowIso, openDatabase, parseRef, quoteIdent, ref, refKind, runMigrations, snapshotTableDdl, spanFtsTablesDdl, watermarkTableDdl };
+export { type CacheBlobOptions, CacheBlobTable, type CacheHit, type CacheKey, type CacheModelRows, type Db, type EdgeInput, type EdgeRow, EdgeTable, type EdgeTableOptions, type EntityInput, type EntityRow, EntityTable, type KitSelection, MIGRATION_TABLE_NAME, type Migration, MigrationDriftError, MigrationIdentityError, type OpenOptions, type ParsedRef, type RunMigrationsOptions, SQL_NOW, SchemaTooNewError, type SpanFtsOptions, SpanFtsTables, type SpanHit, type SpanInput, type SpanScope, type TableName, type WatermarkAdvance, type WatermarkOptions, type WatermarkRow, type WatermarkStatus, WatermarkTable, appliedVersions, assertSchemaVersion, cacheBlobTableDdl, contentHashOf, edgeTableDdl, entitySnapTableDdl, entityTableDdl, hasColumn, hasTable, isRef, kitDdl, kitMigration, nowIso, openDatabase, parseRef, quoteIdent, ref, refKind, runMigrations, snapshotTableDdl, spanFtsTablesDdl, watermarkTableDdl };

@@ -58,11 +58,12 @@ export function knownObservation(input: KnownObservationInput): UsageResult {
     const seven_day = checkedWindow(limits.seven_day, observedAt);
     if (!five_hour || !seven_day) return unknown("inconsistent");
     const reading: KnownUsageReading = {
-      account, written_at: observedAt, rate_limits: { five_hour, seven_day },
+      account, written_at: observedAt,
+      rate_limits: Object.freeze({ five_hour: Object.freeze(five_hour), seven_day: Object.freeze(seven_day) }),
       [KNOWN_OBSERVATION]: Object.freeze({ source: source.trim(), observedAt }),
     };
     Object.defineProperty(reading, KNOWN_OBSERVATION, { enumerable: false, writable: false, configurable: false });
-    return { status: "known", reading };
+    return { status: "known", reading: Object.freeze(reading) };
   } catch { return unknown("inconsistent"); }
 }
 

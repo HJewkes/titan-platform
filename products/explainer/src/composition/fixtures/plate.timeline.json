@@ -1,0 +1,7 @@
+{
+  "durationS": 4,
+  "beats": [
+    { "id": "opaque", "kind": "held", "startS": 0, "durationS": 2, "slots": { "line": "An ordinary beat" } },
+    { "id": "plated", "kind": "held", "startS": 2, "durationS": 2, "plate": true, "slots": { "line": "A plate beat" } }
+  ]
+}

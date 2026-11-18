@@ -1,11 +1,11 @@
 import os from 'node:os';
 import path from 'node:path';
-import envPaths from 'env-paths';
+import { activeWorkRoot, appDirs } from '@titan-design/app-paths';
 
 const PROJECT_NAME = 'active-work';
 
-function paths(): ReturnType<typeof envPaths> {
-  return envPaths(PROJECT_NAME, { suffix: '' });
+function paths(): ReturnType<typeof appDirs> {
+  return appDirs(PROJECT_NAME);
 }
 
 /**
@@ -23,14 +23,10 @@ export function expandTilde(p: string): string {
  * Resolve the root directory for initiative data.
  *
  * Honors `ACTIVE_ROOT` (with `~` expansion) when set; otherwise falls back to
- * the XDG data path provided by `env-paths`.
+ * the per-user data path from `@titan-design/app-paths`.
  */
 export function getActiveRoot(): string {
-  const override = process.env.ACTIVE_ROOT;
-  if (override && override.length > 0) {
-    return path.resolve(expandTilde(override));
-  }
-  return paths().data;
+  return activeWorkRoot();
 }
 
 /** Resolve the XDG state directory used for ephemeral runtime state. */

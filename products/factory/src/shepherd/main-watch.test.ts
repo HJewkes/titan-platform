@@ -1,3 +1,4 @@
+import { DispatchTimeoutError } from "@titan-design/agent-dispatch";
 import { FakeHttpError, fakeGitHub, fakeSha, githubPort, successRun, type FakeGitHub } from "@titan-design/github";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { mkdtempSync } from "node:fs";
@@ -5,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAIN_WATCH_DB, MainWatchLedger } from "./main-watch-ledger.js";
-import { deadRedSeats, MAIN_WATCH_WINDOW_MS, MainCiReads, prNumberOf, seatByPrefix, sweepMain, type MainWatchDeps } from "./main-watch.js";
+import { deadRedSeats, MAIN_WATCH_WINDOW_MS, prNumberOf, seatByPrefix, sweepMain, type MainWatchDeps } from "./main-watch.js";
 import { resolveEffectivePolicy } from "./policy.js";
 import { lookupSeat, type SeatBook } from "./seats.js";
 import type { Registration } from "./store.js";
@@ -36,10 +37,12 @@ interface World {
   clock: { now: number };
   /** Fails this many sends before one goes through. */
   failSends: { count: number };
+  /** Every send times out after landing, as the broker does under load. */
+  timeouts: { on: boolean };
 }
 
 function world(): World {
-  return { fake: fakeGitHub({ repo: REPO }), sent: [], registrations: new Map(), clock: { now: T0 }, failSends: { count: 0 } };
+  return { fake: fakeGitHub({ repo: REPO }), sent: [], registrations: new Map(), clock: { now: T0 }, failSends: { count: 0 }, timeouts: { on: false } };
 }
 
 function depsOver(w: World, ledger: MainWatchLedger, hubSeat: string | undefined = "hub-coord", redSeat?: (repo: string) => string | undefined): MainWatchDeps {
@@ -54,6 +57,7 @@ function depsOver(w: World, ledger: MainWatchLedger, hubSeat: string | undefined
       send: async (seat, text) => {
         if (w.failSends.count-- > 0) throw new Error("broker down");
         w.sent.push({ seat, text });
+        if (w.timeouts.on) throw new DispatchTimeoutError("agent-chat message timed out");
       },
     },
     now: () => w.clock.now,
@@ -189,6 +193,25 @@ describe("main CI watch", () => {
     expect(w.sent).toHaveLength(1);
   });
 
+  it("retries a timed-out red event once on the next sweep, then takes it as told and sends nothing more", async () => {
+    const w = world();
+    const ledger = memoryLedger();
+    await sweep(w, ledger);
+    merged(w, 8, T0 + MINUTE, { validate: "failure", "dag-check": "success" });
+    w.timeouts.on = true;
+
+    w.clock.now = T0 + 5 * MINUTE;
+    await sweep(w, ledger);
+    const afterFirstSweep = w.sent.length;
+    for (const minutes of [10, 15, 20]) {
+      w.clock.now = T0 + minutes * MINUTE;
+      await sweep(w, ledger);
+    }
+
+    expect(afterFirstSweep).toBe(1);
+    expect(w.sent).toHaveLength(2);
+  });
+
   it("raises nothing for a red commit that landed before the watch began", async () => {
     const w = world();
     const ledger = memoryLedger();
@@ -319,67 +342,3 @@ describe("red-event seats with no live session", () => {
   });
 });
 
-describe("MainCiReads", () => {
-  const SHA = merge(1);
-
-  function reads(w: World, freshMs = 30_000) {
-    w.fake.setRuns(SHA, [successRun("validate", 1)]);
-    return new MainCiReads(githubPort(w.fake.wire), () => w.clock.now, freshMs);
-  }
-
-  const checkReads = (w: World): number => w.fake.calls.filter((call) => call === "listCheckRuns").length;
-
-  it("answers every reader of one repo and sha from one read within the poll window", async () => {
-    const w = world();
-    const shared = reads(w);
-
-    await Promise.all([shared.checkRuns(REPO, SHA), shared.checkRuns(REPO, SHA), shared.checkRuns(REPO.toUpperCase(), SHA)]);
-    w.clock.now += 29_999;
-    const late = await shared.checkRuns(REPO, SHA);
-
-    expect(checkReads(w)).toBe(1);
-    expect(late.map((run) => run.name)).toEqual(["validate"]);
-  });
-
-  it("reads again once the window has passed", async () => {
-    const w = world();
-    const shared = reads(w);
-
-    await shared.checkRuns(REPO, SHA);
-    w.clock.now += 30_000;
-    await shared.checkRuns(REPO, SHA);
-
-    expect(checkReads(w)).toBe(2);
-  });
-
-  it("reads each sha of a repo apart", async () => {
-    const w = world();
-    const shared = reads(w);
-
-    await Promise.all([shared.checkRuns(REPO, SHA), shared.checkRuns(REPO, merge(2))]);
-
-    expect(checkReads(w)).toBe(2);
-  });
-
-  it("keeps no failed read, so the next poll reads again", async () => {
-    const w = world();
-    const shared = reads(w);
-    w.fake.readFaults.listCheckRuns = [new FakeHttpError(502, "bad gateway")];
-
-    await expect(shared.checkRuns(REPO, SHA)).rejects.toThrow();
-    const again = await shared.checkRuns(REPO, SHA);
-
-    expect(again).toHaveLength(1);
-    expect(checkReads(w)).toBe(2);
-  });
-
-  it("hands each reader its own list, so one reader's change reaches no other", async () => {
-    const w = world();
-    const shared = reads(w);
-
-    const first = await shared.checkRuns(REPO, SHA);
-    first.pop();
-
-    expect(await shared.checkRuns(REPO, SHA)).toHaveLength(1);
-  });
-});

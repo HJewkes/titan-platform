@@ -60,8 +60,10 @@ off by default and ignored when `readonly` is set. See migration 9.
    verbatim line, or goes if no copy holds one. Only that copy's search spans are dropped.
 4. `resolveOrigins` runs if the caller passed a `resolveOrigins` resolver. See migration 5.
 5. `reconcile` folds cross-transcript observations: `gh pr merge` sightings onto PRs,
-   complete `gh pr create` sightings into new PR rows, subagent end times and parentage
-   from child sessions.
+   complete `gh pr create` sightings into new PR rows and `pr --built_on--> branch` edges
+   (the head from `--head`/`-H`, or the checked-out branch; `--base` in the edge's
+   `attrs`), subagent end times and parentage from child sessions. A create whose result
+   never named a PR writes no edge.
 6. `enrichPrs` runs if the caller passed a `resolvePrs` resolver. See below.
 7. `projectReviewRounds` resolves chat verdicts and writes review rounds. See below.
 8. `enrichTasks` runs if the caller passed a `resolveTasks` resolver, once over the whole
@@ -192,6 +194,24 @@ passes, and `summary.reviews` reports `resolved` (this pass) and `unresolved` (s
 `reconcile` sets `merged_at` from merge sightings only for a PR the resolver has not yet
 checked. Once the resolver has answered for a PR, its `merged_at` is the forge's and a later
 pass never overwrites it with a sighting time.
+
+## Commit lineage
+
+`commitLineage(graph, links)` walks one commit to the work behind it. The caller reads the
+commit message and passes its `(#n)` PR number, the checkout's repo name, any
+`Agent-Session:` trailer values and the task ids on its `Refs:` line. Each row carries the rung
+that found it, and the first rung wins:
+
+| Rung | Finds | Through |
+|---|---|---|
+| `trailer` | session | the commit's own `Agent-Session:` trailer |
+| `pr-subject` | session | a live `linked` edge to a `pr` row with that number and repo name |
+| `refs` | task | the `Refs:` line the squash message writes |
+| `session-ran` | task | a `ran` edge from a session found above |
+| `pr-task` | session | a `ran` edge to one of those tasks |
+
+Sessions carry their cwd and task initiatives; which of them a caller may see is the caller's
+policy, as with `sessionsTouchingFiles`.
 
 ## Tables
 
@@ -351,7 +371,7 @@ requested session it examined, with `taskIds` empty when nothing links; a sessio
 out keeps a null `task_source` and is offered again on every pass. The
 upsert updates only the columns it names, so a later column keeps its value. Each linked id
 projects a `task` row and a `session ran task` edge with `attrs = { via: "origin", source }`
-and a confidence of 1.0 for `name` or `name-over-brief`, 0.9 for `brief-anchor` and 0.6 for
+and a confidence of 1.0 for `name`, `name-over-brief` or `spawn-meta`, 0.9 for `brief-anchor` and 0.6 for
 `brief-paragraph`. Only rows resolved in the current pass are projected. When a
 re-resolution drops an id, only that origin-made edge expires. A transcript's `ran` edge
 carries no `via`, and when a transcript claims an edge the origin made first, the edge is

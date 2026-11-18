@@ -38,6 +38,10 @@ beforeEach(() => {
   const activeWorkRoot = join(root, "active-work");
   mkdirSync(join(activeWorkRoot, PRIVATE_SLUG, "tasks"), { recursive: true });
   writeFileSync(join(activeWorkRoot, PRIVATE_SLUG, "brief.md"), "# private\n");
+  mkdirSync(join(activeWorkRoot, "titan-platform"), { recursive: true });
+  writeFileSync(join(activeWorkRoot, "titan-platform", "brief.md"), "---\nvisibility: agent-visible\n---\n");
+  mkdirSync(join(activeWorkRoot, "claude-channels", "sources", "autonomy"), { recursive: true });
+  writeFileSync(join(activeWorkRoot, "claude-channels", "sources", "autonomy", "charter.md"), "---\nhuman_only_initiatives: []\n---\n");
   writeFileSync(join(activeWorkRoot, PRIVATE_SLUG, "tasks", "HL-7.yml"), "id: HL-7\n");
   policy = defaultPolicy(activeWorkRoot);
 });

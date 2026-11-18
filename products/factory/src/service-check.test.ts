@@ -40,6 +40,8 @@ interface Machine {
   tick?: string;
   /** The deploy checkout's index.lock; absent by default. */
   lock?: IndexLock;
+  /** The live pid holding the deploy lock; absent means no deployer. */
+  deployer?: number;
   /** True when the config sets no shepherd.hubSeat; one is set by default. */
   noHubSeat?: boolean;
   /** The titan-factory on PATH, resolved; absent means none is on PATH. */
@@ -101,6 +103,7 @@ function fakePorts(init: Machine) {
     isAncestor: async (a, d) => (init.ancestry ?? []).some(([x, y]) => x === a && y === d),
     tickStatus: () => ({ file: TICK_FILE, text: init.tick }),
     indexLock: async () => init.lock ?? { state: "absent", path: LOCK },
+    deployer: () => init.deployer,
     hubSeat: () => (init.noHubSeat ? undefined : "hub"),
     installedCli: async () => init.installed,
     checkoutHead: async () => init.head ?? BUILD,
@@ -284,6 +287,44 @@ describe("titan-factory service check", () => {
 
     expect(code).not.toBe(EXIT.OK);
     expect(out).toContain(`stale build: the server runs build ${BUILD} but the dist a restart loads is build ${target}, which is newer`);
+  });
+
+  describe("while a deploy holds the lock", () => {
+    const target = "b".repeat(40);
+    const behind = { print: running, target, ancestry: [[BUILD, target]] satisfies [string, string][], deployer: 7777 };
+
+    it("exits 0 without stale build, naming the deployer pid and target build", async () => {
+      const { code, out } = await check({ ...behind, health: healthy() });
+
+      expect(code).toBe(EXIT.OK);
+      expect(out).not.toContain("stale build");
+      expect(out).toContain("pid 7777");
+      expect(out).toContain(target);
+    });
+
+    it("still reports GitHub down when it holds", async () => {
+      const { code, out } = await check({ ...behind, health: healthy({ github: "down" }) });
+
+      expect(code).not.toBe(EXIT.OK);
+      expect(out).toMatch(/^GitHub down: /);
+    });
+
+    it("still reports a stalled deploy when it holds", async () => {
+      const refusal = (at: string): string => `${at} service deploy --expect ${target}\nerror: deploy refused: git merge --ff-only ${target} failed: locked.\n`;
+      const log = refusal("2026-01-01T11:50:00Z") + refusal("2026-01-01T11:55:00Z");
+      const deploy = { ...deployHealth({ entries: parseRedeployLog(log), runningSha: BUILD, now: NOW }) };
+
+      const { code, out } = await check({ ...behind, health: healthy({ deploy }) });
+
+      expect(code).toBe(EXIT.FAILURE);
+      expect(out).toMatch(/^deploy stalled: /);
+    });
+
+    it("keeps stale build when the lock holder is dead or absent", async () => {
+      const { out } = await check({ ...behind, deployer: undefined, health: healthy() });
+
+      expect(out).toMatch(/^stale build: /);
+    });
   });
 
   it("gives no stale build advice when the restart target is an ancestor of the running build", async () => {

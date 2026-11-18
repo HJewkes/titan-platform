@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the gap line ignores the probe's reason",
+      "file": "products/factory/src/digest/render-md.ts",
+      "find": "d.consoleLinkGap ?? LINKS_OMITTED",
+      "replace": "LINKS_OMITTED",
+      "kills": [
+        "buildDigest a console that answers 502 leaves the alarm without links and says why under gaps"
+      ]
+    },
+    {
+      "name": "the probe runs even without an alarm",
+      "file": "products/factory/src/digest/run.ts",
+      "find": "const links = alarm === undefined ? undefined : await alarmLinks(consoleOrigin, probe);",
+      "replace": "const links = await alarmLinks(consoleOrigin, probe);",
+      "kills": [
+        "buildDigest a digest whose alarm does not fire never probes"
+      ]
+    }
+  ]
+}

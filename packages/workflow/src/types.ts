@@ -70,6 +70,8 @@ export interface ActiveStepBase {
   runnerRef?: string;
   /** Summed cost of this step's earlier failed attempts, so a resumed run still reports every attempt once. */
   priorUsage?: StepUsage;
+  /** This try's spend at a cancellation_unknown end; reconcile repeats that terminal, so a report replaces it, never adds. */
+  unsettledUsage?: StepUsage;
   recovery?: { kind: "legacy_unrecoverable" | "not_found" | "ownership_lost" | "unknown"; evidence: string; observedAt: string };
 }
 
@@ -103,6 +105,8 @@ export interface WorkflowRun {
   startedAt: string;
   completedAt: string | null;
   error: string | null;
+  /** A failed run's class, from the `errorClass` its rejection carried; absent on runs that recorded none. */
+  errorClass?: string;
 }
 
 export interface SeedResult {
@@ -123,10 +127,7 @@ export interface AssistedOptions {
   /** Validates the resolution payload; stored as JSON Schema on the gate. */
   schema?: ZodType;
   expiresAt?: Date | string;
-  /**
-   * Record a cancel of the gate as the step's answer instead of throwing `GateCancelled`: the result's signal is
-   * `GATE_CANCELLED_SIGNAL` and its data carries the cancel `reason`, so the next call opens a fresh gate.
-   */
+  /** Records a gate cancel as the answer, not a `GateCancelled` throw: signal `GATE_CANCELLED_SIGNAL`, data its `reason`; the next call opens a fresh gate. */
   recordCancel?: boolean;
   /** What the owner reads instead of the prompt; a store with `requireBrief` refuses the gate without one. */
   brief?: GateBrief;
@@ -207,9 +208,9 @@ export interface StepRunInput {
 
 export type DurableStepOutcome =
   | { kind: "succeeded"; output: string; usage?: StepUsage }
-  | { kind: "failed"; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage }
+  | { kind: "failed"; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage; errorClass?: string }
   | { kind: "cancelled"; reason: string }
-  | { kind: "cancellation_unknown"; reason: string };
+  | { kind: "cancellation_unknown"; reason: string; usage?: StepUsage };
 
 export interface RecoverableStepDispatchInput extends StepRunInput {
   executionId: string;
@@ -236,7 +237,7 @@ export type StepReconcileOutcome =
 
 export type StepRunOutcome =
   | { ok: true; output: string; runnerRef?: string; usage?: StepUsage }
-  | { ok: false; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage };
+  | { ok: false; error: string; retryable: boolean; code?: "schema_invalid"; usage?: StepUsage; errorClass?: string };
 
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */
 export interface LegacyStepRunner {
@@ -269,73 +270,6 @@ export type WorkflowEvent = { at?: string } & (
   | { type: "workflow_failed"; runId: string; error: string }
   | { type: "workflow_cancelled"; runId: string; reason: string }
 );
-
-export interface StepFailureDetail {
-  /** The last attempt's failure could clear on a fresh call; `false` means repeating it would fail the same way. */
-  retryable?: boolean;
-  /** Cost of every failed attempt, when the runner reported it. */
-  usage?: StepUsage;
-}
-
-export class StepFailedError extends Error {
-  readonly retryable: boolean;
-  readonly usage: StepUsage | undefined;
-
-  constructor(
-    readonly stepId: string,
-    readonly iteration: number,
-    readonly reason: string,
-    detail: StepFailureDetail = {},
-  ) {
-    super(`step ${stepId} (iteration ${iteration}) failed: ${reason}`);
-    this.name = "StepFailedError";
-    this.retryable = detail.retryable ?? false;
-    this.usage = detail.usage;
-  }
-}
-
-export type StepOutputFailureKind = "not_json" | "schema" | "too_large";
-
-/** A dispatch whose output failed its schema. Never retryable: the same prompt would produce the same kind of payload. */
-export class StepOutputInvalidError extends StepFailedError {
-  constructor(
-    stepId: string,
-    iteration: number,
-    readonly kind: StepOutputFailureKind,
-    readonly issues: string[],
-    usage?: StepUsage,
-  ) {
-    super(stepId, iteration, `output ${kind}: ${issues.join("; ")}`, { retryable: false, usage });
-    this.name = "StepOutputInvalidError";
-  }
-}
-
-/** The authority table denied the action; no gate was opened, and repeating the request is denied the same way. */
-export class AuthorityDeniedError extends StepFailedError {
-  constructor(
-    stepId: string,
-    iteration: number,
-    readonly ruleId: string | null,
-    readonly denial: string,
-  ) {
-    super(stepId, iteration, `authority denied: ${denial}`, { retryable: false });
-    this.name = "AuthorityDeniedError";
-  }
-}
-
-/** The rule's gate settled without a valid approval: the owner refused, or the answer's resolver fails the rule. */
-export class AuthorityRefusedError extends StepFailedError {
-  constructor(
-    stepId: string,
-    iteration: number,
-    readonly ruleId: string,
-    readonly gateId: string,
-    readonly refusal: string,
-  ) {
-    super(stepId, iteration, `authority gate ${gateId} refused: ${refusal}`, { retryable: false });
-    this.name = "AuthorityRefusedError";
-  }
-}
 
 export class WorkflowCancelledError extends Error {
   constructor(

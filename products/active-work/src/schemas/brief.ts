@@ -1,3 +1,4 @@
+import { InitiativeVisibilitySchema, TaskRequireSchema } from '@titan-design/pm';
 import { z } from 'zod';
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -39,7 +40,7 @@ export const channelTarget = z
   });
 
 // Actions a brief may unlock for agent-chat's burndown tick (burndown design, section 5).
-export const AUTONOMY_GRANTS = [
+const AUTONOMY_GRANTS = [
   'merge-on-green-approve',
   'task-close-on-merged-pr',
   'release-through-ci',
@@ -56,7 +57,7 @@ const profileName = z
 // Opt-in to unattended dispatch, read by agent-chat's `burndown` tick. Strict so
 // a misspelled key or grant fails loudly instead of silently granting nothing.
 // Defaults stay unset here: the tick applies them, so a rewrite never adds keys.
-export const AutonomySchema = z
+const AutonomySchema = z
   .object({
     mode: z.literal('burndown', {
       error: 'autonomy.mode must be "burndown"; remove the autonomy block to opt out',
@@ -73,8 +74,6 @@ export const AutonomySchema = z
     repo: z.string().min(1).optional(),
   })
   .strict();
-
-export type Autonomy = z.infer<typeof AutonomySchema>;
 
 export const BriefFrontmatterSchema = z
   .object({
@@ -108,6 +107,10 @@ export const BriefFrontmatterSchema = z
     // current highest id — so task.add itself never rewrites brief.md.
     task_seq: TaskSeqSchema.optional(),
     autonomy: AutonomySchema.optional(),
+    // Absent means owner-only: agent-facing readers serve only `agent-visible` (TP-5453 P6).
+    visibility: InitiativeVisibilitySchema.optional(),
+    // Provenance fields every new task here must carry. Read only for now; TP-5446 S8 makes task add and edit enforce it.
+    task_require: TaskRequireSchema.optional(),
   })
   .superRefine((value, ctx) => {
     if (value.state === 'focused' && value.rank === undefined) {

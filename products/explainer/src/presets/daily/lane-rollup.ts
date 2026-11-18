@@ -1,5 +1,6 @@
 import type { DigestItem } from "../../digest.js";
 import type { Lane, LanesFile } from "../../lanes-schema.js";
+import { priorityItems } from "./priorities.js";
 import { attributeLanes, namedCount, rankThreads, threadsOf, type LanedPr, type Thread } from "./lanes.js";
 import type { DayWindow } from "./session-source.js";
 import type { SnapshotTask } from "./task-snapshot.js";
@@ -44,14 +45,15 @@ function rollupItem(id: string, title: string, summary: string, window: DayWindo
   return { id, kind: "rollup", title, summary, at: window.since, priority: "P1", ...extra };
 }
 
-function laneSummary(named: readonly Thread[], counted: readonly Thread[]): string {
+function laneSummary(named: readonly Thread[], counted: readonly Thread[], next: readonly string[]): string {
+  if (named.length === 0) return next.length === 0 ? "nothing merged" : `nothing merged; next: ${next.join(", ")}`;
   const countedPrs = counted.flatMap((thread) => thread.prs);
   const sideQuests = counted.filter((thread) => thread.role === "side-quest").reduce((sum, thread) => sum + thread.prs.length, 0);
   const rest = countedPrs.length === 0 ? "" : `; and ${plural(countedPrs.length, "smaller merge")}, ${sideQuests} of them side quests`;
   return `named: ${named.map(threadTitle).join("; ")}${rest}`;
 }
 
-function laneFacts(lane: Lane, ranked: readonly Thread[], k: number, window: DayWindow): { items: DigestItem[]; coverage: LaneCoverage } {
+function laneFacts(lane: Lane, ranked: readonly Thread[], k: number, next: readonly string[], window: DayWindow): { items: DigestItem[]; coverage: LaneCoverage } {
   const named = ranked.slice(0, k);
   const counted = ranked.slice(k);
   const prs = ranked.flatMap((thread) => thread.prs);
@@ -66,7 +68,7 @@ function laneFacts(lane: Lane, ranked: readonly Thread[], k: number, window: Day
     return rollupItem(`goal/${lane.id}/${goal.id}`, goal.line, summary, window, { lane: lane.id, goal: goal.id });
   });
   const coverage = { id: lane.id, label: lane.label, rollup: id, merged: prs.length, named: named.map((thread) => thread.id), counted: counted.reduce((sum, thread) => sum + thread.prs.length, 0) };
-  return { items: [rollupItem(id, title, laneSummary(named, counted), window, { lane: lane.id }), ...goals], coverage };
+  return { items: [rollupItem(id, title, laneSummary(named, counted, next), window, { lane: lane.id }), ...goals], coverage };
 }
 
 /** The top closed threads across lanes, at most `perLane` from any one lane. */
@@ -102,17 +104,18 @@ export function laneRollups(items: readonly DigestItem[], tasks: readonly Snapsh
   const rollups: DigestItem[] = [];
   const lanes: LaneCoverage[] = [];
   const prs: CoverageEntry[] = [];
+  const upcoming = priorityItems(tasks, file, window);
   for (const lane of file.lanes) {
     const ranked = rankThreads(threads.filter((thread) => thread.lane === lane.id), file.rank);
-    if (ranked.length === 0) continue;
     const k = namedCount(ranked.reduce((sum, thread) => sum + thread.prs.length, 0), laned.length, file.named);
-    const facts = laneFacts(lane, ranked, k, window);
+    const next = upcoming.filter((item) => item.lane === lane.id).map((item) => item.id.slice("next/".length));
+    const facts = laneFacts(lane, ranked, k, next, window);
     rollups.push(...facts.items);
     lanes.push(facts.coverage);
     prs.push(...entries(ranked, k));
   }
   rollups.push(...pickShips(rankThreads(threads, file.rank), file.ships).map((thread) => shipItem(thread, window)));
   const repos = new Set(laned.map((pr) => pr.item.repo)).size;
-  rollups.push(rollupItem("day/rollup", `${laned.length} merged across ${plural(repos, "repo")}`, `${plural(lanes.length, "lane")} moved`, window));
+  rollups.push(rollupItem("day/rollup", `${laned.length} merged across ${plural(repos, "repo")}`, `${plural(lanes.filter((lane) => lane.merged > 0).length, "lane")} moved`, window));
   return { prs: laned.map(withLane), rollups, coverage: { schema: "daily-coverage/v1", merged: laned.length, lanes, prs } };
 }

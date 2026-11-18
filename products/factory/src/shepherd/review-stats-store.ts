@@ -76,11 +76,39 @@ const V3 = `
   ALTER TABLE review ADD COLUMN scope_repeated INTEGER;
   DELETE FROM review_meta WHERE key = 'refreshed_through';`;
 
+/**
+ * Schema v4 adds the head's own-diff id (`own_diff_id`, recorded by `sh-own-diff`; null when unrecorded or unread) and
+ * `unchanged_since_verdict`: for a MERGE or FIX_FIRST pass, `after-MERGE` or `after-FIX_FIRST` when its head's own diff
+ * equals the one at the run's previous verdict head, `changed` when it differs, and null when either id is missing. The
+ * view gains `passes` (rounds that returned a verdict), `unchanged_passes` and `unchanged_usd`; the watermark is dropped
+ * so the next refresh fills the columns.
+ */
+const V4 = `
+  ALTER TABLE review ADD COLUMN own_diff_id TEXT;
+  ALTER TABLE review ADD COLUMN unchanged_since_verdict TEXT;
+  DROP VIEW pr_review;
+  CREATE VIEW pr_review AS
+    SELECT run.repo, run.pr,
+           COUNT(review.round) AS rounds,
+           SUM(review.usd) AS usd,
+           SUM(review.review_ms) AS review_ms,
+           SUM(review.queue_ms) AS queue_ms,
+           MIN(run.registered_at) AS registered_at,
+           MAX(run.merged_at) AS merged_at,
+           COUNT(CASE WHEN review.verdict IN ('MERGE', 'FIX_FIRST') THEN 1 END) AS passes,
+           COUNT(CASE WHEN review.unchanged_since_verdict LIKE 'after-%' THEN 1 END) AS unchanged_passes,
+           SUM(CASE WHEN review.unchanged_since_verdict LIKE 'after-%' THEN review.usd END) AS unchanged_usd
+    FROM review_run AS run LEFT JOIN review ON review.run_id = run.run_id
+    WHERE run.pr IS NOT NULL
+    GROUP BY run.repo, run.pr;
+  DELETE FROM review_meta WHERE key = 'refreshed_through';`;
+
 /** Exported so a test can build a store at an older version and watch it migrate. */
 export const REVIEW_STATS_MIGRATIONS: readonly Migration[] = [
   { version: 1, name: "factory:review_stats", up: (db) => db.exec(DDL) },
   { version: 2, name: "factory:review_stats_cause_shape", up: (db) => db.exec(V2) },
   { version: 3, name: "factory:review_stats_scope_check", up: (db) => db.exec(V3) },
+  { version: 4, name: "factory:review_stats_own_diff", up: (db) => db.exec(V4) },
 ];
 
 export type CostSource = "retire" | "transcript";
@@ -93,6 +121,8 @@ export interface RoundLabels {
   /** The first scope check's counts at this round's head; null when none ran. */
   scopeUntagged: number | null;
   scopeRepeated: number | null;
+  ownDiffId: string | null;
+  unchangedSinceVerdict: string | null;
 }
 
 export interface ReviewRow extends RoundLabels {
@@ -140,7 +170,9 @@ const reviewParams = (row: ReviewRow) => ({
   output: row.tokens?.output ?? null, usd: row.usd, costSource: row.costSource, ...labelParams(row),
 });
 
-const labelParams = ({ cause, shape, scoped, scopeUntagged, scopeRepeated }: RoundLabels) => ({ cause, shape, scoped: scoped === null ? null : Number(scoped), scopeUntagged, scopeRepeated });
+const labelParams = ({ cause, shape, scoped, scopeUntagged, scopeRepeated, ownDiffId, unchangedSinceVerdict }: RoundLabels) => ({
+  cause, shape, scoped: scoped === null ? null : Number(scoped), scopeUntagged, scopeRepeated, ownDiffId, unchangedSinceVerdict,
+});
 
 /** The derived review store: rows are written once a round is final and keyed so a repeat write replaces rather than adds. */
 export class ReviewStatsStore {
@@ -155,21 +187,23 @@ export class ReviewStatsStore {
   upsertReview(row: ReviewRow): void {
     this.db.prepare(
       `INSERT INTO review (run_id, round, repo, pr, head_sha, reviewer, session_id, model, requested_at, started_at, verdict_at, queue_ms, review_ms,
-         verdict, input, cache_read, cache_write, output, usd, cost_source, cause, shape, scoped, scope_untagged, scope_repeated)
+         verdict, input, cache_read, cache_write, output, usd, cost_source, cause, shape, scoped, scope_untagged, scope_repeated, own_diff_id, unchanged_since_verdict)
        VALUES (@runId, @round, @repo, @pr, @headSha, @reviewer, @sessionId, @model, @requestedAt, @startedAt, @verdictAt, @queueMs, @reviewMs,
-         @verdict, @input, @cacheRead, @cacheWrite, @output, @usd, @costSource, @cause, @shape, @scoped, @scopeUntagged, @scopeRepeated)
+         @verdict, @input, @cacheRead, @cacheWrite, @output, @usd, @costSource, @cause, @shape, @scoped, @scopeUntagged, @scopeRepeated, @ownDiffId, @unchangedSinceVerdict)
        ON CONFLICT (run_id, round) DO UPDATE SET repo = excluded.repo, pr = excluded.pr, head_sha = excluded.head_sha, reviewer = excluded.reviewer,
          session_id = excluded.session_id, model = excluded.model, requested_at = excluded.requested_at, started_at = excluded.started_at,
          verdict_at = excluded.verdict_at, queue_ms = excluded.queue_ms, review_ms = excluded.review_ms, verdict = excluded.verdict,
          input = excluded.input, cache_read = excluded.cache_read, cache_write = excluded.cache_write, output = excluded.output,
          usd = excluded.usd, cost_source = excluded.cost_source, cause = excluded.cause, shape = excluded.shape, scoped = excluded.scoped,
-         scope_untagged = excluded.scope_untagged, scope_repeated = excluded.scope_repeated`,
+         scope_untagged = excluded.scope_untagged, scope_repeated = excluded.scope_repeated, own_diff_id = excluded.own_diff_id,
+         unchanged_since_verdict = excluded.unchanged_since_verdict`,
     ).run(reviewParams(row));
   }
 
   /** Rewrites a stored round's labels only, so a row stored before v2 gains them without being priced again. */
   setLabels(key: Pick<Unpriced, "runId" | "round">, labels: RoundLabels): void {
-    this.db.prepare("UPDATE review SET cause = @cause, shape = @shape, scoped = @scoped, scope_untagged = @scopeUntagged, scope_repeated = @scopeRepeated WHERE run_id = @runId AND round = @round").run({ ...key, ...labelParams(labels) });
+    const set = "cause = @cause, shape = @shape, scoped = @scoped, scope_untagged = @scopeUntagged, scope_repeated = @scopeRepeated, own_diff_id = @ownDiffId, unchanged_since_verdict = @unchangedSinceVerdict";
+    this.db.prepare(`UPDATE review SET ${set} WHERE run_id = @runId AND round = @round`).run({ ...key, ...labelParams(labels) });
   }
 
   upsertRun(run: ReviewRunRow): void {

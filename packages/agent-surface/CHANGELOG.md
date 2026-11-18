@@ -1,5 +1,23 @@
 # @titan-design/agent-surface
 
+## 0.4.0
+
+### Minor Changes
+
+- 5685769: `RunAgentOptions` gains `onSpawn?: (child: ChildProcess) => void`, called once right after the agent is spawned and before the brief is written. Nothing changes when it is absent.
+- 23e27a2: `runAgent` forwards SIGTERM, SIGINT and SIGHUP to the agent and logs one stderr line per signal (time, agent, signal, ppid, pgid) and one line with the agent's exit code and signal. A throwing `onSpawn` now kills the child and rethrows. An interactive launch logs SIGINT without forwarding it, since the terminal already delivers it.
+
+### Patch Changes
+
+- fdce494: An iTerm2 launch whose running-probe times out or fails now refuses with a message naming the osascript timeout, instead of claiming iTerm2 is not running.
+- cfc432e: An iTerm launch no longer forwards SIGHUP to the child, because the `zsh -lic` in front of the launcher already passes the hangup to the child's process group. tmux and headless launches still forward it: there the launcher is the session leader or has no terminal, and nothing else signals the child.
+- 9b42150: Use the shared `isRecord`, `isObjectLike` and `errorCode` from `@titan-design/rpc-protocol/narrow` in place of local copies. Behaviour is unchanged.
+- 572fec0: README fixes only: the agent-surface README says when the launcher skips SIGINT and SIGHUP, and the review-burden docs name `git diff -M --numstat -z` as the bin input.
+- 29a4da7: Burn down the typed-lint baseline for agent-surface. `readLaunchPlan` now checks the plan's optional fields (`env`, `title`, `surface`, `unsetEnv`, `stdin`) instead of casting the parsed JSON, and subprocess errors are narrowed rather than cast.
+- 0100482: Add `@titan-design/agent-protocol/wire`: zod schemas and types for agent-chat's spawn, resume, retire, agents and surface frames, and the profile, launch and roster records they carry. agent-surface gains a test that pins its `SURFACE_NAMES` to the wire copy.
+- Updated dependencies [5edd38d]
+  - @titan-design/rpc-protocol@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes

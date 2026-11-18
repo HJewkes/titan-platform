@@ -70,7 +70,8 @@ export interface ConditionFacts {
 }
 
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
-const CARRYING_KINDS = new Set(["correctness", "feature", "refactor"]);
+/** PR kinds whose reviewed MERGE may carry to a new head (`pr-kind-not-security`); the factory gates its carry on this same set. */
+export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feature", "refactor"]);
 const FULL_SHA = /^[0-9a-f]{40}$/;
 const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
 const PROTECTED_FILES = new Set(["codeowners", "docs/codeowners", ".github/codeowners", ".gitmodules"]);

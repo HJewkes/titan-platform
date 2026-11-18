@@ -11,9 +11,11 @@
 // store's shadow steps, and `self-update --apply` (run by the bootstrap a systemd timer starts) swaps in the served console.
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { closeOnSignal } from "@titan-design/daemon";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
 import { inboxWithdrawArgs, inboxWithdrawCli } from "./cli-inbox.js";
 import { inboxLink, inboxLinkArgs } from "./cli-inbox-link.js";
+import { linkGateArgs, linkGateCli } from "./cli-link-gate.js";
 import { PERF_USAGE, perfWaitsArgs, perfWaitsCli } from "./cli-perf.js";
 import { decisionsFileArgs, fileDecisionCli, importRoundCli, roundsImportArgs, roundsWithdrawArgs, withdrawRoundCli } from "./cli-rounds.js";
 import { nudgeRoundsCli, roundsNudgeArgs } from "./cli-rounds-nudge.js";
@@ -24,7 +26,7 @@ import { subscriptionArgs, subscriptionCli } from "./cli-subscriptions.js";
 import { CONFIG_USAGE, configArgs, configCli } from "./config-store/cli.js";
 import type { ConfigStoreSource } from "./config-store/compare.js";
 import { coordinatorFilePath } from "./config-store/materialize.js";
-import { closeOnSignal, createLoginLink, lanOrigin, rotateLanToken, startConsoleDaemon } from "./daemon.js";
+import { createLoginLink, lanOrigin, rotateLanToken, startConsoleDaemon } from "./daemon.js";
 import { fileDeposit } from "./inbox.js";
 import { PAGE_FILE } from "./paths.js";
 import { SELF_UPDATE_USAGE, selfUpdateArgs, selfUpdateVerb } from "./self-update/cli.js";
@@ -38,6 +40,12 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console inbox link <item-id>
                                         print the console URL that opens the inbox on that item:
                                         https on the first LAN name, or loopback with no LAN listener
+       titan-console link gate <run>/<step>
+                                        print the https link to a gate, only if an https request to it
+                                        answers 200 or 401; exit 1 otherwise
+       titan-console inbox answer <item-id> --as <asker> [--json]
+                                        print the owner's answer to a deposit --as filed, with who
+                                        answered and when; exits 75 "not answered yet" with no answer
        titan-console inbox withdraw <item-id> --reason <obsolete|resolved|superseded:<id>> --as <asker> --actor <seat> [--json]
                                         withdraw a deposit --as filed; no answer is written, and the
                                         spool's withdrawals.jsonl logs asker, --actor, when and why;
@@ -137,6 +145,7 @@ const roundsNudge = roundsNudgeArgs(argv);
 const decisionsFile = decisionsFileArgs(argv);
 const inboxWithdraw = inboxWithdrawArgs(argv);
 const inboxLinkVerb = inboxLinkArgs(argv);
+const linkGateVerb = linkGateArgs(argv);
 const subscription = subscriptionArgs(argv);
 const storybooksGc = storybooksGcArgs(argv);
 const shippedBuild = shippedBuildArgs(argv);
@@ -148,6 +157,7 @@ else if (args === "login-link") loginLink(resolveConfig());
 else if (args === "token rotate") rotate(resolveConfig());
 else if (argv[0] === "inbox" && argv[1] === "file" && argv.length <= 3) await fileInbox(resolveConfig(), argv[2]);
 else if (inboxLinkVerb !== null) console.log(inboxLink(resolveConfig(), inboxLinkVerb.id));
+else if (linkGateVerb !== null) process.exitCode = await linkGateCli(resolveConfig(), linkGateVerb);
 else if (inboxWithdraw !== null) await inboxWithdrawCli(resolveConfig(), inboxWithdraw);
 else if (decisionsFile !== null) await fileDecisionCli(resolveConfig(), decisionsFile, readSource);
 else if (roundsImport !== null) await importRoundCli(resolveConfig(), roundsImport);

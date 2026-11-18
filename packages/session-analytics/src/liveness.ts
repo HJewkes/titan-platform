@@ -6,6 +6,7 @@ import { unreportedExitRows, type SpawnRecord } from "./liveness-exits.js";
 import { PROMPT_STALE_MIN, stalePromptRows, type LastEventRecord } from "./liveness-prompts.js";
 import { countMisses, routeFailureRows, routeMisses } from "./liveness-routes.js";
 import { LIST_PRICE_CAVEAT, table } from "./render-text.js";
+import { renderSources, scopeHeader, scopeTest } from "./report-helpers.js";
 
 /** Where each section's findings come from: the command that re-reads them and the field it reads. */
 export const LIVENESS_SOURCES = {
@@ -99,12 +100,6 @@ export function livenessReport(input: LivenessInput): LivenessReport {
   };
 }
 
-function scopeTest(seats: readonly string[] | undefined, window: { since?: string; until?: string }) {
-  const named = seats ? new Set(seats) : null;
-  return (names: readonly string[], at: string): boolean =>
-    (!named || names.some((n) => named.has(n))) && (!window.since || at >= window.since) && (!window.until || at < window.until);
-}
-
 function sum(values: readonly number[]): number {
   return values.reduce((total, v) => total + v, 0);
 }
@@ -120,9 +115,8 @@ function cite(prefix: string, ids: readonly number[]): string {
 
 /** Each table's title names the JSON field its rows come from; the sources and the shared caveat close the report. */
 export function renderLivenessText(report: LivenessReport): string {
-  const scope = `Liveness as of ${report.asOf}${report.window.since ? `, since ${report.window.since}` : ""}${report.window.until ? `, until ${report.window.until}` : ""}`;
-  const sources = ["Sources", ...Object.entries(report.sources).map(([name, s]) => `${name}: ${s.command} (${s.field})`)].join("\n");
-  return [scope, darkTable(report), routeTable(report), exitTable(report), promptTable(report), sources, LIST_PRICE_CAVEAT].join("\n\n") + "\n";
+  const scope = scopeHeader("Liveness", report.asOf, report.window);
+  return [scope, darkTable(report), routeTable(report), exitTable(report), promptTable(report), renderSources(report.sources), LIST_PRICE_CAVEAT].join("\n\n") + "\n";
 }
 
 function darkTable(report: LivenessReport): string {

@@ -38,6 +38,7 @@ export const shepherdSteps = [
   step("sh-carry-seat", "dispatch", "software", effect("item", `${RECORD}: the seat an approval carried under`)),
   step("sh-carry-claims", "dispatch", "software", effect("item", `${RECORD}: the attestation rows a carried-to head claims`)),
   step("sh-remerge", "dispatch", "software", effect("item", `${RECORD}: a MERGE carried across a clean remerge`)),
+  step("sh-own-diff", "dispatch", "software", effect("item", `${RECORD}: the reviewed head's own-diff id against its merge base`)),
   step("sh-approval-carry:fix", "dispatch", "software", effect("item", `${RECORD}: an approval carried across a small fix`)),
   step("sh-review-scope", "dispatch", "software", effect("item", `${RECORD}: the fix diff a fix-round re-review may read as scoped`)),
   step("sh-approval-carry:own", "dispatch", "software", effect("item", `${RECORD}: an approval carried across an own merge-up`)),

@@ -1,5 +1,6 @@
 import { SpanScope, SpanFtsTables, EdgeTable } from '@titan-design/store-sqlite';
 import { Embedder } from '@titan-design/embed';
+import { z } from 'zod';
 
 /** One candidate from one retriever. Lower `rank` is better; `score` is retriever-specific and optional. */
 interface Hit {
@@ -204,6 +205,29 @@ declare function defaultHubDegree(degrees: Iterable<number>): number;
  */
 declare function walkGraph(graph: WalkGraph, seeds: string[], options?: WalkOptions): WalkStep[];
 
+/** One node of a summary tree. Level 0 is a leaf; higher levels summarise the leaves in `leafIds`. */
+interface SummaryNode {
+    id: string;
+    level: number;
+    parentId: string | null;
+    leafIds: string[];
+    text: string;
+}
+interface CollapsedTreeOptions {
+    nodes: SummaryNode[];
+    /** Ranks node ids by node text; build it over the same texts as `nodes`. */
+    inner: Retriever;
+    /** Drop every node above level 0, for the ablation against the full tree. */
+    leavesOnly?: boolean;
+    name?: string;
+}
+/**
+ * Collapsed-tree retrieval: every node of every level competes in one ranking,
+ * so a broad query can land on a summary and a detail query on a leaf. Each hit
+ * carries `level` and `leafIds`; cite the leaves, never the summary text.
+ */
+declare function collapsedTreeRetriever(options: CollapsedTreeOptions): Retriever;
+
 /** Scores query/candidate pairs; higher is more relevant. Cross-encoders live here. */
 interface Reranker {
     readonly model: string;
@@ -234,6 +258,120 @@ interface CrossEncoderOptions {
 /** In-process cross-encoder (default `Xenova/ms-marco-MiniLM-L-6-v2`), loaded on first use. */
 declare function crossEncoderReranker(options?: CrossEncoderOptions): Reranker;
 
+type DropReason = "over-budget" | "over-quota" | "duplicate" | "over-cap" | "no-tiers";
+interface ContextCandidate {
+    id: string;
+    category: string;
+    score: number;
+    /** Renderings from cheapest (tier 0) to richest. */
+    tiers: string[];
+}
+interface ContextBudget {
+    tokens: number;
+    quotas?: Record<string, number>;
+    defaultQuota?: number;
+    defaultTiers?: Record<string, number>;
+    maxTier?: number;
+    /** `edges` puts the best hits at both ends of the entries; default `score` keeps rank order. */
+    order?: "score" | "edges";
+    estimateTokens?: (text: string) => number;
+}
+interface ContextEntry {
+    id: string;
+    category: string;
+    tier: number;
+    text: string;
+    tokens: number;
+    score: number;
+}
+interface DroppedCandidate {
+    id: string;
+    category: string;
+    reason: DropReason;
+}
+interface ContextPlan {
+    entries: ContextEntry[];
+    dropped: DroppedCandidate[];
+    usedTokens: number;
+    budgetTokens: number;
+}
+declare function estimateTokens(text: string): number;
+declare function planContext(candidates: readonly ContextCandidate[], budget: ContextBudget): ContextPlan;
+
+/** The serialisable part of the planner's `ContextBudget`: everything but the estimator. */
+declare const ContextBudgetSchema: z.ZodObject<{
+    tokens: z.ZodNumber;
+    quotas: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+    defaultQuota: z.ZodOptional<z.ZodNumber>;
+    defaultTiers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+    maxTier: z.ZodOptional<z.ZodNumber>;
+    order: z.ZodOptional<z.ZodEnum<{
+        edges: "edges";
+        score: "score";
+    }>>;
+}, z.core.$strict>;
+/** One request shape for both modes, discriminated on `mode`. */
+declare const RetrievalRequestSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    query: z.ZodString;
+    limit: z.ZodOptional<z.ZodNumber>;
+    rerank: z.ZodOptional<z.ZodBoolean>;
+    mode: z.ZodLiteral<"list">;
+}, z.core.$strict>, z.ZodObject<{
+    budget: z.ZodObject<{
+        tokens: z.ZodNumber;
+        quotas: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        defaultQuota: z.ZodOptional<z.ZodNumber>;
+        defaultTiers: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
+        maxTier: z.ZodOptional<z.ZodNumber>;
+        order: z.ZodOptional<z.ZodEnum<{
+            edges: "edges";
+            score: "score";
+        }>>;
+    }, z.core.$strict>;
+    query: z.ZodString;
+    limit: z.ZodOptional<z.ZodNumber>;
+    rerank: z.ZodOptional<z.ZodBoolean>;
+    mode: z.ZodLiteral<"context">;
+}, z.core.$strict>], "mode">;
+type RetrievalRequest = z.infer<typeof RetrievalRequestSchema>;
+/** Loads one ranked result's renderings, cheapest (tier 0) first. */
+interface TierSource {
+    tiers(result: FusedResult, signal?: AbortSignal): Promise<string[]>;
+}
+interface RetrievalCallOptions {
+    signal?: AbortSignal;
+    /** Required in context mode. */
+    tierSource?: TierSource;
+    /** The category quotas and default tiers key on. Default: the result's first source. */
+    categoryOf?: (result: FusedResult) => string;
+    /** Token estimator for context mode. Default: `estimateTokens`, ceil(chars / 4). */
+    estimateTokens?: (text: string) => number;
+}
+/** A failed tier load reports itself under this name in `degraded`. */
+declare const TIERS_STAGE = "tiers";
+type RetrievalDropReason = DropReason | "tier-error";
+interface RetrievalDropped {
+    id: string;
+    category: string;
+    reason: RetrievalDropReason;
+}
+interface ListResponse {
+    mode: "list";
+    results: FusedResult[];
+    degraded: Degradation[];
+    timingsMs: Record<string, number>;
+}
+interface ContextResponse {
+    mode: "context";
+    entries: ContextEntry[];
+    dropped: RetrievalDropped[];
+    usedTokens: number;
+    budgetTokens: number;
+    degraded: Degradation[];
+    timingsMs: Record<string, number>;
+}
+type RetrievalResponse = ListResponse | ContextResponse;
+
 interface EngineOptions {
     retrievers: Retriever[];
     fusion?: RrfOptions;
@@ -248,24 +386,133 @@ interface EngineOptions {
     reranker?: Reranker;
     /** Text for the reranker to read per result; required when a reranker is set. */
     textFor?: (result: FusedResult) => Promise<string> | string;
+    /** Tried in order when fusion comes back empty after at least one retriever answered. */
+    recovery?: RecoveryStep[];
+    /** Per-step deadline for `recovery`. */
+    recoveryTimeoutMs?: number;
+    /** Replaces the "fused list is empty" test; still never runs when every retriever failed. */
+    recoveryTrigger?: (lists: RankedList[]) => boolean;
+}
+/** Rewrites a query that found nothing; `null` passes to the next step. The engine re-runs the retrievers on the rewrite. */
+interface RecoveryStep {
+    name: string;
+    run(query: string, context: {
+        signal: AbortSignal;
+    }): Promise<string | null> | string | null;
 }
 interface SearchOptions {
     limit?: number;
     signal?: AbortSignal;
     /** Skip the reranker for this query. */
     rerank?: boolean;
+    /** Pass `false` to skip the engine's recovery steps for this query. */
+    recover?: boolean;
 }
 interface SearchResponse {
     results: FusedResult[];
     degraded: Degradation[];
     timingsMs: Record<string, number>;
+    /** Set when a recovery step's rewrite produced these results instead of the original query. */
+    recovered?: {
+        step: string;
+        query: string;
+    };
 }
 interface RetrievalEngine {
     search(query: string, options?: SearchOptions): Promise<SearchResponse>;
+    /** `mode: "list"` is `search`; `mode: "context"` plans a token-budgeted context block from the same ranking. */
+    retrieve(request: RetrievalRequest, options?: RetrievalCallOptions): Promise<RetrievalResponse>;
 }
 /** Retrievers in parallel (fail-open), RRF fusion, score filters, optional cross-encoder rerank. */
 declare function createRetrievalEngine(options: EngineOptions): RetrievalEngine;
 /** What a failed rerank reports itself as in `degraded`, alongside the retrievers' own entries. */
 declare const RERANK_STAGE = "rerank";
 
-export { BruteForceVectorIndex, type Candidate, type CrossEncoderOptions, type Degradation, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, RERANK_STAGE, type RankedList, type Reranked, type Reranker, type RetrievalEngine, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, expandGraph, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, rerankCandidates, vectorRetriever, walkGraph };
+/** Distinct meaningful tokens, in first-seen order. */
+declare function meaningfulTerms(text: string): string[];
+/**
+ * Quote each term and OR them.
+ *
+ * Quoting is what keeps a hyphen from reading as FTS5's NOT: `"tp-84"` is the
+ * phrase `tp 84`, which is how the tokenizer indexed it.
+ */
+declare function orExpression(terms: string[]): string;
+
+/**
+ * How common a term is in the corpus. Only its order matters, so a capped count
+ * is fine, but it must be a count of matches: distinct owners among the top N
+ * matching spans misranks common words as rare when their best spans sit in a
+ * few long transcripts (measured 2026-09-16).
+ */
+type DocumentFrequency = (term: string) => number;
+interface DerivedQuery {
+    /** Rarest terms first, then every task id the text names. */
+    terms: string[];
+    /** FTS5 MATCH expression; empty when no term survived. */
+    expression: string;
+}
+/** Below this many spans per term nothing is slow, so a small graph keeps every term. */
+declare const DF_CAP_FLOOR = 2000;
+/** The most spans a query term may match, for a corpus of `spans` spans. */
+declare function documentFrequencyCap(spans: number): number;
+interface TermSelection {
+    /** Most terms to keep. */
+    limit?: number;
+    /** Drop terms matching more spans than this, unless fewer than `MIN_TERMS` would remain. */
+    maxDf?: number;
+}
+/**
+ * The rarest terms under the frequency cap, at most `limit` of them.
+ *
+ * When every term is common, the `MIN_TERMS` rarest are kept regardless: a
+ * slower query beats an empty one, and the rarest common words still rank.
+ */
+declare function selectTerms(terms: string[], df: DocumentFrequency, { limit, maxDf }?: TermSelection): string[];
+declare function deriveQuery(text: string, df: DocumentFrequency, { limit, maxDf }?: TermSelection): DerivedQuery;
+
+/**
+ * Distinctive terms of a text, keyed by the stored (lowercase) term. Each value
+ * is the first cased form seen, which is what `scoreTerm` should score: the
+ * identifier bonus reads camelCase, and lowercasing first would erase it.
+ */
+declare function extractTerms(text: string): Map<string, string>;
+/** IDF plus a length bonus plus an identifier bonus. Pass the cased form so camelCase earns its bonus. */
+declare function scoreTerm(term: string, docFrequency: number, totalDocs: number): number;
+
+/**
+ * Levenshtein distance over code points, after NFC normalisation, computed only
+ * within `maxDistance` of the diagonal. Returns the exact distance when it is at
+ * most `maxDistance`, and `maxDistance + 1` otherwise, stopping as soon as every
+ * cell of a row passes the band.
+ */
+declare function editDistance(a: string, b: string, maxDistance?: number): number;
+/** The distance a term of this length may be corrected across: 1 up to 4 characters, 2 up to 12, 3 beyond. */
+declare function maxEditDistance(termLength: number): number;
+
+interface VocabEntry {
+    /** Stored lowercase. */
+    term: string;
+    docFrequency: number;
+    score: number;
+}
+/** Where corrections come from. A store-backed table fits this shape, so correction itself needs no database. */
+interface VocabularySource {
+    has(term: string): boolean;
+    /** Terms whose length in code points is within [minLength, maxLength], highest score first, at most `limit`. */
+    candidates(minLength: number, maxLength: number, limit: number): readonly VocabEntry[];
+}
+/** An in-memory source over a fixed list of entries. */
+declare function vocabularyFromEntries(entries: readonly VocabEntry[]): VocabularySource;
+/**
+ * The closest known term within the length-scaled distance, ties to the higher
+ * score, then to the earlier term. Returns `term` unchanged when it is known or
+ * when nothing is close enough; a correction comes back in stored (lowercase) form.
+ */
+declare function findCorrection(term: string, source: VocabularySource): string;
+/** Correct each whitespace-separated word of 3 or more characters, the first 8 of them at most. */
+declare function correctQuery(query: string, source: VocabularySource): {
+    corrected: string;
+    didCorrect: boolean;
+};
+
+export { BruteForceVectorIndex, type Candidate, type CollapsedTreeOptions, type ContextBudget, ContextBudgetSchema, type ContextCandidate, type ContextEntry, type ContextPlan, type ContextResponse, type CrossEncoderOptions, DF_CAP_FLOOR, type Degradation, type DerivedQuery, type DocumentFrequency, type DropReason, type DroppedCandidate, type EngineOptions, type FtsRetrieverOptions, type FusedResult, type GatherOptions, type GatheredLists, type GraphRetrieverOptions, type Hit, type ListResponse, RERANK_STAGE, type RankedList, type RecoveryStep, type Reranked, type Reranker, type RetrievalCallOptions, type RetrievalDropReason, type RetrievalDropped, type RetrievalEngine, type RetrievalRequest, RetrievalRequestSchema, type RetrievalResponse, type RetrieveOptions, type Retriever, type RrfOptions, type SearchOptions, type SearchResponse, type SummaryNode, TIERS_STAGE, type TierSource, type VectorIndex, type VectorMatch, type VectorRetrieverOptions, type VocabEntry, type VocabularySource, type WalkGraph, type WalkNeighbour, type WalkOptions, type WalkStep, applyDropoff, collapsedTreeRetriever, correctQuery, createRetrievalEngine, crossEncoderReranker, defaultHubDegree, defaultMatchExpression, deriveQuery, documentFrequencyCap, editDistance, estimateTokens, expandGraph, extractTerms, findCorrection, ftsRetriever, fuseByRRF, gatherFailOpen, graphRetriever, maxEditDistance, meaningfulTerms, orExpression, planContext, rerankCandidates, scoreTerm, selectTerms, vectorRetriever, vocabularyFromEntries, walkGraph };

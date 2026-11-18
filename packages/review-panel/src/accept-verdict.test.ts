@@ -77,7 +77,7 @@ describe("acceptVerdict malformed record", () => {
   });
 
   it("covers every refusal the schema lists, the two Shepherd's scope check sends included", () => {
-    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "ci_policy_prose", "probes_missing", "scope_untagged", "repeated_finding"]);
+    const exercised = new Set(["no_block", "multiple_blocks", "bad_verdict", "missing_pr_line", "bad_pr", "missing_head_line", "bad_head", "wrong_target", "ci_policy_malformed", "ci_policy_prose", "probes_missing", "authority_missing", "scope_untagged", "repeated_finding"]);
 
     expect(new Set(Object.keys(MALFORMED_REFUSALS))).toEqual(exercised);
   });
@@ -96,7 +96,26 @@ describe("acceptVerdict malformed record", () => {
     });
 
     it("accepts an adversary MERGE that lists its probes", () => {
-      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused; expired token -> refused\n\n${merge}`)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused; expired token -> refused\nAuthority: unchanged\n\n${merge}`)])).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+    });
+
+    it("an adversary MERGE carries its Authority value", () => {
+      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused\nAuthority: widened\n\n${merge}`)])).toMatchObject({ verdict: "MERGE", authority: "widened" });
+    });
+
+    it("an adversary MERGE with no Authority line is refused once as authority_missing", () => {
+      expect(acceptVerdict(adversary, [said(`Probes: empty token -> refused\n\n${merge}`)])).toEqual({ kind: "none", malformed: { refusal: "authority_missing", writtenAt: WRITTEN_AT } });
+    });
+
+    it("an adversary MERGE whose Authority line holds another value is refused as authority_missing", () => {
+      expect(readMalformed(acceptVerdict(adversary, [said(`Probes: empty token -> refused\nAuthority: probably fine\n\n${merge}`)]))?.refusal).toBe("authority_missing");
+    });
+
+    it("a correctness MERGE is not asked for an Authority line", () => {
+      const accepted = acceptVerdict({ ...input, shape: "correctness" }, [said(merge)]);
+
+      expect(accepted).toMatchObject({ kind: "verdict", verdict: "MERGE" });
+      expect(accepted).not.toHaveProperty("authority");
     });
 
     it("accepts a correctness MERGE with no Probes line, so the rule binds the adversary alone", () => {
@@ -212,6 +231,41 @@ describe("acceptVerdict follow-ups", () => {
 
     expect(result).not.toHaveProperty("followUps");
     expect(result).not.toHaveProperty("followUpsWarning");
+  });
+});
+
+describe("acceptVerdict check candidates", () => {
+  const said = (text: string): ReviewerMessage => ({ ...verdictMessage(DISPATCHED_AT + 1), text });
+  const block = (verdict: string) => `Verdict: ${verdict}\nPR: octo/demo#7\nHead: ${HEAD}`;
+  const candidates = "Check-candidates:\n- Parser edge case | test | An empty heading line parses as no block";
+  const parsed = [{ classKey: "parser-edge-case", route: "test", sketch: "An empty heading line parses as no block" }];
+
+  it("a MERGE carries its check candidates", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\n${candidates}\n\n${block("MERGE")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", checkCandidates: parsed });
+    expect(result).not.toHaveProperty("checkCandidatesWarning");
+  });
+
+  it("a FIX_FIRST carries its check candidates", () => {
+    const result = acceptVerdict(input, [said(`1. Broken.\n\n${candidates}\n\n${block("FIX_FIRST")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", checkCandidates: parsed });
+  });
+
+  it("a dropped block carries its warning and no items", () => {
+    const result = acceptVerdict(input, [said(`Fine.\n\nCheck-candidates:\n- Parser edge case | nowhere | A sketch\n\n${block("MERGE")}`)]);
+
+    expect(result).toMatchObject({ kind: "verdict", verdict: "MERGE", checkCandidatesWarning: "bad_route" });
+    expect(result).not.toHaveProperty("checkCandidates");
+  });
+
+  it("a verdict without the block carries neither field", () => {
+    const result = acceptVerdict(input, [verdictMessage(DISPATCHED_AT + 1)]);
+
+    expect(result).toMatchObject({ kind: "verdict" });
+    expect(result).not.toHaveProperty("checkCandidates");
+    expect(result).not.toHaveProperty("checkCandidatesWarning");
   });
 });
 

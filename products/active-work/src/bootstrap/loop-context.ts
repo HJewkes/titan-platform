@@ -39,7 +39,7 @@ export interface LoopContext {
   degraded: RelatedDegradation[];
 }
 
-export interface LoopContextInput {
+interface LoopContextInput {
   loops: OpenLoop[];
   /** Each loop's rendered label, the query it is searched with. Parallel to `loops`. */
   labels: string[];
@@ -47,6 +47,9 @@ export interface LoopContextInput {
   /** Refs rendered elsewhere in the prompt. */
   shown: string[];
   retriever?: LoopRetriever;
+  /** Shared with every query so none opens the graph or recomputes visibility itself. */
+  graph?: RelatedInput['graph'];
+  visible?: RelatedInput['visible'];
   /** Wall-clock allowance for all loop queries together. */
   budgetMs?: number;
   /** Millisecond clock; injected so tests never sleep. */
@@ -86,6 +89,8 @@ async function queryLoop(
       initiative: input.slug,
       classes: RELATED_DEFAULT_CLASSES,
       limit: CANDIDATES_PER_LOOP,
+      ...(input.graph ? { graph: input.graph } : {}),
+      ...(input.visible ? { visible: input.visible } : {}),
       budget: CHARS_TOTAL,
       exclude: [...input.shown, ...ownRefs(input.loops[index]!)],
       render: (hit) => renderSeeLine(hit, input.slug) + '\n',

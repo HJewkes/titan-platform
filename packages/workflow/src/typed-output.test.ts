@@ -9,15 +9,8 @@ import { idempotentRunner, inlineRunner } from "./runners.js";
 import { WorkflowRuntime } from "./runtime.js";
 import type { WorkflowRuntimeOptions } from "./runtime-options.js";
 import { WorkflowRunStore, newRun, workflowMigration, workflowOwnershipMigration } from "./store.js";
-import {
-  StepFailedError,
-  StepOutputInvalidError,
-  type StepResult,
-  type StepRunInput,
-  type StepRunner,
-  type WorkflowEvent,
-  type WorkflowFn,
-} from "./types.js";
+import { type StepResult, type StepRunInput, type StepRunner, type WorkflowEvent, type WorkflowFn } from "./types.js";
+import { StepFailedError, StepOutputInvalidError } from "./step-errors.js";
 
 const OWNER: GateResolver = { class: "owner-terminal", id: "owner", channel: "test" };
 

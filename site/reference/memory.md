@@ -129,7 +129,7 @@ const unparsed = parsed.filter((result) => !result.ok); // { ok: false, error } 
 
 for (const group of groupFacts(dedupeFacts(facts))) {
   const { destination, reason } = proposeDestination(group, skills, { now: new Date() });
-  // destination: "skill:release" | "new-skill:<label>" | "charter" | "claude-md:global" | "claude-md:<project>" | "delete"
+  // destination: "skill:release" | "new-skill:<label>" | "charter" | "reference:<project>" | "config" | "claude-md:global" | "claude-md:<project>" | "delete"
 }
 ```
 

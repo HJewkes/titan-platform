@@ -19,6 +19,8 @@ labels mined from transcripts, so a retrieval change can be measured.
 [`app-paths`](/reference/app-paths) decides where those files live: an app's per-user data,
 config, cache and log directories, and active-work's data root.
 [`test-timing`](/reference/test-timing) keeps vitest per-file timing records in a SQLite corpus.
+[`text-ingest`](/reference/text-ingest) cleans a transcript deterministically before it is
+indexed, and keeps the byte ranges of what it kept and removed.
 
 ## Command surfaces
 
@@ -26,6 +28,8 @@ config, cache and log directories, and active-work's data root.
   tool list, and an HTTP route.
 - [`daemon`](/reference/daemon): hosts a registry on a loopback port with `/rpc`, `/mcp`,
   SSE events, a health route, and a pid file.
+- [`service-supervisor`](/reference/service-supervisor): renders a systemd user unit or a
+  launchd plist for a long-running job, with the escaping each format needs.
 - [`health`](/reference/health): the health/v1 report a health route answers with, a
   reader that also takes legacy `ok` payloads, and the sample row a probe stores.
 
@@ -69,6 +73,8 @@ composes all three.
   per-repository budget, with release, park, re-create and sweep.
 - [`coordinator`](/reference/coordinator): the zod schema and types for the seat config an
   autonomy coordinator reads.
+- [`seat-spec`](/reference/seat-spec): the owner-held `titan-seat/v1` definition every launch
+  path loads, its fail-closed file checks, and a pure resolver that builds the launch from it.
 - [`dispatch-ledger`](/reference/dispatch-ledger): the burndown claim ledger's zod schema,
   its claim-phase transition table, and a byte-preserving `burndown.json` parse and export.
 - [`pm`](/reference/pm): the zod schema and type for an active-work task record.

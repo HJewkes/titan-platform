@@ -28,17 +28,37 @@ import categoryList from './category-list.js';
 // Deliverables
 import deliverableAdd from './deliverable-add.js';
 import deliverableList from './deliverable-list.js';
+// Plan records (TP-5453 P3)
+import { planFreezeAdd, planOutcomeAdd, planOutOfScopeAdd } from './plan-add.js';
+import { planBetAdd, planBetList } from './plan-bet.js';
+import { planIntentAdd, planIntentDigest, planIntentImportMessages } from './plan-intent.js';
+import { planSheetApplyDefaults, planSheetGenerate, planSheetShow } from './plan-sheet.js';
+import { planSeed } from './plan-seed.js';
+import {
+  planBetShow,
+  planFreezeList,
+  planFreezeShow,
+  planIntentList,
+  planIntentShow,
+  planOutcomeList,
+  planOutcomeShow,
+  planOutOfScopeList,
+  planOutOfScopeShow,
+} from './plan-read.js';
 import deliverableSet from './deliverable-set.js';
 import deliverableShip from './deliverable-ship.js';
 
 // Tasks
 import taskAdd from './task-add.js';
 import taskApply from './task-apply.js';
+import taskBackfillFields from './task-backfill-fields.js';
 import taskDelete from './task-delete.js';
 import taskDone from './task-done.js';
 import taskEdit from './task-edit.js';
 import taskNote from './task-note.js';
+import taskKeys from './task-keys.js';
 import taskList from './task-list.js';
+import taskRankShow from './task-rank-show.js';
 import taskReorder from './task-reorder.js';
 import taskShow from './task-show.js';
 
@@ -49,6 +69,7 @@ import loopOpen from './loop-open.js';
 import loopResolve from './loop-resolve.js';
 import loopTier from './loop-tier.js';
 import loops from './loops.js';
+import digest from './digest.js';
 import facetAdd from './facet-add.js';
 import facetList from './facet-list.js';
 import preflight from './preflight.js';
@@ -76,12 +97,15 @@ import sourceRead from './source-read.js';
 
 // Worktree / cross-initiative reads
 import audit from './audit.js';
+import contextBrief from './context-brief.js';
 import contextGraph from './context-graph.js';
 import contextRelated from './context-related.js';
 import inventory from './inventory.js';
 import search from './search.js';
+import why from './why.js';
 import precedentExtract from './precedent-extract.js';
 import precedentSearch from './precedent-search.js';
+import precedentShow from './precedent-show.js';
 import list from './list.js';
 import worktreeSet from './worktree-set.js';
 import worktreeSetDefault from './worktree-set-default.js';
@@ -114,6 +138,7 @@ import minerLiveness from './miner-liveness.js';
 import minerStatus from './miner-status.js';
 import minerCost from './miner-cost.js';
 import minerOutcomes from './miner-outcomes.js';
+import minerLedger from './miner-ledger.js';
 
 // agent-chat lifecycle hooks (AW-99)
 import hooksAgentChatSpawn from './hooks-agent-chat-spawn.js';
@@ -149,21 +174,47 @@ const ALL_COMMANDS: AnyCommand[] = [
   deliverableList,
   deliverableSet,
   deliverableShip,
+  // plan records
+  planOutcomeAdd,
+  planOutcomeShow,
+  planOutcomeList,
+  planBetAdd,
+  planBetShow,
+  planBetList,
+  planFreezeAdd,
+  planFreezeShow,
+  planFreezeList,
+  planOutOfScopeAdd,
+  planOutOfScopeShow,
+  planOutOfScopeList,
+  planIntentAdd,
+  planIntentShow,
+  planIntentList,
+  planIntentDigest,
+  planIntentImportMessages,
+  planSheetGenerate,
+  planSheetShow,
+  planSheetApplyDefaults,
+  planSeed,
   // tasks
   taskAdd,
   taskApply,
+  taskBackfillFields,
   taskDone,
+  taskKeys,
   taskList,
   taskShow,
   taskEdit,
   taskNote,
   taskReorder,
+  taskRankShow,
   taskDelete,
   // sessions
   sessionList,
   sessionRecover,
   sessionsBrowser,
   loops,
+  digest,
   loopOpen,
   loopResolve,
   loopBoard,
@@ -193,10 +244,13 @@ const ALL_COMMANDS: AnyCommand[] = [
   list,
   contextGraph,
   contextRelated,
+  contextBrief,
   search,
+  why,
   inventory,
   precedentExtract,
   precedentSearch,
+  precedentShow,
   // discover / triage
   discover,
   fold,
@@ -221,6 +275,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   minerStatus,
   minerCost,
   minerOutcomes,
+  minerLedger,
   // agent-chat lifecycle hooks (AW-99)
   hooksAgentChatSpawn,
   hooksAgentChatComplete,
@@ -235,5 +290,3 @@ const ALL_COMMANDS: AnyCommand[] = [
 for (const cmd of ALL_COMMANDS) {
   register(cmd);
 }
-
-export { ALL_COMMANDS };

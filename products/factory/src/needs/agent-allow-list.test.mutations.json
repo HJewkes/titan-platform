@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a row without the field reads as shown",
+      "file": "products/factory/src/needs/agent-allow-list.ts",
+      "find": "entry.withheld_from_agents === false",
+      "replace": "entry.withheld_from_agents !== true",
+      "kills": [
+        "the agent allow list from inventory (TP-5556) withholds a row an older daemon sends without the field"
+      ]
+    }
+  ]
+}

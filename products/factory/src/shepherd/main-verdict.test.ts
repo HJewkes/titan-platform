@@ -14,10 +14,11 @@ const PINNED_APP = 777;
 const POLICY_PATH = ".github/required-checks.json";
 const SHARDS = ["test-shard (1)", "test-shard (2)"];
 
-function world(options: { required?: string[]; classic?: string[]; pins?: Record<string, number[]>; mainOnly?: string[] } = {}): FakeGitHub {
+function world(options: { required?: string[]; classic?: string[]; pins?: Record<string, number[]>; mainOnly?: string[]; prOnly?: string[] } = {}): FakeGitHub {
   const fake = fakeGitHub({ repo: REPO });
-  if (options.mainOnly) {
-    const content = JSON.stringify({ version: 1, branches: { main: { contexts: options.required ?? ["validate"], mainContexts: options.mainOnly } } });
+  if (options.mainOnly || options.prOnly) {
+    const policy = { contexts: options.required ?? ["validate"], ...(options.mainOnly && { mainContexts: options.mainOnly }), ...(options.prOnly && { prContexts: options.prOnly }) };
+    const content = JSON.stringify({ version: 1, branches: { main: policy } });
     fake.files.set(`main:${POLICY_PATH}`, { content, blobSha: "policy" });
   }
   fake.addPr({ headSha: fakeSha("head"), baseRef: "main" });
@@ -207,6 +208,31 @@ describe("main-only contexts from the required-checks policy (TP-4401)", () => {
   it("keeps the all-checks rule when the policy file cannot be read", async () => {
     const fake = sharded();
     fake.wire.getContent = async () => Promise.reject(new FakeHttpError(502, "bad gateway"));
+    fake.setRuns(MERGE, [successRun("validate", 1), failed("release", 2)]);
+
+    expect(await readMain(fake)).toMatchObject({ verdict: "red", detail: "failed: release" });
+  });
+});
+
+describe("PR-only contexts from the required-checks policy (TP-5485)", () => {
+  const prGated = () => world({ required: ["validate", "fix-proof-mutants"], prOnly: ["fix-proof-mutants"] });
+
+  it("is green when every required context a push runs passes and a PR-only one never ran", async () => {
+    const fake = prGated();
+    fake.setRuns(MERGE, [successRun("validate", 1)]);
+
+    expect((await readMain(fake)).verdict).toBe("green");
+  });
+
+  it("is still red when a required context a push runs is red", async () => {
+    const fake = prGated();
+    fake.setRuns(MERGE, [failed("validate", 1)]);
+
+    expect(await readMain(fake)).toMatchObject({ verdict: "red", detail: "failed: validate" });
+  });
+
+  it("keeps the all-checks rule when every required context is PR-only", async () => {
+    const fake = world({ required: ["fix-proof-mutants"], prOnly: ["fix-proof-mutants"] });
     fake.setRuns(MERGE, [successRun("validate", 1), failed("release", 2)]);
 
     expect(await readMain(fake)).toMatchObject({ verdict: "red", detail: "failed: release" });

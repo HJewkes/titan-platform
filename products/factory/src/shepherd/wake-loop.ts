@@ -71,7 +71,7 @@ async function prMovedOn(port: GitHubPort, input: WakeInput): Promise<boolean> {
 }
 
 /**
- * A live agent that already pushed a new head took the wake itself, and is asked nothing; an unreadable PR defers the
+ * A new head pushed by anyone, as by a live agent that took the wake itself or after the implementer exited, needs no ask, so the run advances (TP-5171); an unreadable PR defers the
  * ask a poll under its own deadline, so the ask deadline restarts after it. A lineage gone from the roster still has the
  * repo's checkout, so a successor takes over from the registered implementer (TP-4045), as it does from a live agent
  * retired for ignoring the wake and its fallback (TP-4430).
@@ -85,8 +85,7 @@ export async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: 
     const settled = settle(loop, asked && tookEffect(asked.choice, roster) ? await confirmTurn(deps, wiring, agents, task, asked, signal) : askExpired(deps, wiring, asked, loop.waiting));
     if (settled !== undefined) return settled;
     const newest = newestAgent(task, roster);
-    const live = newest !== undefined && newest.presence !== "exited";
-    const read: HeadRead = live ? await headMoved(deps.port, task.input) : { moved: false };
+    const read: HeadRead = await headMoved(deps.port, task.input);
     if ("error" in read) {
       const gaveUp = await unreadable.failed(read.error);
       if (gaveUp !== undefined) return unhandled(gaveUp);
@@ -94,7 +93,7 @@ export async function wakeAgent(deps: ShepherdDeps, wiring: WakeWiring, agents: 
       continue;
     }
     unreadable.read();
-    if (read.moved && newest !== undefined) return wokenBy(liveChoice(task, newest));
+    if (read.moved) return newest !== undefined ? wokenBy(liveChoice(task, newest)) : { kind: "woken", agent: task.implementer, mode: "live" };
     const choice = await nextChoice(deps, wiring, task, roster, newest, loop);
     if (typeof choice === "string") return unhandled(choice);
     const done = await askOnce(deps, wiring, agents, task, choice, loop, signal);

@@ -6,7 +6,7 @@ import { validateSlug } from '../utils/slug.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { NotFoundError, ValidationError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
-import { listInitiativeSlugs } from './_open-helpers.js';
+import { isInitiativeSlug } from '../sessions/initiatives.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -31,9 +31,8 @@ const PLACEHOLDER_BODY =
 async function assertAddable(activeRoot: string, args: Args, facetPath: string): Promise<void> {
   const aliasCheck = validateSlug(args.alias);
   if (!aliasCheck.ok) throw new ValidationError(`Invalid facet alias: ${aliasCheck.error}`);
-  const slugs = await listInitiativeSlugs(activeRoot);
-  if (!slugs.includes(args.slug)) throw new NotFoundError(`Initiative not found: ${args.slug}`);
-  if (slugs.includes(args.alias)) {
+  if (!(await isInitiativeSlug(activeRoot, args.slug))) throw new NotFoundError(`Initiative not found: ${args.slug}`);
+  if (await isInitiativeSlug(activeRoot, args.alias)) {
     throw new ValidationError(
       `Facet alias '${args.alias}' equals an initiative slug and would be shadowed by it`,
     );
@@ -54,10 +53,10 @@ export default defineCommand<Args, Result>({
   cli: {
     positional: ['slug', 'alias'],
     options: {
-      tags: { long: '--tags', description: 'Comma-separated task tags', required: true },
+      tags: { long: '--tags', description: 'Task tag. Repeat the flag for each value', required: true },
       about: { long: '--about', description: 'What the facet is about (ranks notes and loops)' },
     },
-    usage: 'active-work facet add <slug> <alias> --tags a,b [--about <text>]',
+    usage: 'active-work facet add <slug> <alias> --tags a --tags b [--about <text>]',
   },
   async run(args, ctx) {
     const facetPath = getFacetPath(ctx.activeRoot, args.slug, args.alias);

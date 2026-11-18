@@ -9,6 +9,7 @@ import { approvedSetFollow, spendOnOwnerAnswer, type SetCarry } from "./approved
 import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
 import { fixCarryStep } from "./fix-carry.js";
 import { ownMergeUpStep } from "./own-merge-up.js";
+import { followingReleaseApproval } from "./release-gate-carry.js";
 import { remergeStep } from "./remerge-carry.js";
 import { skillPathsIn } from "./skill-paths.js";
 import { visualMatches } from "./visual-gate.js";
@@ -26,6 +27,8 @@ interface ApprovalCarry extends SetCarry {
   target: CarryTarget;
   /** True when the run's verdict at this head is a MERGE; an approval follows only a head whose review stands too. */
   reviewedMerge: (headSha: string) => boolean;
+  /** A Version Packages run: no review stands, so only an owner's release answer follows, and only to a regenerated head. */
+  release?: boolean;
 }
 
 export function landGateHead(stepId: string, prompt: string): string | undefined {
@@ -66,7 +69,7 @@ interface Approved {
 /** A proof whose paths hold a repo skill, or that names no paths at all, would carry an approval onto a diff the owner has not seen. */
 const touchesSkill = (followed: Followed): boolean => followed.paths === undefined || skillPathsIn(followed.paths).length > 0;
 
-/** The merge-up probe first; a head it refuses may still be the approved head merged with the base plus a small fix. */
+/** The merge-up probe first; a head it refuses may still be Shepherd's own merge-up of the base (the fix probe's merge-up rule). */
 async function followProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string, fromHead: string, head: string): Promise<Followed | undefined> {
   const remerge = await remergeStep(ctx, { repo: target.repo, baseRef, fromHead, head });
   if (remerge.carries && remerge.rule) return { rule: remerge.rule, proof: { headTree: remerge.headTree, mergeTree: remerge.remergeTree, paths: remerge.paths }, paths: remerge.paths };
@@ -125,9 +128,11 @@ async function followedAnswer(ctx: WorkflowContext, carry: ApprovalCarry, from: 
  * A CI-policy-weakened gate asks again, and its own approval follows to no later gate. Any other head, a kind that
  * follows nothing, an escalation, a gate on another base or a head without a standing MERGE asks again. With no approval to
  * follow, a visual gate at a head that commits exactly the set the owner accepted at a red head is answered by that set.
- * That approval follows only Shepherd's own merge-up whose base side matches no visual glob (VQ3 b).
+ * That approval follows only Shepherd's own merge-up whose base side matches no visual glob (VQ3 b). A release run follows
+ * by `followingReleaseApproval` alone (TP-5591).
  */
 export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowContext["assisted"], carry: ApprovalCarry): WorkflowContext["assisted"] {
+  if (carry.release === true) return followingReleaseApproval(ctx, assisted);
   let approved: Approved | undefined;
   return async (stepId, prompt, options) => {
     const asked = landGateHead(stepId, prompt);

@@ -15,6 +15,7 @@ const OWNED_CALLS = `
   WITH scope AS (
     SELECT DISTINCT transcript_id FROM request_dedup
     WHERE (@since IS NULL OR ts >= @since) AND (@until IS NULL OR ts < @until)
+      AND (@ids IS NULL OR session_id IN (SELECT value FROM json_each(@ids)))
   ), stream AS (
     SELECT transcript_id, byte_offset, -1 AS lane, 0 AS block_index, request_id, NULL AS tool_use_id, NULL AS name
     FROM request WHERE transcript_id IN (SELECT transcript_id FROM scope)
@@ -35,8 +36,23 @@ const OWNED_CALLS = `
   LEFT JOIN session_signal s ON s.transcript_id = o.transcript_id AND s.tool_use_id = o.tool_use_id
     AND s.signal IN ('command_heads', 'file_read', 'file_write')
   WHERE (@since IS NULL OR d.ts >= @since) AND (@until IS NULL OR d.ts < @until)
+    AND (@ids IS NULL OR d.session_id IN (SELECT value FROM json_each(@ids)))
   ORDER BY o.transcript_id, o.byte_offset, o.block_index
 `;
+
+/** The same ownership rule for a single tool use, looked up by its id. */
+const TOOL_USE_OWNER = `
+  SELECT r.model, r.context_tokens AS tokens FROM tool_call c
+  JOIN request r ON r.transcript_id = c.transcript_id AND r.byte_offset <= c.byte_offset
+  WHERE c.tool_use_id = @toolUseId AND c.transcript_id = @transcriptId
+  ORDER BY r.byte_offset DESC LIMIT 1
+`;
+
+export interface ToolUseOwner {
+  model: string;
+  /** The owning request's context size, `request.context_tokens`. */
+  tokens: number;
+}
 
 interface OwnedRow {
   requestId: string;
@@ -46,16 +62,25 @@ interface OwnedRow {
   detail: string | null;
 }
 
-/** The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent. */
-export function readRequestToolCalls(db: Db, window: ReportWindow): Map<string, ActionCall[]> {
+/**
+ * The tool calls each request in the window issued, keyed by `request_id`; a request with none is absent.
+ * `sessionIds` limits the read to those sessions, so a caller that needs only some sessions' calls does not scan the rest.
+ */
+export function readRequestToolCalls(db: Db, window: ReportWindow, sessionIds?: readonly string[]): Map<string, ActionCall[]> {
   const byRequest = new Map<string, Map<string, ActionCall>>();
-  for (const row of db.prepare<[object], OwnedRow>(OWNED_CALLS).all(window)) {
+  const params = { ...window, ids: sessionIds ? JSON.stringify(sessionIds) : null };
+  for (const row of db.prepare<[object], OwnedRow>(OWNED_CALLS).all(params)) {
     const calls = byRequest.get(row.requestId) ?? new Map<string, ActionCall>();
     byRequest.set(row.requestId, calls);
     const call = calls.get(row.callKey) ?? { tool: row.tool };
     calls.set(row.callKey, row.signal ? withSignal(call, row.signal, row.detail ?? "") : call);
   }
   return new Map([...byRequest].map(([requestId, calls]) => [requestId, [...calls.values()]]));
+}
+
+/** The request that issued one tool use in a transcript, or null when either is not in the graph. */
+export function readToolUseOwner(db: Db, transcriptId: number, toolUseId: string): ToolUseOwner | null {
+  return db.prepare<[object], ToolUseOwner>(TOOL_USE_OWNER).get({ toolUseId, transcriptId }) ?? null;
 }
 
 /** `command_heads` is one `;`-joined string per Bash call; file signals carry one path each. */

@@ -1,16 +1,24 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
+import { formatWritingReport } from "./writing-check-format.js";
+import { overrideWritingGatePolicy } from "./writing-gate-policy.js";
 import { WRITING_METRICS } from "./lint-writing.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 import { parseWritingCheck, type BucketName } from "./writing-calibrate.js";
 import { scoreWriting, type WritingBeat } from "./writing-check.js";
 import type { WritingStatus } from "./writing-status.js";
+import { shippedGatePolicy, useReportOnlyGate } from "./writing-gate-fixtures.test-helpers.js";
+
+// The calibrated rows alone: the writing gate rows (TP-5721) have tests of their own in writing-gate.test.ts.
+useReportOnlyGate();
 
 const SHIPPED = readFileSync(new URL("../doctrine/writing-check.json", import.meta.url), "utf8");
 const BUCKETS: readonly BucketName[] = ["150-299", "300-599", "600-1199", "1200+", "full"];
+/** The writing gate's rows in every report: five gate rows and seven text hallmarks. */
+const GATE_ROWS = 12;
 const CLEAN_LINE = "The parser reads each record and hands it to the queue for the next worker.";
 
 /** The shipped table with one row's status forced at every length, so a recalibration cannot move these tests. */
@@ -178,7 +186,7 @@ describe("explainer eval writing", () => {
 
     const [header] = output().split("\n");
     expect(header).toContain("human reference: speech transcripts, not written scripts");
-    expect(output()).toContain("verdict: FAIL (1 gate row), 0 warnings, 12 report-only; exit 1");
+    expect(output()).toContain("verdict: FAIL (1 gate row), 0 warnings, 24 report-only; exit 1");
     expect(output()).toMatch(/lets\s+dropped$/m);
     expect(output()).toMatch(/adjacent-delta\s+0\.\d\d\s+0\.55-3\s/);
   });
@@ -213,7 +221,7 @@ describe("explainer eval writing", () => {
     await runEvalCli(["eval", "writing", failing(), "--format", "text", "--table", tableFile({ "neg-synthetic": "gate" }), "--bench", bench, "--config", "tour/writing"], { now: () => times.shift() ?? new Date(0) });
 
     const rows = readFileSync(join(bench, "evals/structure.tsv"), "utf8").trimEnd().split("\n").slice(1);
-    expect(rows).toHaveLength(WRITING_METRICS.length);
+    expect(rows).toHaveLength(WRITING_METRICS.length + GATE_ROWS);
     expect(rows).toContainEqual(expect.stringMatching(/\twriting:neg-synthetic\theuristic\terror\t[\d.]+\t2\.5\tfalse\tline-17$/));
     expect(JSON.parse(readFileSync(join(bench, "evals/runs.jsonl"), "utf8"))).toMatchObject({ config_id: "tour/writing", eval_id: "writing-check", usd: 0, wall_s: 2 });
   });
@@ -230,5 +238,60 @@ describe("explainer eval writing", () => {
 
     expect(code).toBe(2);
     expect(existsSync(join(dir, "bench"))).toBe(false);
+  });
+});
+
+describe("explainer eval writing hallmark quotes", () => {
+  const withLine = (line: string): WritingBeat[] => beatsOf([CLEAN_LINE, CLEAN_LINE, line, ...cleanLines(14)]);
+  const report = (line: string) => scoreWriting(withLine(line), tableWith({}));
+  const gateRow = (scored: ReturnType<typeof scoreWriting>, id: string) => scored.gate.find((candidate) => candidate.id === id)!;
+  const printed = (scored: ReturnType<typeof scoreWriting>): string => formatWritingReport(scored, { script: "script.txt", tableSha: "abc" });
+  const lineOf = (text: string, id: string): string => text.split("\n").find((line) => line.startsWith(id))!;
+
+  beforeAll(() => overrideWritingGatePolicy(shippedGatePolicy()));
+  afterAll(() => {
+    const policy = shippedGatePolicy();
+    for (const rows of [policy.gate, policy.hallmarks]) for (const rule of Object.values(rows)) rule.severity = "report-only";
+    overrideWritingGatePolicy(policy);
+  });
+
+  it("prints a failing label-first row with the sentence and its beat", () => {
+    const scored = report("The fix is a smaller batch.");
+
+    expect(gateRow(scored, "hallmark:label-first").spans).toEqual([{ beat: "b3", text: "The fix is a smaller batch." }]);
+    expect(lineOf(printed(scored), "hallmark:label-first")).toContain(`"The fix is a smaller batch." (b3)`);
+  });
+
+  it("prints a failing colon-tricolon row with its sentence", () => {
+    const scored = report("The record carries three fields: the key, the value, and the tag.");
+
+    expect(lineOf(printed(scored), "hallmark:colon-tricolon")).toContain(`"The record carries three fields: the key, the value, and the tag." (b3)`);
+  });
+
+  it("prints no sentences on a passing row", () => {
+    const scored = report(CLEAN_LINE);
+
+    expect(gateRow(scored, "hallmark:label-first")).toMatchObject({ pass: true, spans: [] });
+    expect(lineOf(printed(scored), "hallmark:label-first")).not.toContain('"');
+  });
+
+  it("keeps at most three sentences per row", () => {
+    const line = "The fix is one. The key is two. The answer is three. The trick is four.";
+
+    expect(gateRow(report(line), "hallmark:label-first").spans).toHaveLength(3);
+  });
+
+  it("carries the spans in the JSON report", () => {
+    const scored = report("The fix is a smaller batch.");
+
+    const json = JSON.parse(JSON.stringify(scored));
+
+    expect(json.gate.find((candidate: { id: string }) => candidate.id === "hallmark:label-first").spans).toEqual([{ beat: "b3", text: "The fix is a smaller batch." }]);
+  });
+
+  it("clears the spans under the minimum words", () => {
+    const scored = scoreWriting(beatsOf(["The fix is a smaller batch."]), tableWith({}));
+
+    expect(gateRow(scored, "hallmark:label-first")).toMatchObject({ pass: true, spans: [] });
   });
 });

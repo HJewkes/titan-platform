@@ -2,16 +2,18 @@ import type { JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError } from "commander";
 import { configPath, loadConfig } from "../config.js";
 import type { GateRecord } from "@titan-design/hitl";
-import { ownerQueueSources } from "../needs/command.js";
+import { ownerQueueSources, shellNeedsView } from "../needs/command.js";
 import { collectNeeds } from "../needs/merged.js";
 import type { GateSummary } from "../context.js";
 import type { WatchRow } from "../shepherd/view-schema.js";
 import type { DigestSources, GateFact } from "./collect.js";
 import type { GateReader } from "../needs/hitl-source.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { activeWorkTaskDates, agentChatSpans } from "./flow-sources.js";
 import { readFriction } from "./friction.js";
 import { pacePath, readPacePools } from "./pace.js";
+import { readScorecard, scorecardPaths } from "./scorecard.js";
+import type { HttpsProbe } from "./console-probe.js";
 import { buildDigest, deliverDigest, syncAlarmNote } from "./run.js";
 import { currentSlot, DEFAULT_SLOTS, DEFAULT_TIMEZONE } from "./slots.js";
 import { digestDirectories, execProcess, fileSources, queuesDirOf, type Exec } from "./sources.js";
@@ -32,11 +34,12 @@ export interface DigestFlags {
   full?: boolean;
 }
 
-export interface DigestDeps {
+interface DigestDeps {
   /** The factory store, read for owner friction; without it the digest leaves that section out. */
   dbPath?: string;
   exec?: Exec;
   now?: Date;
+  probe?: HttpsProbe;
 }
 
 const UNIT_MINUTES: Readonly<Record<string, number>> = { m: 1, h: 60, d: 1440 };
@@ -96,7 +99,7 @@ function factorySources(call: FactoryCall, env: NodeJS.ProcessEnv, morningDir: s
   return {
     rows: () => data<WatchRow[]>("shepherd.list", { state: "all" }),
     gates: async () => (await pendingGates()).map(gateFact),
-    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir })),
+    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir }), shellNeedsView(env)),
   };
 }
 
@@ -111,9 +114,11 @@ export async function runDigestVerb(io: DigestIo, call: FactoryCall, flags: Dige
     ...fileSources(config),
     spend: () => readPacePools(pacePath(io.env)),
     ...(deps.dbPath !== undefined && { friction: (at: Date) => readFriction(deps.dbPath!, at) }),
+    scorecard: (at: Date, since: Date) => readScorecard(scorecardPaths(io.env), at, since),
     flow: { taskCreated: activeWorkTaskDates({ origin: activeWorkOrigin(io.env) }), roster: agentChatSpans(deps.exec ?? execProcess, agentChatBin) },
   };
-  const { markdown, alarmNote } = await buildDigest({ sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true, consoleOrigin: config.digest?.consoleOrigin });
+  const run = { sources, now, slot, windowMinutes: flags.sinceMinutes ?? windowMinutes, full: flags.full === true, consoleOrigin: config.digest?.consoleOrigin };
+  const { markdown, alarmNote } = await buildDigest(deps.probe === undefined ? run : { ...run, probe: deps.probe });
   if (flags.dryRun) return (io.stdout(markdown), 0);
   const dirs = digestDirectories(config, io.env);
   const { written, warnings } = await deliverDigest(markdown, slot, dirs, config.digest?.push);

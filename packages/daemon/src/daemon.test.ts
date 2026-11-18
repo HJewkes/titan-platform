@@ -291,6 +291,37 @@ describe("stale pid file", () => {
     await expect(startDaemon(options({ processStartTime: minuteAhead }))).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
   });
 
+  describe("when a reused pid's recorded port answers health", () => {
+    async function withHealthPid(pid: number, run: (port: number) => Promise<void>): Promise<void> {
+      const server = createServer((_req, res) => res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ status: "ok", pid })));
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      try {
+        await run(portOf(server));
+      } finally {
+        server.close();
+      }
+    }
+
+    it("starts and removes the stale file when the answer carries a different pid", async () => {
+      await withHealthPid(process.pid + 1, async (port) => {
+        await seedPidFile(process.pid, port);
+
+        handle = await startDaemon(options({ processStartTime: minuteAhead }));
+
+        expect((await readPidFile(daemonPaths(stateDir)))?.meta.port).toBe(handle.port);
+      });
+    });
+
+    it("refuses when the answer carries the pid file's pid", async () => {
+      await withHealthPid(process.pid, async (port) => {
+        await seedPidFile(process.pid, port);
+
+        await expect(startDaemon(options({ processStartTime: minuteAhead }))).rejects.toBeInstanceOf(DaemonAlreadyRunningError);
+      });
+    });
+  });
+
   describe("when the process start time is unknown", () => {
     const unknown = (): null => null;
 

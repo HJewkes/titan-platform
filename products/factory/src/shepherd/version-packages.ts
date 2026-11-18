@@ -16,7 +16,7 @@ export const START_CI_AFTER_MS = 2 * 60_000;
 
 export const START_CI_MESSAGE = "Start CI for the Version Packages PR\n\nShepherd pushed this empty commit: a push by the changesets action starts no workflow until the GitHub App (TP-447) pushes instead.";
 
-export interface ReleaseSweepNote {
+interface ReleaseSweepNote {
   repo: RepoSlug;
   /** Absent when the Version Packages PR could not be looked up; `error` says why. */
   pr?: number;
@@ -81,7 +81,7 @@ async function registerOnce(host: FactoryHost, services: ShepherdServices, repo:
   const known = services.store.get().byPr(repo, pr.number);
   const run = known && host.runtime.status(known.runId);
   if (known && run?.status !== "failed" && !(run && stoppedBehind(run, pr.headSha))) return undefined;
-  return (await registerVersionPackages({ warnings: [], format: "json", host, shepherd: services }, repo, pr.number)).runId;
+  return (await registerVersionPackages({ warnings: [], format: "json", host, caller: "agent", shepherd: services }, repo, pr.number)).runId;
 }
 
 /** Stops a pushed head can clear; an owner abandon is not one, so a new release head never overrides it. */

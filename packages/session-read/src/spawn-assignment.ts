@@ -9,7 +9,7 @@ import { TASK_ID } from "./bash-parse.js";
 export const ORIENTATION_HEADER = '# Orientation: active-work initiative "';
 
 /** `none` is a definite "no id links", distinct from a session no task-aware resolver has seen. */
-export type AssignmentSource = "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "none";
+export type AssignmentSource = "spawn-meta" | "name" | "name-over-brief" | "brief-anchor" | "brief-paragraph" | "none";
 
 export interface AssignmentInput {
   readonly agentName: string;
@@ -18,6 +18,8 @@ export interface AssignmentInput {
   readonly isKnown: (taskId: string) => boolean;
   /** Length of the injected orientation block, from agent-chat's `agent_spawned` meta `briefing_chars`. */
   readonly briefingChars?: number;
+  /** The spawn's recorded `meta.task`, bare (`TP-7`) or initiative-qualified (`demo/TP-7`). */
+  readonly spawnTask?: string;
 }
 
 export interface Assignment {
@@ -221,8 +223,20 @@ function briefTaskIds({ brief, isKnown, briefingChars }: AssignmentInput): Assig
   return paragraph ? { taskIds: [paragraph], source: "brief-paragraph" } : NONE;
 }
 
-/** The task ids a spawned session was assigned, and which rule found them. */
+/** The recorded task as a bare id, or null when the spawn recorded none the store knows. */
+function spawnMetaTaskId({ spawnTask, isKnown }: AssignmentInput): string | null {
+  if (spawnTask === undefined) return null;
+  const bare = spawnTask.slice(spawnTask.lastIndexOf("/") + 1);
+  return bare !== "" && isKnown(bare) ? bare : null;
+}
+
+/**
+ * The task ids a spawned session was assigned, and which rule found them. The spawner's recorded
+ * `meta.task` wins: it is written at the source, where the name and brief rules only read prose.
+ */
 export function assignedTaskIds(input: AssignmentInput): Assignment {
+  const recorded = spawnMetaTaskId(input);
+  if (recorded !== null) return { taskIds: [recorded], source: "spawn-meta" };
   const named = nameTaskIds(input.agentName, input.isKnown);
   const fromBrief = briefTaskIds(input);
   if (named.length === 0) return fromBrief;

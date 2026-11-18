@@ -16,6 +16,8 @@ import { ReviewDetailPage } from "./ReviewDetailPage.js";
 import { ReviewsPage } from "./ReviewsPage.js";
 import { RoundDetailPage } from "./RoundDetailPage.js";
 import { RoundsPage } from "./RoundsPage.js";
+import { ScorecardPage } from "./ScorecardPage.js";
+import { ScorecardTaskPage } from "./ScorecardTaskPage.js";
 import { SessionsRoute } from "./SessionsPage.js";
 import { ShepherdDetailPage } from "./ShepherdDetailPage.js";
 import { ShepherdPage } from "./ShepherdPage.js";
@@ -23,6 +25,7 @@ import { TaskDetailPage } from "./TaskDetailPage.js";
 import { TasksPage } from "./TasksPage.js";
 import { TheaterPage } from "./TheaterPage.js";
 import { TheaterPlayer } from "./TheaterPlayer.js";
+import { TheaterResolve, isResolvable } from "./TheaterResolve.js";
 import { TreePage } from "./TreePage.js";
 
 type PageComponent = (props: { route: Route }) => ReactNode;
@@ -45,8 +48,13 @@ const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(Round
 const ReviewsView: PageComponent = ({ route }) => (route.id ? createElement(ReviewDetailPage, { name: route.id }) : createElement(ReviewsPage));
 const CoordinatorView: PageComponent = ({ route }) => createElement(CoordinatorPage, { query: route.query });
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
+const ScorecardView: PageComponent = ({ route }) => (route.id ? createElement(ScorecardTaskPage, { id: route.id }) : createElement(ScorecardPage, { query: route.query }));
 const TasksView: PageComponent = ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query }));
-const TheaterView: PageComponent = ({ route }) => (route.id ? createElement(TheaterPlayer, { id: route.id, query: route.query }) : createElement(TheaterPage, { query: route.query }));
+const TheaterView: PageComponent = ({ route }) => {
+  if (!route.id) return createElement(TheaterPage, { query: route.query });
+  const page = isResolvable(route.id, route.query) ?TheaterResolve : TheaterPlayer;
+  return createElement(page, { id: route.id, query: route.query });
+};
 
 const WIDE: Layout = { maxWidth: "wide" };
 const NARROW: Layout = { maxWidth: "narrow" };
@@ -69,6 +77,7 @@ const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   theater: { list: WIDE, detail: OWNS_LAYOUT, render: TheaterView },
   shepherd: { list: WIDE, detail: WIDE, render: ShepherdView },
   autoresearch: { list: WIDE, detail: WIDE, render: AutoresearchView },
+  scorecard: { list: WIDE, detail: WIDE, render: ScorecardView },
   config: { list: WIDE, render: ConfigPage },
 };
 

@@ -36,10 +36,14 @@ owns a running execution, use [agent-lifecycle](./agent-lifecycle.md).
 
 ## Example
 
-Verified against 0.0.0.
+Verified against 0.9.0.
 
 ```ts
 import { BrokerUnavailableError, assertInstalledHeadless, dataFence, dispatchToAgentChat, execSafe, listAgents, messageAgent, minimalEnv, parkAgent, resolveBinaryPath, resumeAgent, resumeArgs, retire, spawnAsCaller } from "@titan-design/agent-dispatch";
+
+const logTail = "...last lines of the failing CI log...";
+const sessionId = "00000000-0000-4000-8000-000000000000"; // the ended agent's Claude Code session id
+const worktree = "/path/to/repo"; // the directory the session ran in
 
 const profiles = ["headless-implementer", "headless-reviewer"];
 

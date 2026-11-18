@@ -79,6 +79,11 @@ Three ship, and your own object satisfying that shape is a first-class citizen.
 - **`graphRetriever(edges, seededBy)`** — takes another retriever's top results as seeds and
   walks the edge table by hop, optionally restricted to relations or to outbound direction.
   `expandGraph` is the walk on its own.
+- **`collapsedTreeRetriever({ nodes, inner, leavesOnly? })`** — ranks every node of a summary
+  tree (`SummaryNode`: `{ id, level, parentId, leafIds, text }`) in one list through an
+  `inner` retriever built over the node text, so a broad query can match a level-1 summary
+  and a detail query a leaf. Each hit's payload carries `level` and `leafIds`; cite the
+  leaves, never the summary. `leavesOnly` drops every node above level 0, for the ablation.
 
 ## Fusion
 
@@ -89,6 +94,18 @@ and `dropoff` (cut at the largest relative score drop) trim the fused list.
 Scores are small by construction — an id ranked first by one unweighted retriever scores
 `1/61 ≈ 0.0164`. Do not read them as probabilities; only the order and the relative gaps
 mean anything.
+
+## Deriving a query from prose
+
+For text nobody wrote as a query (a task title, a brief), `meaningfulTerms(text)` drops
+stop words and short tokens and keeps task ids such as `TP-84` whole. `orExpression(terms)`
+quotes each term and ORs them, so a hyphen cannot read as FTS5's NOT.
+
+`deriveQuery(text, df, { limit, maxDf })` picks the rarest terms by document frequency
+(`df` is injected, so it needs no index), never lets a commit hash win on rarity, and
+appends every task id. It returns `{ terms, expression }`. `selectTerms` is the selection on
+its own, and `documentFrequencyCap(spans)` is the per-term span cap (1% of the corpus,
+never below `DF_CAP_FLOOR`) that keeps a scoped query from scoring the whole corpus.
 
 ## Reranking
 
@@ -102,6 +119,107 @@ throws leaves the RRF-fused ranking in place and adds
 `{ retriever: RERANK_STAGE, reason: 'error', message }` to the same `degraded` array, so a
 cross-encoder that runs out of memory costs the reordering and not the answer.
 
+## Token-budget context planning
+
+`planContext(candidates, budget)` turns a scored list of candidates into a prompt-ready
+plan that fits a token budget. Each candidate carries an `id`, a `category`, a `score` and
+`tiers`: renderings from cheapest (tier 0) to richest. The result is
+`{ entries, dropped, usedTokens, budgetTokens }`; each entry names the tier it landed on
+and its token cost.
+
+```ts
+import { planContext } from '@titan-design/retrieval';
+
+const plan = planContext(
+  [
+    { id: 'note-a', category: 'notes', score: 0.9, tiers: ['A: title', 'A: title and summary', 'A: full text of the note'] },
+    { id: 'doc-b', category: 'docs', score: 0.7, tiers: ['B: title', 'B: title and summary'] },
+    { id: 'note-c', category: 'notes', score: 0.4, tiers: ['C: title'] },
+  ],
+  { tokens: 40, quotas: { notes: 0.5 }, defaultQuota: 0.75 },
+);
+// plan.entries: kept renderings, best score first
+// plan.dropped: [{ id, category, reason }] for anything left out
+```
+
+It runs three passes over the candidates, best score first:
+
+1. **Breadth.** Every candidate is placed at its default tier (tier 0 unless
+   `defaultTiers[category]` says otherwise, never above `maxTier`) while it still fits.
+2. **Cap.** No entry may cost more than twice the mean share, `2 * tokens / placed`. An
+   entry over the cap falls back to the richest lower tier that fits under it, and is
+   dropped as `over-cap` if none does.
+3. **Deepening.** With the budget left over, the best hits are promoted one tier at a
+   time, each promotion staying under the cap and inside the leftover tokens.
+
+**Quotas.** `quotas` maps a category to a fraction of `tokens` that category may use
+(`0.5` is half the budget). A category with no entry uses `defaultQuota`, which is `1`
+when unset, so by default nothing is quota-limited. Quotas, `tokens` (a non-negative
+integer) and `maxTier` are validated up front; a bad value throws a `RangeError`.
+
+**Drop reasons.** Every candidate that is left out appears in `dropped` as
+`{ id, category, reason }`:
+
+| `reason` | Meaning |
+| --- | --- |
+| `over-budget` | placing it would pass the total `tokens` |
+| `over-quota` | placing it would pass its category's quota |
+| `duplicate` | a higher-scored candidate with the same `id` was already placed |
+| `over-cap` | too big for the 2x-mean cap at every tier up to its default |
+| `no-tiers` | `tiers` was empty |
+
+**Token estimation.** Cost is `estimateTokens(text)`, which is `Math.ceil(text.length / 4)`.
+That is a rough chars-per-token ratio and not a tokenizer. To budget against a real one,
+pass `estimateTokens` in the budget; it is called for every tier of every candidate:
+
+```ts
+planContext(candidates, { tokens: 4000, estimateTokens: (text) => myTokenizer.count(text) });
+```
+
+## Context mode: one request, two answers
+
+`engine.retrieve(request, options)` takes one request, validated with
+`RetrievalRequestSchema` (zod) and discriminated on `mode`. Unknown keys are rejected at
+every level, so a `list` request with a `budget` is invalid.
+
+| Field | Modes | Meaning |
+| --- | --- | --- |
+| `mode` | both | `"list"` or `"context"`, required |
+| `query` | both | the search text |
+| `limit` | both | results to rank; default 10 in list mode, 20 in context mode |
+| `rerank` | both | `false` skips the reranker for this request |
+| `budget` | context only | the planner budget minus `estimateTokens` |
+
+The call options are `tierSource` (required in context mode: `tiers(result, signal)`
+returns the renderings, cheapest first), `categoryOf` (default `result.sources[0]`),
+`estimateTokens` and `signal`.
+
+`mode: "list"` returns `{ mode, results, degraded, timingsMs }`, exactly what `search`
+returns. `mode: "context"` returns `{ mode, entries, dropped, usedTokens, budgetTokens,
+degraded, timingsMs }`, and `timingsMs` gains a `tiers` key.
+
+Context mode adds one drop reason to the table above: `tier-error`, the tier source threw
+for that result. Those drops come first in `dropped`, in rank order, then the planner's own.
+A failed tier load never rejects the request: all failures together add one degradation,
+`{ retriever: "tiers", reason: "error", message: "<n> of <m> tier loads failed; first: <message>" }`.
+
+Tier loads run concurrently and only for the ranked `limit` results, never for the
+overfetched candidates. A missing `tierSource` throws `TypeError` before any retriever runs.
+
+## Recovery steps
+
+`recovery: RecoveryStep[]` runs when fusion comes back empty and at least one retriever
+answered. A step is `{ name, run(query, { signal }) }` and returns a rewritten query, or
+`null` to pass to the next step. The engine re-runs the same retrievers and fusion on the
+rewrite, and the first step whose rewrite has hits wins: the response then carries
+`recovered: { step, query }`.
+
+- `recoveryTimeoutMs` (default 250) is a per-step deadline. A step that throws or times out
+  adds a `recovery:<name>` entry to `degraded` and the engine moves on.
+- `recoveryTrigger(lists)` replaces the empty test. It still never runs when every retriever failed.
+- `search(query, { recover: false })` skips the steps for one query.
+- Each step's time, rewrite plus re-search, appears in `timingsMs` as `recovery:<name>`.
+
 ## Gotchas
 
 **A graph-only hit has no locator.** It was reached by expansion, not by matching text. Do
@@ -111,6 +229,12 @@ not fabricate an excerpt for it; the session miner returns `excerpt: null`.
 retriever gets its own `AbortController`; one that exceeds the deadline lands in `degraded`
 with `reason: "timeout"` while the others finish normally. `timingsMs` on the gather result
 reports what each one actually took.
+
+**Context-mode budgets count chars/4, not real tokens.** Pass `estimateTokens` in the call
+options to budget against a tokenizer.
+
+**Tier sources run once per ranked result, all at once.** Keep them cheap, or lower `limit`.
+They get the request's `signal` and have no deadline of their own.
 
 ## Where it came from
 

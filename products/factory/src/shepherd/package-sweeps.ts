@@ -14,16 +14,22 @@ export { RELEASE_SWEEP_MS, TOOLCHAIN_SWEEP_MS };
 export const CONSUMER_BUMP_SWEEP_MS = 3_600_000;
 
 async function sweepReleases(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
-  for (const note of await sweepVersionPackages(host, services)) log.info({ ...note }, "swept a Version Packages PR");
+  for (const note of await sweepVersionPackages(host, services)) logNote(log, note, "swept a Version Packages PR");
+}
+
+/** An error note is something an operator must read, so it logs at warn; the rest stay at info. */
+function logNote(log: Logger, note: { error?: string }, message: string): void {
+  if (note.error === undefined) log.info({ ...note }, message);
+  else log.warn({ ...note }, message);
 }
 
 async function sweepToolchains(host: FactoryHost, services: ShepherdServices, log: Logger): Promise<void> {
-  for (const note of await sweepToolchain(host, services)) log.info({ ...note }, "swept a toolchain adoption");
+  for (const note of await sweepToolchain(host, services)) logNote(log, note, "swept a toolchain adoption");
 }
 
 /** The real npm registry and a scratch-dir install, unless a caller hands in its own. */
 async function sweepConsumerBumps(host: FactoryHost, services: ShepherdServices, log: Logger, ports: ConsumerBumpPorts = { registry: npmLatest(), regen: scratchLockfileRegen() }): Promise<void> {
-  for (const note of await bumpConsumers(host, services, ports)) log.info({ ...note }, "swept a consumer bump");
+  for (const note of await bumpConsumers(host, services, ports)) logNote(log, note, "swept a consumer bump");
 }
 
 export interface PackageSweepOptions {

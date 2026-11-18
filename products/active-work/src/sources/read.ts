@@ -24,7 +24,7 @@ const TEXT_EXTENSIONS = new Set([
   '.tsv',
 ]);
 
-export interface SourceReadResult {
+interface SourceReadResult {
   /** Path relative to the initiative directory, `/`-separated. */
   path: string;
   content: string;
@@ -40,7 +40,7 @@ export interface SourceReadResult {
  * root as `search` returns it (`<slug>/sources/x.md`), or relative to the
  * initiative directory (`sources/x.md`).
  */
-export function candidatePath(activeRoot: string, slug: string, requested: string): string {
+function candidatePath(activeRoot: string, slug: string, requested: string): string {
   if (path.isAbsolute(requested)) return requested;
   if (requested.startsWith(`${slug}/`)) return path.join(activeRoot, requested);
   return path.join(activeRoot, slug, requested);

@@ -1,12 +1,12 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { ValidationError } from '../errors.js';
-import { resolveProfileDir } from '../launcher-profile.js';
-import { listInitiativeSlugs, resolveLaunchCwd } from '../commands/_open-helpers.js';
+import { resolveProfileDir } from '../utils/profile-dir.js';
+import { listInitiativeSlugsOrEmpty, resolveLaunchCwd } from './initiatives.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
 import { localTranscriptRoots } from './transcript-roots.js';
 
-export interface ResolvedSessionLocation {
+interface ResolvedSessionLocation {
   cwd: string;
   source: 'active-work' | 'claude-projects';
   /** Set only when `source` is `active-work`. */
@@ -25,7 +25,7 @@ async function findInActiveWork(
   activeRoot: string,
   sessionId: string,
 ): Promise<{ slug: string; cwd: string } | null> {
-  for (const slug of await listInitiativeSlugs(activeRoot)) {
+  for (const slug of await listInitiativeSlugsOrEmpty(activeRoot)) {
     const sessionsDir = path.join(activeRoot, slug, 'sessions');
     let filenames: string[];
     try {

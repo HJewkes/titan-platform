@@ -194,6 +194,19 @@ describe("review wake brief: the PR's review comments", () => {
     expectNoLeak(wake);
   });
 
+  it("does not name a failure that a later passing rerun of its check replaced", async () => {
+    const fake = fakeGitHub({ repo: REPO });
+    const pr = fake.addPr({ headSha: H1 });
+    const failed = successRun("validate", 1, "2026-01-01T00:00:00Z", "failure");
+    const passed = successRun("validate", 2, "2026-01-01T01:00:00Z", "success");
+    const port = { ...githubPort(fake.wire), latestCheckRuns: async () => [failed], checkRuns: async () => [failed, passed], jobLogTail: async () => "stale failure log" };
+
+    const wake = await describeWake(port, { kind: "ci-red", repo: REPO, pr: pr.number, headSha: H1, payload: null }, pr);
+
+    expect(wake.reason).not.toContain("validate");
+    expect(wake.payload).not.toContain("stale failure log");
+  });
+
   it("names the failing dag-check job and its scripts, deferring how to run them to the test rule", async () => {
     const fake = fakeGitHub({ repo: REPO });
     const pr = fake.addPr({ headSha: H1 });

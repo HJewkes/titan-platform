@@ -134,6 +134,11 @@
       "prefix": "rewrite/"
     },
     {
+      "id": "explainer-resolve",
+      "version": "1.0.0",
+      "prefix": "resolve/"
+    },
+    {
       "id": "explainer-eval",
       "version": "1.0.0",
       "prefix": "eval/"

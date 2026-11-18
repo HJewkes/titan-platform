@@ -4,8 +4,8 @@
     {
       "name": "the unfinished-turn gather reads every page without yielding",
       "file": "products/active-work/src/session-index/unfinished-turns.ts",
-      "find": "    cursor = page[page.length - 1].rowid;\n    await yieldPoint();\n",
-      "replace": "    cursor = page[page.length - 1].rowid;\n",
+      "find": "    cursor = page[page.length - 1]?.rowid ?? cursor;\n    await yieldPoint();\n",
+      "replace": "    cursor = page[page.length - 1]?.rowid ?? cursor;\n",
       "kills": [
         "sliced rollup gathers unfinished turns a page at a time, yielding after each page",
         "sliced rollup hands the loop back before the first rollup"

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the review list is not retried",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "    reviews = await withReviewRetry(() => port.listReviews(target.repo, target.pr), timing);",
+      "replace": "    reviews = await port.listReviews(target.repo, target.pr);",
+      "kills": [
+        "syncApproval retries a review list that answers 502 once is read again after a short wait, and the approval is posted"
+      ]
+    },
+    {
+      "name": "a dismissal is not retried",
+      "file": "products/factory/src/shepherd/review-approval.ts",
+      "find": "await withReviewRetry(() => port.dismissReview(target.repo, target.pr, review.id, message), timing);",
+      "replace": "await port.dismissReview(target.repo, target.pr, review.id, message);",
+      "kills": [
+        "syncApproval retries a dismissal refused under a secondary rate limit waits until the limit resets, then dismisses"
+      ]
+    },
+    {
+      "name": "every 403 is retried, a refusal included",
+      "file": "products/factory/src/shepherd/review-retry.ts",
+      "find": "  if (!facts) return undefined;",
+      "replace": "  if (!facts) return backoff;",
+      "kills": [
+        "syncApproval retries a dismissal refused with a plain 403 is recorded at once, without a retry"
+      ]
+    },
+    {
+      "name": "a limit is waited out however late it resets",
+      "file": "products/factory/src/shepherd/review-retry.ts",
+      "find": "return wait <= MAX_LIMIT_WAIT_MS ? wait : undefined;",
+      "replace": "return wait;",
+      "kills": [
+        "syncApproval retries a rate limit that resets after the step could wait is recorded without waiting for it"
+      ]
+    },
+    {
+      "name": "a call is retried without bound",
+      "file": "products/factory/src/shepherd/review-retry.ts",
+      "find": "  for (const backoff of REVIEW_RETRY_BACKOFF_MS) {",
+      "replace": "  for (const backoff of [...REVIEW_RETRY_BACKOFF_MS, 9_000]) {",
+      "kills": [
+        "syncApproval retries a review list that keeps answering 503 is tried three times, then recorded with nothing posted"
+      ]
+    }
+  ]
+}

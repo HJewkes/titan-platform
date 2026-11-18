@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { Alert, Badge, BadgeText, Card, CardContent, HStack, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, Card, CardContent, CardStat, HStack, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { ActivityRegion, SESSIONS_ARGS } from "./HomeActivity.js";
 import { NeedsYouRegion } from "./HomeNeedsYou.js";
 import { isWebTarget, openExternal } from "./homeLinks.js";
+import { ResolvedVideoCard } from "./VideoCard.js";
 
 type Upstream = ConsoleCommands["upstreams.health"]["result"]["upstreams"][number];
 type SessionsList = ConsoleCommands["sessions.list"]["result"];
@@ -24,6 +25,9 @@ export function HomePage(): ReactNode {
       </HomeSection>
       <HomeSection title="Needs you" subtitle="Answer queue items in agent-chat; the console only reads">
         <NeedsYouRegion />
+      </HomeSection>
+      <HomeSection title="Today's video" subtitle="The day's explainer, newest render">
+        <VideoRegion day={utcDay(0)} fallbackDay={utcDay(-1)} />
       </HomeSection>
       <HomeSection title="Recent activity" subtitle="The last 24 hours">
         <ActivityRegion />
@@ -54,7 +58,6 @@ function UpstreamsRegion(): ReactNode {
   );
 }
 
-// StatCard is unreleased in react-ui ^0.20, so a Card stands in for each tile.
 function UpstreamCard({ upstream }: { upstream: Upstream }): ReactNode {
   const onPress = isWebTarget(upstream.target) ? () => openExternal(upstream.target) : undefined;
   return (
@@ -114,16 +117,28 @@ function sessionsToday(list: SessionsList | undefined): string | undefined {
 }
 
 function CountTile({ label, value }: { label: string; value: string }): ReactNode {
-  return (
-    <Card variant="outline" testID={`count-${label}`}>
-      <CardContent>
-        <VStack gap={1}>
-          <Typography variant="microLabel" color="secondary">
-            {label}
-          </Typography>
-          <Typography variant="h3">{value}</Typography>
-        </VStack>
-      </CardContent>
-    </Card>
-  );
+  return <CardStat variant="outline" label={label} value={value} metricProps={{ labelPosition: "above" }} testID={`count-${label}`} />;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function utcDay(offsetDays: number): string {
+  return new Date(Date.now() + offsetDays * DAY_MS).toISOString().slice(0, 10);
+}
+
+function VideoRegion({ day, fallbackDay }: { day: string; fallbackDay: string }): ReactNode {
+  const today = useQuery("videos.resolve", { subject: day });
+  if (today.status === "loading") return <Spinner size="sm" label="Loading today's video" />;
+  if (today.data === undefined) return <Alert status="error" message={`Could not load today's video: ${today.error.message}`} />;
+  if (today.data.found) return <ResolvedVideoCard id={today.data.id} label={`Today's video, ${day}`} />;
+  return <YesterdayVideo day={fallbackDay} />;
+}
+
+/** A child so the second request is made only after today missed. */
+function YesterdayVideo({ day }: { day: string }): ReactNode {
+  const yesterday = useQuery("videos.resolve", { subject: day });
+  if (yesterday.status === "loading") return <Spinner size="sm" label="Loading today's video" />;
+  if (yesterday.data === undefined) return <Alert status="error" message={`Could not load today's video: ${yesterday.error.message}`} />;
+  if (yesterday.data.found) return <ResolvedVideoCard id={yesterday.data.id} label={`Latest video, ${day}`} />;
+  return <Typography variant="body2" color="secondary">No video for today yet.</Typography>;
 }

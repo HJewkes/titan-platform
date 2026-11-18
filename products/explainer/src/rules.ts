@@ -12,7 +12,7 @@ const Slice = z.string().regex(/^(SQ\d+|TP-\d+)$/, "expected the owning slice or
 
 const L0Pending = z.object({ severity: z.enum(["error", "warning"]), status: z.literal("pending"), owner: Slice, partial: z.array(Id).default([]) }).strict();
 /** Where a rule's check measures: `chapter` reads each chapter's own beats, `video` (also when absent) the whole script. */
-export const RULE_SCOPES = ["chapter", "video"] as const;
+const RULE_SCOPES = ["chapter", "video"] as const;
 const L0Implemented = z
   .object({
     severity: z.enum(["error", "warning"]),
@@ -65,7 +65,7 @@ export const RuleRegistrySchema = z
 export type RuleRegistry = z.infer<typeof RuleRegistrySchema>;
 
 /** The structures and video type profiles a rule's scope may name. */
-export interface ScopeNames {
+interface ScopeNames {
   structures: ReadonlySet<string>;
   profiles: ReadonlySet<string>;
 }

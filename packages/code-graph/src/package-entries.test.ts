@@ -54,6 +54,23 @@ describe("package manifest entries as dead-module roots", () => {
     expect(deadIds(LIB_FILES, entries)).not.toContain("packages/lib/src/browser.ts");
   });
 
+  it.each([
+    ["a ./-prefixed extensionless main", { main: "./dist/index" }],
+    ["a directory main", { main: "./dist" }],
+    ["an extensionless bin", { bin: { tool: "./dist/index" } }],
+    ["a directory bin", { bin: "./dist" }],
+  ])("%s resolves to the indexed source entry", (_name, manifest) => {
+    const source = libSource(manifest);
+    const entries = packageEntryFileIds(REPO, ["packages/lib/src/index.ts", "packages/lib/src/orphan.ts"], source);
+    expect([...entries]).toEqual(["packages/lib/src/index.ts"]);
+  });
+
+  it("an extensionless main resolves at the package root, as Node does", () => {
+    const source = libSource({ main: "index" });
+    const entries = packageEntryFileIds(REPO, ["packages/lib/index.ts", "packages/lib/src/index.ts"], source);
+    expect([...entries]).toEqual(["packages/lib/index.ts"]);
+  });
+
   it("an imports #alias target is not dead", () => {
     const source = libSource({ imports: { "#target": { node: "./src/alias-target.js" }, "#dep": "some-package" } });
     const entries = packageEntryFileIds(REPO, LIB_FILES, source);
@@ -118,5 +135,43 @@ describe("package manifest entries as dead-module roots", () => {
   it("a malformed manifest contributes no entries", () => {
     const source = memorySource({ "packages/lib/package.json": "{ not json" });
     expect(packageEntryFileIds(REPO, LIB_FILES, source).size).toBe(0);
+  });
+});
+
+describe("directory-form main and bin targets", () => {
+  it.each([
+    ["a trailing-slash main", { main: "./dist/" }],
+    ["a trailing-slash bin", { bin: { tool: "./dist/" } }],
+    ["a dot main", { main: "." }],
+    ["a ./ main", { main: "./" }],
+    ["a dot bin", { bin: "." }],
+  ])("%s resolves to the indexed source entry", (_name, manifest) => {
+    const source = libSource(manifest);
+    const entries = packageEntryFileIds(REPO, ["packages/lib/src/index.ts", "packages/lib/src/orphan.ts"], source);
+    expect([...entries]).toEqual(["packages/lib/src/index.ts"]);
+  });
+});
+
+describe("null exports subpaths subtract from looser keys, as Node resolves them", () => {
+  const files = [
+    "packages/lib/src/a.ts",
+    "packages/lib/src/exact.ts",
+    "packages/lib/src/internal/x.ts",
+    "packages/lib/src/internal/deep/y.ts",
+  ];
+
+  it("roots only what Node still resolves under a null pattern and a null exact key", () => {
+    const source = libSource({ exports: { "./*": "./dist/*.js", "./internal/*": null, "./exact.js": null } });
+    const sourceWithExt = libSource({ exports: { "./*": "./dist/*", "./internal/*": null, "./exact": null } });
+    expect([...packageEntryFileIds(REPO, files, source)].sort()).toEqual(["packages/lib/src/a.ts", "packages/lib/src/exact.ts"]);
+    expect([...packageEntryFileIds(REPO, files, sourceWithExt)].sort()).toEqual(["packages/lib/src/a.ts"]);
+  });
+
+  it("keeps a more specific non-null key rooted under a looser null pattern", () => {
+    const source = libSource({ exports: { "./*": null, "./internal/*": "./dist/internal/*.js" } });
+    expect([...packageEntryFileIds(REPO, files, source)].sort()).toEqual([
+      "packages/lib/src/internal/deep/y.ts",
+      "packages/lib/src/internal/x.ts",
+    ]);
   });
 });

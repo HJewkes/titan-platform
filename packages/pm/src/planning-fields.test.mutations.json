@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "fold takes any string",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "z.union([z.literal(FOLD_INDEPENDENT), z.string().regex(FOLD_ID_REGEX)]",
+      "replace": "z.union([z.literal(FOLD_INDEPENDENT), z.string()]",
+      "kills": ["task planning fields fold accepts independent and a fold id and refuses anything else"]
+    },
+    {
+      "name": "owner step kind is any string",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "kind: closedSet(\"owner_steps kind\", OWNER_STEP_KINDS),",
+      "replace": "kind: z.string(),",
+      "kills": ["task planning fields owner_steps refuses an unknown kind"]
+    },
+    {
+      "name": "a named bet always passes",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "return (await lookup.has(betId)) ? null : `Unknown bet id: ${betId}`;",
+      "replace": "return null;",
+      "kills": ["bet existence at write a task naming an unknown bet id fails validation at write"]
+    },
+    {
+      "name": "bet becomes required",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "  bet: bet.optional(),",
+      "replace": "  bet: bet,",
+      "kills": ["task planning fields old task files still parse"]
+    },
+    {
+      "name": "bet takes any string",
+      "file": "packages/pm/src/provenance.ts",
+      "find": "const bet = z.string().regex(BET_ID_REGEX,",
+      "replace": "const bet = z.string().regex(/^/,",
+      "kills": ["task planning fields bet takes a bet id and nothing else"]
+    }
+  ]
+}

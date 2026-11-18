@@ -19,12 +19,13 @@ export function printableLabel(label: string): string {
 }
 
 export function loginText(login: LoginState): string {
-  return login.status === "refused" ? `refused (${login.reason})` : login.status;
+  if (login.status === "logged-out") return `logged out (${login.reason})`;
+  return `login ${login.status === "refused" ? `refused (${login.reason})` : login.status}`;
 }
 
 // One fixed line per account whose login is not present; nothing from the file is quoted.
 export function loginLine(label: string, login: LoginState): string {
-  return `${PROGRAM}: ${printableLabel(label)}: login ${loginText(login)}`;
+  return `${PROGRAM}: ${printableLabel(label)}: ${loginText(login)}`;
 }
 
 export function failureLine(label: string, what: string): string {

@@ -17,7 +17,7 @@ export interface MessagingInbound {
   text: string;
 }
 
-/** `SendInput`: a handle and a string. No attachments exist on this seam. */
+/** `SendInput`: a handle and a string. The core type also has optional `buttons`, which this seam ignores; no attachments exist here. */
 export interface MessagingSendInput {
   handle: string;
   text: string;

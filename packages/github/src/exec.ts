@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { transportOfStatus, type GhTransport } from "./transport.js";
 
 export interface GhResult {
   code: number;
@@ -25,6 +26,8 @@ export class GhError extends Error {
     private readonly httpStatus?: number,
     /** A `rateLimitMarker`, put first so a caller that bounds the text it keeps still has it. */
     readonly rateLimit = "",
+    /** How the transport gave out, set by whoever raised this; a 5xx status alone already says `server-5xx`. */
+    readonly transport: GhTransport = transportOfStatus(httpStatus),
   ) {
     super(`${rateLimit ? `${rateLimit} ` : ""}gh ${args.slice(0, 4).join(" ")} failed (${result.code}): ${result.stderr.trim() || result.stdout.trim()}`);
     this.name = "GhError";
@@ -57,6 +60,7 @@ function execCommand(command: string, args: readonly string[], input: string | u
       (error, stdout, stderr) => {
         if (error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return reject(new Error(`${command} ${args.slice(0, 2).join(" ")} output exceeded ${maxBufferBytes} bytes`));
         if (timeoutMs !== undefined && error?.killed) return reject(new Error(`${command} ${args.slice(0, 2).join(" ")} timed out after ${timeoutMs} ms`));
+        if (typeof error?.code === "string") return resolve({ code: 1, stdout, stderr: stderr || error.message });
         const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
         resolve({ code, stdout, stderr });
       },

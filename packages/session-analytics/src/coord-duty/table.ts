@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PRICE_TABLE_VERSION } from "../prices.js";
+import { groupBy } from "../report-helpers.js";
 import { parseInstant, type DutyCall, type DutyTurn, type MeterResult } from "./meter.js";
 import { dutyInfo } from "./rules.js";
 
@@ -77,16 +78,6 @@ function triggerRows(turns: readonly DutyTurn[]): CoordDutyTable["triggers"] {
   return [...groupBy(turns, (turn) => turn.trig)]
     .map(([trigger, rows]) => ({ trigger, turns: rows.length, noop: rows.filter((row) => row.outcome === "NO-OP").length, usd: sumUsd(rows) }))
     .sort((a, b) => b.usd - a.usd);
-}
-
-function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, T[]> {
-  const groups = new Map<string, T[]>();
-  for (const item of items) {
-    const group = groups.get(key(item));
-    if (group) group.push(item);
-    else groups.set(key(item), [item]);
-  }
-  return groups;
 }
 
 function sumUsd(rows: readonly { usd: number }[]): number {

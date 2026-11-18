@@ -3,6 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { fingerprintOf, sidecarFingerprint, type Fingerprint } from "../fingerprint.js";
+import { parseTimeline } from "../composition/timeline.js";
+import { cutCells, PageMarksSchema, type SheetCell } from "../contact-sheet.js";
+import { writeContactSheets, type FfmpegExec } from "../contact-sheet-render.js";
 import { loadStructures } from "../profile-load.js";
 import { ResolvedSchema } from "../resolve-stage.js";
 import { ScriptSchema, type ScriptV1 } from "../script-schema.js";
@@ -45,18 +48,21 @@ export function ffmpegMedia(exec: BridgeExec = spawnExec): MediaExec {
 }
 
 export interface SheetsConfig {
-  take: string;
+  /** An explicit take; absent, `v<n>` for the run's position among the video's runs. */
+  take?: string;
+  /** The day the run's gather covers. */
+  day?: string;
   status: SidecarStatus;
   /** The theater stem the poster file is named after. */
   stem: string;
   /** The run's profile id; absent, the script's own. */
   profile?: string;
   /** The video and every run of it; absent, the child run is the video's only run. */
-  video?: { id: string; runIds: string[] };
+  video?: { id: string; runIds: string[]; position?: number };
 }
 
-export interface SheetsInput extends Omit<ModelStageInput, "store"> {
-  store: Pick<ArtifactStore, "readText" | "putText" | "putFile" | "path">;
+interface SheetsInput extends Omit<ModelStageInput, "store"> {
+  store: Pick<ArtifactStore, "readText" | "putText" | "putFile" | "putTree" | "path">;
 }
 
 const readOptional = <T>(input: SheetsInput, name: string, schema: z.ZodType<T>): T | undefined => {
@@ -94,11 +100,47 @@ function scriptPrint(input: SheetsInput, script: ScriptV1): { fingerprint: Finge
   return { fingerprint, carried, source: resolved ? "resolved" : "script visuals" };
 }
 
+/** The host's own ffmpeg, behind the contact-sheet writer's seam. */
+function systemFfmpeg(exec: BridgeExec = spawnExec): FfmpegExec {
+  return async (args) => void (await run(exec, ["ffmpeg", ...args]));
+}
+
+/** A timeline kind (`code-walk`) as the sheet rules name its component (`CodeWalkBeat`). */
+const componentOf = (kind: string): string => (/Beat$/.test(kind) ? kind : `${kind.split(/[-_]/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("")}Beat`);
+
+const chapterId = (label: string): string => label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "all";
+
+/** Contact-sheet cells from the render's timeline: reveals as cues, the page's marks where it published any. */
+function sheetCells(input: SheetsInput, timelineSha: string): SheetCell[] {
+  const { beats } = parseTimeline(JSON.parse(input.store.readText(timelineSha)));
+  const marks = readOptional(input, "marks", PageMarksSchema);
+  return cutCells({
+    render: { beats: beats.map(({ id, startS, durationS }) => ({ id, startS, durationS })) },
+    cues: { cues: beats.flatMap((beat) => (beat.reveals ?? []).map((reveal) => ({ beat: beat.id, atS: reveal.atS }))) },
+    visual: { beats: beats.map((beat) => ({ id: beat.id, kind: componentOf(beat.kind), ...(beat.chapter ? { chapter: chapterId(beat.chapter.label) } : {}) })) },
+    ...(marks ? { marks } : {}),
+  });
+}
+
+/** The chapter sheets as one tree artifact; a run whose render left no timeline has none to cut. */
+async function cutSheets(input: SheetsInput, mp4: string, ffmpeg: FfmpegExec): Promise<{ sha: string; cells: number; marked: number } | undefined> {
+  const timelineSha = input.artifacts.timeline;
+  if (timelineSha === undefined) return undefined;
+  const cells = sheetCells(input, timelineSha);
+  const dir = mkdtempSync(path.join(tmpdir(), "explainer-sheets-"));
+  try {
+    await writeContactSheets(mp4, cells, dir, ffmpeg);
+    return { sha: input.store.putTree(dir, "contact-sheets", input.from), cells: cells.length, marked: cells.filter((cell) => cell.rule === "marks").length };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /**
  * The `explainer.sheets` body (workflow plan §2.3 stage 10): the theater sidecar, its poster and the script-side
  * fingerprint, from the rendered MP4 and the script, with `resolved` and `slots` read when a run has them.
  */
-export async function runSheetsStage(input: SheetsInput, config: SheetsConfig, media: MediaExec): Promise<StageOutcome> {
+export async function runSheetsStage(input: SheetsInput, config: SheetsConfig, media: MediaExec, ffmpeg: FfmpegExec = systemFfmpeg()): Promise<StageOutcome> {
   const scriptSha = need(input, "script");
   const mp4 = input.store.path(need(input, "mp4"));
   const script = ScriptSchema.parse(JSON.parse(input.store.readText(scriptSha)));
@@ -107,8 +149,9 @@ export async function runSheetsStage(input: SheetsInput, config: SheetsConfig, m
   const poster = await grabPoster(input, media, mp4, posterAt(durationS));
   const video = config.video ?? { id: input.from.runId, runIds: [input.from.runId] };
   const profile = config.profile ?? script.profile;
+  const take = config.take ?? `v${video.position ?? video.runIds.length}`;
   const sidecar = buildSidecar({
-    script, profile, durationS, stem: config.stem, take: config.take, status: config.status,
+    script, profile, durationS, stem: config.stem, take, status: config.status, ...(config.day ? { day: config.day } : {}),
     explainer: { videoId: video.id, runIds: video.runIds, profile, scriptSha, fingerprint: carried },
   });
   const outputs = {
@@ -117,5 +160,10 @@ export async function runSheetsStage(input: SheetsInput, config: SheetsConfig, m
     fingerprint: input.store.putText(`${JSON.stringify(fingerprint, null, 2)}\n`, "fingerprint", input.from),
   };
   const notes = [`poster at ${sidecar.posterAtS} s of ${durationS.toFixed(1)} s`, `fingerprint of ${fingerprint.beats.length} beats from ${source}; ${video.runIds.length} linked runs`];
+  const sheets = await cutSheets(input, mp4, ffmpeg);
+  if (sheets) {
+    Object.assign(outputs, { "contact-sheets": sheets.sha });
+    notes.push(`${sheets.cells} contact-sheet cells, ${sheets.marked} cut by the page's marks`);
+  }
   return { outputs, notes };
 }

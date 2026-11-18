@@ -1,11 +1,13 @@
 import { HashEmbedder } from "@titan-design/embed";
 import { EdgeTable, SpanFtsTables, edgeTableDdl, openDatabase, spanFtsTablesDdl } from "@titan-design/store-sqlite";
 import { describe, expect, it, vi } from "vitest";
+import { TIERS_STAGE, type TierSource } from "./context/request.js";
 import { RERANK_STAGE, createRetrievalEngine } from "./engine.js";
 import { crossEncoderReranker, type Reranker } from "./rerank.js";
 import { defaultMatchExpression, ftsRetriever } from "./retrievers/fts.js";
 import { expandGraph, graphRetriever } from "./retrievers/graph.js";
 import { BruteForceVectorIndex, vectorRetriever } from "./retrievers/vector.js";
+import type { FusedResult } from "./types.js";
 
 const docs: Record<string, string> = {
   "note:vitest": "the vitest suite in packages/registry keeps failing on CI",
@@ -198,5 +200,113 @@ describe("createRetrievalEngine", () => {
     const engine = createRetrievalEngine({ retrievers: [ftsRetriever(spans)] });
     expect(await engine.search("   ")).toEqual({ results: [], degraded: [], timingsMs: {} });
     expect(() => createRetrievalEngine({ retrievers: [], reranker: crossEncoderReranker() })).toThrow(/textFor is required/);
+  });
+});
+
+describe("retrieve", () => {
+  const tiersOf: TierSource = { tiers: async (r) => [r.id, docs[r.id] ?? r.id] };
+  const classOf = (r: FusedResult) => r.id.split(":")[0]!;
+  const ftsEngine = async () => createRetrievalEngine({ retrievers: [ftsRetriever((await corpus()).spans)] });
+  const context = (budget: { tokens: number }, limit?: number) => ({ mode: "context" as const, query: "vitest failing", budget, limit });
+
+  it.each([1, 3])("list mode returns what search returns", async (limit) => {
+    const { spans, edges, embedder, index } = await corpus();
+    const fts = ftsRetriever(spans);
+    const engine = createRetrievalEngine({
+      retrievers: [fts, vectorRetriever(embedder, index), graphRetriever(edges, fts, { seedLimit: 1 })],
+    });
+
+    const listed = await engine.retrieve({ mode: "list", query: "vitest failing", limit });
+    const searched = await engine.search("vitest failing", { limit });
+
+    expect(listed.mode).toBe("list");
+    if (listed.mode !== "list") throw new Error("unreachable");
+    expect(listed.results).toEqual(searched.results);
+    expect(listed.degraded).toEqual(searched.degraded);
+    expect(Object.keys(listed.timingsMs).sort()).toEqual(Object.keys(searched.timingsMs).sort());
+  });
+
+  it("context mode plans within budget using categoryOf", async () => {
+    const engine = await ftsEngine();
+
+    const response = await engine.retrieve(context({ tokens: 12 }), { tierSource: tiersOf, categoryOf: classOf });
+    const plain = await engine.retrieve(context({ tokens: 12 }), { tierSource: tiersOf });
+
+    expect(response.mode).toBe("context");
+    if (response.mode !== "context" || plain.mode !== "context") throw new Error("unreachable");
+    expect(response.entries.map((e) => e.id).sort()).toEqual(["note:flaky", "note:vitest"]);
+    expect(response.entries.every((e) => e.category === "note" && e.tier === 0)).toBe(true);
+    expect(response.usedTokens).toBe(6);
+    expect(response.budgetTokens).toBe(12);
+    expect(plain.entries.every((e) => e.category === "fts")).toBe(true);
+  });
+
+  it("a tier source that throws drops that result as tier-error and degrades once", async () => {
+    const engine = await ftsEngine();
+    const flaky: TierSource = {
+      tiers: (r) => {
+        if (r.id === "note:flaky") throw new Error("tier file missing");
+        return tiersOf.tiers(r);
+      },
+    };
+
+    const response = await engine.retrieve(context({ tokens: 12 }), { tierSource: flaky, categoryOf: classOf });
+
+    if (response.mode !== "context") throw new Error("unreachable");
+    expect(response.entries.map((e) => e.id)).toEqual(["note:vitest"]);
+    expect(response.dropped).toEqual([{ id: "note:flaky", category: "note", reason: "tier-error" }]);
+    expect(response.degraded).toEqual([
+      { retriever: TIERS_STAGE, reason: "error", message: "1 of 2 tier loads failed; first: tier file missing" },
+    ]);
+  });
+
+  it("context mode keeps retriever degradations", async () => {
+    const { spans, index } = await corpus();
+    const down = { model: "dead", dimensions: 1, embed: async () => Promise.reject(new Error("ECONNREFUSED")) };
+    const engine = createRetrievalEngine({ retrievers: [ftsRetriever(spans), vectorRetriever(down, index)] });
+
+    const response = await engine.retrieve(context({ tokens: 40 }), { tierSource: tiersOf });
+
+    if (response.mode !== "context") throw new Error("unreachable");
+    expect(response.degraded).toEqual([{ retriever: "vector", reason: "error", message: "ECONNREFUSED" }]);
+    expect(response.entries.length).toBeGreaterThan(0);
+  });
+
+  it("loads tiers only for the ranked candidates, not the overfetch", async () => {
+    const { spans } = await corpus();
+    for (let i = 0; i < 30; i++) {
+      spans.index({ ownerRef: `session:s${i}`, field: "tool_result", sourceId: 2, byteOffset: i * 40, byteLength: 40 }, "vitest failing");
+    }
+    const engine = createRetrievalEngine({ retrievers: [ftsRetriever(spans)] });
+    const spy = vi.fn(tiersOf.tiers);
+
+    await engine.retrieve(context({ tokens: 200 }, 3), { tierSource: { tiers: spy } });
+
+    const searched = await engine.search("vitest failing", { limit: 3 });
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(spy.mock.calls.map(([r]) => r.id)).toEqual(searched.results.map((r) => r.id));
+  });
+
+  it("rejects a context request without a tier source before searching", async () => {
+    const retrieve = vi.fn(async () => []);
+    const engine = createRetrievalEngine({ retrievers: [{ name: "spy", retrieve }] });
+
+    const missing = engine.retrieve({ mode: "context", query: "q", budget: { tokens: 10 } });
+    await expect(missing).rejects.toThrow(TypeError);
+    await expect(engine.retrieve({ mode: "context", query: "q", budget: { tokens: 10 } })).rejects.toThrow(/tierSource is required/);
+    expect(retrieve).not.toHaveBeenCalled();
+    const untyped = JSON.parse('{"mode":"list","query":"q","budget":{"tokens":10}}');
+    await expect(engine.retrieve(untyped)).rejects.toThrow();
+  });
+
+  it("context mode costs with the injected estimator", async () => {
+    const engine = await ftsEngine();
+
+    const response = await engine.retrieve(context({ tokens: 12 }), { tierSource: tiersOf, categoryOf: classOf, estimateTokens: () => 1 });
+
+    if (response.mode !== "context") throw new Error("unreachable");
+    expect(response.entries.length).toBeGreaterThan(0);
+    expect(response.usedTokens).toBe(response.entries.length);
+    expect(response.entries.every((e) => e.tokens === 1)).toBe(true);
   });
 });

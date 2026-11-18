@@ -30,7 +30,7 @@ import type { Locator } from '../schemas/template.js';
  * `MinerIngestorOptions.buffered`.
  */
 
-export interface DrainIngestOptions {
+interface DrainIngestOptions {
   /** Miner store root; overridable for tests and eval sandboxes. */
   root?: string;
   /** Transcript corpus root. */
@@ -61,14 +61,14 @@ export interface DrainIngestOptions {
 }
 
 /** One `(blobs seen, templates known)` sample from the growth curve. */
-export interface GrowthSample {
+interface GrowthSample {
   blobs: number;
   templates: number;
   /** Whether any Drain partition was already evicting at this point. */
   evicting: boolean;
 }
 
-export interface DrainIngestSummary {
+interface DrainIngestSummary {
   startedAt: string;
   durationMs: number;
   /** Transcripts discovered in the corpus. */
@@ -242,7 +242,11 @@ export async function runDrainIngest(
 
   for (const transcript of visiting) {
     const transcriptIndex = transcriptIndexFor(state, transcript.displayPath);
-    const entry = state.transcripts[transcriptIndex];
+    const entry = state.transcripts.at(transcriptIndex);
+    if (entry === undefined) {
+      counters.errors.push(`${transcript.displayPath}: no reader state entry`);
+      continue;
+    }
     try {
       // `full` is expressed as a zeroed watermark rather than as a flag the
       // resume point knows about: the package's contract is "given this entry,

@@ -2,9 +2,14 @@ import { arch, cpus, platform } from "node:os";
 import { withBrowser } from "@titan-design/frame-capture";
 import type { Browser } from "playwright-core";
 import { z } from "zod";
+import { StepUsageRowSchema } from "../workflow/records.js";
+import { ChapterSchema } from "./chapters.js";
 import { runFfmpeg } from "./ffmpeg.js";
 
 const Sha = z.string().regex(/^[0-9a-f]{64}$/);
+
+/** The voice block of tts's `voice.json`: who spoke and at what rate, without its per-beat rows. */
+export const VoiceBlockSchema = z.strictObject({ provider: z.string(), engine: z.string(), id: z.string(), rate: z.number(), source: z.string() });
 
 /**
  * What the render ran on, because worker count and host are still part of a render's identity. Strict, and with no
@@ -41,6 +46,10 @@ export const RenderManifestSchema = z.strictObject({
   qa: z.strictObject({ heldErrors: z.literal(0), gateProfile: Sha }).optional(),
   host: RenderHostSchema,
   shas: z.strictObject({ timeline: Sha, page: Sha, mix: Sha, mp4: Sha, vtt: Sha, words: Sha.optional() }),
+  /** The render stage's sidecars: chapters over the video, the tts voice, and each stage's StepUsage up to render's own. */
+  chapters: z.array(ChapterSchema).optional(),
+  voice: VoiceBlockSchema.optional(),
+  steps: z.array(StepUsageRowSchema).optional(),
 }).refine((m) => (m.qa !== undefined) === (m.qaGate === "passed"), { message: "qa is recorded exactly when qaGate is passed" });
 export type RenderManifest = z.infer<typeof RenderManifestSchema>;
 

@@ -5,7 +5,7 @@ import { stepClock } from "../workflows/deadline.js";
 import { DISPATCH_STEPS } from "./manifest.js";
 import type { BuildSurfacePorts, CommandRun } from "./ports.js";
 import { GateEvidenceSchema, ImplementerReportSchema, ReviewReportSchema, type GateRun, type LandState, type Validation } from "./schemas.js";
-import { parseBuildSpec } from "./spec.js";
+import { parseBuildSpec, type BuildSpec } from "./spec.js";
 import type * as I from "./step-inputs.js";
 
 const tail = (text: string): string => text.trim().split("\n").slice(-5).join(" | ").slice(0, 500);
@@ -32,10 +32,16 @@ function bsRoute<I>(match: string, ports: Pick<BuildSurfacePorts, "now">, fn: (i
   return { ...route, onRestart, ...(parked && { reconcile: async () => ({ kind: "unknown" as const, evidence: parked }) }) };
 }
 
+/** Agents are spawned and PRs registered under these keys, so each is canonical before the first slice starts. */
+async function canonicalTasks(ports: BuildSurfacePorts, spec: BuildSpec): Promise<BuildSpec> {
+  const slices = await Promise.all(spec.slices.map(async (slice) => (slice.task === undefined ? slice : { ...slice, task: await ports.taskKey(slice.task) })));
+  return { ...spec, task: await ports.taskKey(spec.task), slices };
+}
+
 async function plan(ports: BuildSurfacePorts, input: I.PlanInput) {
   const spec = parseBuildSpec(await ports.readText(input.specPath));
   if (spec.repo.toLowerCase() !== input.repo.toLowerCase()) throw new Error(`build spec is for ${spec.repo}, not ${input.repo}`);
-  return { spec };
+  return { spec: await canonicalTasks(ports, spec) };
 }
 
 async function command(ports: BuildSurfacePorts, input: I.CommandInput, signal: AbortSignal) {

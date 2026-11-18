@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a changed own diff counts as unchanged",
+      "file": "products/factory/src/shepherd/review-stats-report.ts",
+      "find": "const labelled = rows.filter((row) => row.unchanged_since_verdict?.startsWith(\"after-\"));",
+      "replace": "const labelled = rows.filter((row) => row.unchanged_since_verdict !== null);",
+      "kills": [
+        "reviewReport per-PR rows list passes, usd and unchanged passes"
+      ]
+    },
+    {
+      "name": "a round with no verdict counts as a pass",
+      "file": "products/factory/src/shepherd/review-stats-report.ts",
+      "find": "COUNT(CASE WHEN r.verdict IN ('MERGE', 'FIX_FIRST') THEN 1 END) AS passes",
+      "replace": "COUNT(*) AS passes",
+      "kills": [
+        "reviewReport per-PR rows list passes, usd and unchanged passes"
+      ]
+    }
+  ]
+}

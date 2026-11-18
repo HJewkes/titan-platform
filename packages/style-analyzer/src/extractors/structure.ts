@@ -1,5 +1,6 @@
 import { builtinModules } from "node:module";
 import type { Node } from "web-tree-sitter";
+import { TS_FUNCTION_DECLARATION } from "@titan-design/code-parser/node-kinds";
 import type { StyleExtractor, ParsedFile, Observation } from "./types.js";
 import { PYTHON_STDLIB_MODULES } from "./python-stdlib.js";
 
@@ -27,7 +28,7 @@ function classifyImportSource(source: string, language: string): string {
 }
 
 const EXPORT_DECLARATION_TYPES = [
-  "function_declaration",
+  TS_FUNCTION_DECLARATION,
   "class_declaration",
   "lexical_declaration",
   "interface_declaration",

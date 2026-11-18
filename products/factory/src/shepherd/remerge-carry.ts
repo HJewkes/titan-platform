@@ -1,10 +1,13 @@
 import type { CarryFact } from "@titan-design/authority";
 import { compileGlobs } from "@titan-design/fix-proof";
+import type { GitHubPort } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
+import { readBaseRequiredChecks } from "../required-checks.js";
 import { codeRoute, step } from "../workflows/land.js";
 import { HEAD } from "./await-verdict.js";
 import { changedPathsBetween } from "./changed-paths.js";
+import generatedFreshnessJson from "./generated-freshness.json" with { type: "json" };
 import generatedPathsJson from "./generated-paths.json" with { type: "json" };
 import { isRepoKey } from "./seats.js";
 import {
@@ -38,8 +41,38 @@ export function generatedPathsFor(repo: string): string[] {
   return [...(GENERATED_PATHS[repo.toLowerCase()] ?? [])];
 }
 
+/**
+ * Per repo, lowercased, the required check context whose job content-diffs the generated files (capabilities:check, docs:build).
+ * A generated-only merge carries only while the base requires it; a repo naming none never carries one.
+ */
+const FRESHNESS_CONTEXTS: Readonly<Record<string, string>> = generatedFreshnessJson;
+
+export function freshnessContextFor(repo: string): string | undefined {
+  return FRESHNESS_CONTEXTS[repo.toLowerCase()];
+}
+
+/** The base's required contexts, or undefined when they cannot be read. */
+export type RequiredContextsReader = (repo: string, baseRef: string) => Promise<readonly string[] | undefined>;
+
+/** Reads rulesets, then classic protection; a failed or malformed read is undefined, never an empty list. */
+export function requiredContextsOf(port: GitHubPort): RequiredContextsReader {
+  return async (repo, baseRef) => {
+    const read = await readBaseRequiredChecks(port, repo, baseRef);
+    return read.readable ? read.checks.contexts : undefined;
+  };
+}
+
+type RemergeOptions = CarryOptions & { requiredContexts?: RequiredContextsReader };
+
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
-const RemergeInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, fromHead: Sha, head: Sha, generated: z.array(z.string().min(1)) });
+const RemergeInputSchema = z.object({
+  repo: z.string().refine(isRepoKey, "must be owner/repo"),
+  baseRef: BranchName,
+  fromHead: Sha,
+  head: Sha,
+  generated: z.array(z.string().min(1)),
+  freshnessContext: z.string().min(1).optional(),
+});
 type RemergeInput = z.infer<typeof RemergeInputSchema>;
 
 const RemergeResultSchema = z.object({
@@ -84,6 +117,19 @@ function classify(touched: string[], generated: readonly string[], facts: Remerg
   return { carries: false, ...facts, paths: touched, generatedPaths: matched, reason: `the merge changed ${touched.length - matched.length} path(s) outside the declared generated files` };
 }
 
+/** A generated-only answer stands only while the base requires the check that content-diffs those files; otherwise it re-gates. */
+async function requireFreshness(result: RemergeResult, input: RemergeInput, options: RemergeOptions): Promise<RemergeResult> {
+  if (result.rule !== "remerge-generated-only") return result;
+  const { base, headTree, remergeTree, paths, generatedPaths } = result;
+  const refuse = (reason: string): RemergeResult => ({ carries: false, base, headTree, remergeTree, paths, generatedPaths, reason });
+  const context = input.freshnessContext;
+  if (context === undefined) return refuse(`${input.repo} declares no freshness context for its generated files`);
+  const required = await options.requiredContexts?.(input.repo, input.baseRef);
+  if (required === undefined) return refuse(`the required checks of ${input.repo}@${input.baseRef} cannot be read, so ${context} is not known to be required`);
+  if (!required.includes(context)) return refuse(`${context} is not a required check of ${input.repo}@${input.baseRef}, so nothing content-diffs the generated files`);
+  return result;
+}
+
 async function probe(cache: CacheHandle, input: RemergeInput, signal?: AbortSignal): Promise<RemergeResult> {
   const { git, dir, url } = cache;
   await ensureCache(cache, signal);
@@ -101,26 +147,32 @@ async function probe(cache: CacheHandle, input: RemergeInput, signal?: AbortSign
  * Does `head` carry what was decided at `fromHead`: is it `fromHead` plus one merge of the base whose remerge-diff is empty or
  * touches only declared generated files? Every failure, from bad input to a refused fetch, answers no with a reason.
  */
-export async function remerge(raw: unknown, options: CarryOptions): Promise<RemergeResult> {
+export async function remerge(raw: unknown, options: RemergeOptions): Promise<RemergeResult> {
   const parsed = RemergeInputSchema.safeParse(raw);
   if (!parsed.success) return { carries: false, reason: `invalid remerge input: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}` };
   const input = parsed.data;
   try {
     const cache = cacheFor(input.repo, options);
-    return await serialized(cache.dir, () => probe(cache, input, options.signal));
+    const probed = await serialized(cache.dir, () => probe(cache, input, options.signal));
+    return await requireFreshness(probed, input, options);
   } catch (error) {
     options.signal?.throwIfAborted();
     return { carries: false, reason: reasonOf(error) };
   }
 }
 
-export function remergeRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {
+export function remergeRoute(now: () => number, options: Omit<RemergeOptions, "signal">): StepRoute {
   return codeRoute(REMERGE_STEP, now, (input: unknown, signal) => remerge(input, { ...options, signal }));
 }
 
+const freshnessInput = (repo: string): { freshnessContext?: string } => {
+  const freshnessContext = freshnessContextFor(repo);
+  return freshnessContext === undefined ? {} : { freshnessContext };
+};
+
 /** The durable probe for one head; a replay reuses the recorded answer, so the ledger shows which paths the merge touched. */
-export async function remergeStep(ctx: WorkflowContext, input: Omit<RemergeInput, "generated">): Promise<RemergeResult> {
-  return step(ctx, `${REMERGE_STEP}:${input.head}`, { ...input, generated: generatedPathsFor(input.repo) }, RemergeResultSchema);
+export async function remergeStep(ctx: WorkflowContext, input: Omit<RemergeInput, "generated" | "freshnessContext">): Promise<RemergeResult> {
+  return step(ctx, `${REMERGE_STEP}:${input.head}`, { ...input, generated: generatedPathsFor(input.repo), ...freshnessInput(input.repo) }, RemergeResultSchema);
 }
 
 /** The authority fact for a remerge carry; only a carrying answer becomes one. */

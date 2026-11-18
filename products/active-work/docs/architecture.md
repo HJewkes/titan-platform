@@ -58,6 +58,29 @@ Schema shapes live under `src/schemas/`:
 | `artifacts.ts` | `ArtifactsSchema` — `{ branches, stashes }` (PR state is derived live via `gh` from `artifact.status`) |
 | `state.ts` | `.schema-version` reader |
 
+### The `autonomy` block
+
+`brief.md` frontmatter may carry an optional `autonomy` block (`AutonomySchema` in `src/schemas/brief.ts`). It opts the initiative in to unattended dispatch by agent-chat's `burndown` tick. Absence means no opt-in; to opt out, remove the block.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `mode` | literal `burndown` | yes | Only `burndown` is accepted. Any other value fails validation with `autonomy.mode must be "burndown"; remove the autonomy block to opt out`. |
+| `lanes` | positive integer | no | Parallel dispatch lanes. |
+| `accounts` | array of profile names | no | Claude account profiles to dispatch under. Each is a bare directory name (letters, digits, `.`, `-`, `_`; not `.` or `..`), the same rule as `profile`. |
+| `grants` | array of enum | no | Actions the brief unlocks: `merge-on-green-approve`, `task-close-on-merged-pr`, `release-through-ci`. Any other entry fails validation. |
+| `repo` | non-empty string | no | Repository the tick works against. |
+
+The block is strict: an unknown key, a misspelled grant or a wrong type fails validation instead of silently granting nothing. The schema leaves defaults unset (the tick applies them), so a rewrite never adds keys.
+
+```yaml
+autonomy:
+  mode: burndown
+  lanes: 2
+  accounts: [acct-a, acct-b]
+  grants: [merge-on-green-approve, task-close-on-merged-pr]
+  repo: acme/widgets
+```
+
 Conditional refinements ride along with the base schema: `state: 'focused'` requires a `rank`; `state: 'paused'` requires both `paused_since` and `restart_trigger`. The validating writers in `src/utils/gray-matter-io.ts` and `src/utils/yaml-io.ts` reject any write that fails these rules, so the on-disk tree is always coherent.
 
 ## Concurrency

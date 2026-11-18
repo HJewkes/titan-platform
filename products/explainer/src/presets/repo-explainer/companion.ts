@@ -57,7 +57,7 @@ export const ChapterLinksSchema = z.object({
 export type ChapterLinks = z.infer<typeof ChapterLinksSchema>;
 
 /** The `companion-link` beat's slots: the card names the section it opens and links straight to it. */
-export interface CompanionLinkSlots {
+interface CompanionLinkSlots {
   title: string;
   section: string;
   href: string;

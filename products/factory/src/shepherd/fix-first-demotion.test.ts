@@ -47,7 +47,7 @@ const said = (who: ReviewerAgent, text: string): ReviewerMessage => ({
   locator: locatorOf(who.sessionId),
 });
 
-const block = (verdict: string, head: string) => `Probes: an empty list -> refused\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
+const block = (verdict: string, head: string) => `Probes: an empty list -> refused\nAuthority: unchanged\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
 const fixFirstText = (head: string) => `1. A quoted \`git\` word still slips past the deny rule.\n\nDefect class: unnormalised command words.\n\n${block("FIX_FIRST", head)}`;
 
 /** What each reviewer says: the convergence reviewer as the scene picks, the adversary MERGE, and correctness FIX_FIRST at `fixFirstAt`. */

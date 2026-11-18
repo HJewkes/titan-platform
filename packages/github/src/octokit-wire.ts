@@ -2,7 +2,7 @@ import { rateBudget } from "./budget.js";
 import { redactedError, wireOver } from "./gh-cli.js";
 import { octokitClient, sharedOctokit, type GitHubClient, type OctokitClientOptions } from "./octokit-client.js";
 import { octokitRest } from "./octokit-rest.js";
-import type { GitHubWire } from "./port.js";
+import type { GitHubWire } from "./port-types.js";
 import type { Rest } from "./rest.js";
 
 export interface OctokitWireOptions {

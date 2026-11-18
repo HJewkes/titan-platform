@@ -12,13 +12,13 @@ import { agentChatRoster } from "./roster.js";
 import type { Registration, ShepherdStoreRef } from "./store.js";
 import type { ExitNoticePorts, RosterReader } from "./ports.js";
 
-export const PARK_STEP = "sh-park";
+const PARK_STEP = "sh-park";
 export const PARK_STEPS: readonly StepDeclaration[] = [{ id: PARK_STEP, kind: "dispatch" }];
 
 /** Parks the named agent's worktree and keeps its branch; throws when the broker refuses or cannot be reached. */
 export type ParkPort = (name: string) => Promise<{ lines: string[] }>;
 
-export type ParkOutcome =
+type ParkOutcome =
   | { kind: "parked"; agent: string; lines: string[]; alreadyGone?: true }
   | { kind: "not-parked"; agent: string; reason: string; brokerDown: boolean; retry?: "at-exit"; notice?: string }
   | { kind: "skipped"; reason: string };

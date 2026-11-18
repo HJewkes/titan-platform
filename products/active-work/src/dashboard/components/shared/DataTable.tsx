@@ -17,7 +17,7 @@ export interface DataTableColumn {
   flex?: number;
 }
 
-export interface DataTableProps<T> {
+interface DataTableProps<T> {
   columns: DataTableColumn[];
   data: T[];
   renderCell: (item: T, columnKey: string) => React.ReactNode;
@@ -44,43 +44,50 @@ export function DataTable<T>({
   return (
     <View>
       {data.map((item) => {
-        const highlighted = highlightRow?.(item) ?? false;
-        const cells = columns.map((col) => (
-          <View
-            key={col.key}
-            style={{
-              justifyContent: 'center',
-              alignItems: col.align === 'right' ? 'flex-end' : undefined,
-              ...(col.width != null ? { width: col.width } : { flex: col.flex ?? 1 }),
-            }}
-          >
-            {renderCell(item, col.key)}
-          </View>
-        ));
+        const cells = renderCells(columns, item, renderCell);
 
         if (renderRow) {
           return <React.Fragment key={getKey(item)}>{renderRow(item, cells)}</React.Fragment>;
         }
 
         return (
-          <View
-            key={getKey(item)}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 12,
-              paddingVertical: 10,
-              borderBottomWidth: 1,
-              borderBottomColor: palette.border,
-              ...(highlighted
-                ? { backgroundColor: 'rgba(255,121,0,0.06)', borderRadius: 6, paddingHorizontal: 6 }
-                : {}),
-            }}
-          >
+          <View key={getKey(item)} style={rowStyle(highlightRow?.(item) ?? false)}>
             {cells}
           </View>
         );
       })}
     </View>
   );
+}
+
+function renderCells<T>(
+  columns: DataTableColumn[],
+  item: T,
+  renderCell: (item: T, columnKey: string) => React.ReactNode,
+): React.ReactNode[] {
+  return columns.map((col) => (
+    <View key={col.key} style={cellStyle(col)}>
+      {renderCell(item, col.key)}
+    </View>
+  ));
+}
+
+function cellStyle(col: DataTableColumn) {
+  return {
+    justifyContent: 'center',
+    alignItems: col.align === 'right' ? 'flex-end' : undefined,
+    ...(col.width != null ? { width: col.width } : { flex: col.flex ?? 1 }),
+  } as const;
+}
+
+function rowStyle(highlighted: boolean) {
+  return {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: palette.border,
+    ...(highlighted ? { backgroundColor: 'rgba(255,121,0,0.06)', borderRadius: 6, paddingHorizontal: 6 } : {}),
+  } as const;
 }

@@ -43,6 +43,9 @@ export interface PaceBeat {
 // wait is an action: it animates elapsed time in a recipe (a CI pause), like run and replay.
 // edit is an action: it rewrites a line of code already shown, as insert adds one, naming no new item.
 // step-markers is an attribute: it marks the memo state of recipe steps already on screen, like stamp on a row.
+// cmd is an item: a typed terminal command names a new thing for the viewer to read and hold.
+// out is an attribute: it prints the output lines of a command already on screen, naming nothing new.
+// event is an item: a dated timeline event names a new moment for the viewer to place.
 export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   job: "item",
   inv: "item",
@@ -67,6 +70,8 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   bar: "item",
   gauge: "item",
   edge: "item",
+  cmd: "item",
+  event: "item",
   detail: "attribute",
   left: "attribute",
   right: "attribute",
@@ -74,6 +79,7 @@ export const CUE_KIND_ROLES: Readonly<Record<string, PaceRole>> = {
   line: "attribute",
   orphan: "attribute",
   "step-markers": "attribute",
+  out: "attribute",
   run: "action",
   crash: "action",
   bump: "action",

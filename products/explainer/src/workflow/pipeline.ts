@@ -10,7 +10,7 @@ import { COMPANION_FILE } from "../presets/repo-explainer/companion.js";
 import type { ArtifactStore } from "./artifacts.js";
 import type { StylePack } from "../style-pack-schema.js";
 import type { BridgeFile } from "./bridge.js";
-import { isCachedStage, NO_USAGE, STAGES, StageRecordSchema, type StageOutcome, type StageRecord, type Stop } from "./records.js";
+import { isCachedStage, NO_USAGE, STAGES, StageRecordSchema, stepUsageRow, StepUsageRowSchema, type StageOutcome, type StageRecord, type StepUsageRow, type Stop } from "./records.js";
 import { runPaths, writeJson } from "./run-dir.js";
 import { ChildStageFailure, runStageCached, type CacheDeps } from "./stage-cache.js";
 import { stageSpec, VariantSchema, type VideoRef } from "./stage-spec.js";
@@ -19,7 +19,7 @@ import { GatherRequestSchema } from "./run-gather.js";
 
 export const VIDEO_WORKFLOW = "explainer-video";
 /** Bumped whenever the stage list or a stage's inputs change, so a run never replays under another shape. */
-export const VIDEO_WORKFLOW_VERSION = "tp4018";
+export const VIDEO_WORKFLOW_VERSION = "tp2997";
 
 /** Everything a run needs, stored as its one param, so a resumed run rebuilds the same routes. */
 export const RunPlanSchema = z.object({
@@ -57,6 +57,8 @@ const StageInputSchema = z.object({
   artifacts: z.record(z.string(), z.string()),
   remainingUsd: z.number(),
   reuse: StageRecordSchema.optional(),
+  /** The StepUsage rows of the stages before this one; only render's input carries them. */
+  steps: z.array(StepUsageRowSchema).optional(),
 });
 type StageInput = z.infer<typeof StageInputSchema>;
 
@@ -73,6 +75,7 @@ export function videoWorkflow(plan: RunPlan, dataDir: string): WorkflowFn {
   return async (ctx) => {
     let artifacts = plan.artifacts;
     let spent = 0;
+    const steps: StepUsageRow[] = [];
     const first = STAGES.indexOf(plan.from);
     const last = STAGES.indexOf(plan.to);
     for (const [i, stage] of STAGES.entries()) {
@@ -83,9 +86,10 @@ export function videoWorkflow(plan: RunPlan, dataDir: string): WorkflowFn {
         writeJson(runPaths(dataDir, ctx.runId).stop, stop);
         throw new SpendCapStop(stop);
       }
-      const input: StageInput = { stage, artifacts, remainingUsd: plan.budgetUsd - spent, ...(reuse ? { reuse } : {}) };
+      const input: StageInput = { stage, artifacts, remainingUsd: plan.budgetUsd - spent, ...(reuse ? { reuse } : {}), ...(stage === "render" ? { steps: [...steps] } : {}) };
       const record = await codeStep(ctx, `stage:${stage}`, input, StageRecordSchema);
       spent += record.usage.usd;
+      steps.push(stepUsageRow(record));
       // A reused stage's outputs are already in the plan's artifacts, under any pin that replaces them.
       if (!reuse) artifacts = { ...artifacts, ...record.outputs };
     }
@@ -170,7 +174,7 @@ async function runStage(input: StageInput, deps: StageDeps, now: () => Date, run
   const variant = variantSha ? { sha: variantSha, value: VariantSchema.parse(JSON.parse(deps.store.readText(variantSha))) } : undefined;
   const spec = stageSpec({
     stage, artifacts: input.artifacts, settings: { ...deps.plan, ...(deps.video ? { video: () => deps.video!(runId) } : {}) }, sample: deps.plan.samples[stage] ?? 0,
-    remainingUsd: input.remainingUsd, bridge: deps.bridge, ...(variant ? { variant } : {}), ...(deps.stylePacks ? { stylePacks: deps.stylePacks } : {}),
+    remainingUsd: input.remainingUsd, bridge: deps.bridge, ...(input.steps ? { steps: input.steps } : {}), ...(variant ? { variant } : {}), ...(deps.stylePacks ? { stylePacks: deps.stylePacks } : {}),
     ...(deps.builder ? { builder: deps.builder } : {}),
   });
   return runStageCached(deps.cache, spec);

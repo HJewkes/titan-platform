@@ -99,7 +99,13 @@ describe("readMainOnlyContexts", () => {
   it("reads the main-only contexts listed for the branch", async () => {
     const fake = worldWith(policy({ main: { contexts: ["validate"], mainContexts: ["test-shard (1)", "test-shard (2)"] } }));
 
-    expect(await readMainOnly(fake)).toEqual({ readable: true, contexts: ["test-shard (1)", "test-shard (2)"] });
+    expect(await readMainOnly(fake)).toEqual({ readable: true, contexts: ["test-shard (1)", "test-shard (2)"], prOnly: [] });
+  });
+
+  it("reads the PR-only contexts listed for the branch (TP-5485)", async () => {
+    const fake = worldWith(policy({ main: { contexts: ["validate", "fix-proof-mutants"], prContexts: ["fix-proof-mutants"] } }));
+
+    expect(await readMainOnly(fake)).toEqual({ readable: true, contexts: [], prOnly: ["fix-proof-mutants"] });
   });
 
   it.each([
@@ -107,12 +113,13 @@ describe("readMainOnlyContexts", () => {
     ["a branch the file does not list", policy({ develop: { contexts: ["validate"], mainContexts: ["x"] } })],
     ["a branch with no main-only contexts", policy({ main: { contexts: ["validate"] } })],
   ])("names none for %s", async (_name, content) => {
-    expect(await readMainOnly(worldWith(content))).toEqual({ readable: true, contexts: [] });
+    expect(await readMainOnly(worldWith(content))).toEqual({ readable: true, contexts: [], prOnly: [] });
   });
 
   it.each([
     ["malformed JSON", "{not json"],
     ["a blank main-only context", policy({ main: { contexts: ["validate"], mainContexts: [" "] } })],
+    ["a blank PR-only context", policy({ main: { contexts: ["validate"], prContexts: [" "] } })],
   ])("reads unreadable for %s", async (_name, content) => {
     expect((await readMainOnly(worldWith(content))).readable).toBe(false);
   });

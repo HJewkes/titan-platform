@@ -8,7 +8,7 @@
  * happen to overlap.
  */
 
-export type ToolType = 'Bash' | 'Read' | 'Edit' | 'generic';
+type ToolType = 'Bash' | 'Read' | 'Edit' | 'generic';
 
 const KNOWN_TOOL_TYPES: Record<string, ToolType> = {
   Bash: 'Bash',

@@ -1,4 +1,5 @@
 import { ITEM_KINDS, type ItemKind } from "@titan-design/matrix-bus";
+import { waitFor } from "./supervise.js";
 import type { CloseOutcome, QueueItem, QueueSource, ResolveResult, SourceEvent, VerdictInput } from "./types.js";
 
 /** An in-memory QueueSource for tests; cursors are the 1-based position in its event log. */
@@ -43,7 +44,7 @@ export class MemoryQueueSource implements QueueSource {
         next += 1;
         yield event;
       }
-      await this.nextAppend(signal);
+      await waitFor(this.waiters, signal);
     }
   }
 
@@ -54,18 +55,5 @@ export class MemoryQueueSource implements QueueSource {
   private append(event: SourceEvent): void {
     this.log.push(event);
     for (const wake of [...this.waiters]) wake();
-  }
-
-  private nextAppend(signal: AbortSignal): Promise<void> {
-    return new Promise((resolve) => {
-      if (signal.aborted) return resolve();
-      const done = () => {
-        this.waiters.delete(done);
-        signal.removeEventListener("abort", done);
-        resolve();
-      };
-      this.waiters.add(done);
-      signal.addEventListener("abort", done);
-    });
   }
 }

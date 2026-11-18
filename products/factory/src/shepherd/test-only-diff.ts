@@ -1,4 +1,4 @@
-import { CONFIG_PATH, planFixProof, SPEC_SUFFIX, testOnlyReading, type TestOnlyReading } from "@titan-design/fix-proof";
+import { compileGlobs, CONFIG_PATH, planFixProof, SPEC_SUFFIX, testOnlyReading, type TestOnlyReading } from "@titan-design/fix-proof";
 import { PR_FILES_CAP, type GitHubPort, type PrFile, type RepoSlug } from "@titan-design/github";
 import { failureOf } from "./error-class.js";
 
@@ -214,6 +214,24 @@ export async function testOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number 
 export async function sourceFreeDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, head: string): Promise<boolean> {
   const planned = await planDiff(port, repo, pr, head);
   if (planned.kind === "unread" || planned.diff.kind === "source" || planned.diff.kind === "unread") return false;
+  return (await unreadBlob(port, repo, planned.files, planned.refs)) === undefined;
+}
+
+/**
+ * The paths a code-free diff may touch: an allowlist, never "not matched by some source glob", since code lives in far more places
+ * (`scripts/*.mjs`, server routes, configs) than any one source list names, and a path missed there would skip its proof.
+ */
+const isNonCode = compileGlobs(["**/*.md"]);
+const nonCodeFile = (file: PrFile): boolean => isNonCode(file.path) && (file.previousPath === undefined || isNonCode(file.previousPath));
+
+/**
+ * TP-5399: true when every path the diff at `head` touches, a rename's old path included, is on the non-code allowlist (docs and
+ * changesets), and the fix-proof plan finds no test in it either. It fails closed as `testOnlyDiff` does, blob probes included.
+ */
+export async function codeFreeDiff(port: GitHubPort, repo: RepoSlug, pr: number | null, head: string): Promise<boolean> {
+  const planned = await planDiff(port, repo, pr, head);
+  if (planned.kind === "unread" || planned.diff.kind === "unread" || planned.diff.kind === "test-only") return false;
+  if ((planned.diff.kind === "flagged" && planned.diff.paths.length > 0) || !planned.files.every(nonCodeFile)) return false;
   return (await unreadBlob(port, repo, planned.files, planned.refs)) === undefined;
 }
 

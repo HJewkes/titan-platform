@@ -152,13 +152,20 @@ describe("template fill: verdict-card and issue-pin beats", () => {
     expect(found.hints.qaLeadLine).toBe(true);
   });
 
-  it("falls back to a list when a verdict has no call and no chip", () => {
+  it("draws the opening verdict as the heading over its reasons when it has no call and no chip", () => {
     // Arrange / Act
-    const found = fillSolo({ beat: "verdict-card", labels: ["Lanes hold", "Scans clear in minutes"] });
+    const found = fillSolo({ beat: "verdict-card", labels: ["Lanes hold", "Scans clear in minutes", "Two decisions settled"] });
 
     // Assert
-    expect(found.fallback).toEqual({ from: "verdict-card", reason: expect.stringContaining("no call") });
-    expect(found.spec).toBe("list");
+    expect(found.fallback).toBeUndefined();
+    expect(found.spec).toBe("verdict-card");
+    expect(found.slots).toEqual({
+      verdict: "Lanes hold",
+      reasons: [
+        { id: "reasons-1", text: "Scans clear in minutes" },
+        { id: "reasons-2", text: "Two decisions settled" },
+      ],
+    });
   });
 
   it("titles pinned issues by their node labels and lands each pin on its own cue", () => {

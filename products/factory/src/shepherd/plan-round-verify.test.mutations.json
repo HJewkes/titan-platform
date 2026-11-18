@@ -12,9 +12,9 @@
     },
     {
       "name": "a rename's source is left out of the changed set",
-      "file": "products/factory/src/shepherd/plan-round-verify.ts",
-      "find": "paths.push(...tokens.slice(i + 1, i + 1 + width));",
-      "replace": "paths.push(...tokens.slice(i + width, i + 1 + width));",
+      "file": "products/factory/src/cli-shepherd-plan-round.ts",
+      "find": "[entry.previousPath, entry.path]",
+      "replace": "[entry.path]",
       "kills": [
         "verifying a head against its plan fails a changed path the plan does not list, a rename's source included"
       ]

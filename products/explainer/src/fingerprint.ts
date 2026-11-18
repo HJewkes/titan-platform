@@ -53,7 +53,7 @@ export interface FingerprintInput {
   terms?: readonly string[];
 }
 
-export interface LayoutParts {
+interface LayoutParts {
   component: string;
   slots: number;
   anchors: readonly string[];
@@ -74,7 +74,7 @@ function slotCount(beat: ScriptBeat, slots: FingerprintInput["slots"]): number {
 /** The resolver's anchors win: it fills a framing's default where the script named none. */
 const anchorsOf = (beat: ScriptBeat, resolved: ResolvedBeat | undefined): string[] => expandAnchors(resolved?.anchors ?? beat.visual.anchors ?? []);
 
-export function beatPrint(beat: ScriptBeat, resolved: ResolvedBeat | undefined, slots: FingerprintInput["slots"]): BeatPrint & { component: string } {
+function beatPrint(beat: ScriptBeat, resolved: ResolvedBeat | undefined, slots: FingerprintInput["slots"]): BeatPrint & { component: string } {
   const parts = { component: component(beat, resolved), slots: slotCount(beat, slots), anchors: anchorsOf(beat, resolved) };
   const layer = resolved?.layer ?? beat.visual.layer ?? "template";
   return { id: beat.id, component: parts.component, layoutKey: layoutKey(parts), layer, framing: resolved?.framing ?? beat.visual.framing ?? null, pixel: null };

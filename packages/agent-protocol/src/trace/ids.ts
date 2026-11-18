@@ -1,11 +1,12 @@
 import { conversationItemRef, conversationRef } from "../index.js";
 import type { ConversationIdentity, UsageMeasurement } from "../index.js";
+import { component, SHA256_HEX } from "../id-encoding.js";
 
 const COMPONENT = "[^:\\s]+";
 const REPO = "[^/\\s#@:]+/[^/\\s#@:]+";
 const SHA40 = "[0-9a-f]{40}";
 
-export const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+export const SHA256_PATTERN = SHA256_HEX;
 export const REPO_PATTERN = new RegExp(`^${REPO}$`);
 export const COMMIT_SHA_PATTERN = new RegExp(`^${SHA40}$`);
 
@@ -39,9 +40,4 @@ export function costId(conversation: ConversationIdentity, measurement: UsageMea
   if (measurement.kind === "delta") return `cost:${conversationItemRef(conversation, "response", measurement.responseId)}`;
   const scope = [measurement.scope, measurement.scopeId, measurement.epoch].map(component).join(":");
   return `cost:${conversationRef(conversation)}:${scope}`;
-}
-
-function component(value: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) throw new TypeError("id components must be nonempty strings");
-  return encodeURIComponent(value);
 }

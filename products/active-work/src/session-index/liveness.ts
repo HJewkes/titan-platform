@@ -25,21 +25,21 @@ import { RELATIONS, toAbsolutePath } from '@titan-design/session-read';
 
 type Db = Database.Database;
 
-export interface ColumnLiveness {
+interface ColumnLiveness {
   table: string;
   column: string;
   rows: number;
   nonNull: number;
 }
 
-export interface RelationLiveness {
+interface RelationLiveness {
   relation: string;
   count: number;
   /** False for a relation observed in the data but absent from `RELATIONS`. */
   declared: boolean;
 }
 
-export interface RefNamespaceLiveness {
+interface RefNamespaceLiveness {
   /** The `<prefix>:` of an edge endpoint, e.g. `session`. */
   namespace: string;
   edges: number;
@@ -47,7 +47,7 @@ export interface RefNamespaceLiveness {
   dangling: number | null;
 }
 
-export interface LivenessReport {
+interface LivenessReport {
   /** Columns nothing writes and nothing explains — the headline finding. */
   emptyColumns: ColumnLiveness[];
   /** Empty, but declared so in `EXPECTED_EMPTY`; reported, not flagged. */
@@ -72,7 +72,7 @@ const SKIP_TABLES = /^(sqlite_|_migration$|search_fts|workspace_fts)/;
  * here is a claim that emptiness is correct — so it carries its justification,
  * and `miner liveness` still prints it, just under a heading that says so.
  */
-export const EXPECTED_EMPTY: Record<string, string> = {
+const EXPECTED_EMPTY: Record<string, string> = {
   'edge.t_invalid':
     'NULL means current; the index is rebuilt from scratch, so no edge is ever superseded in place',
   'edge.t_expired':
@@ -102,7 +102,7 @@ interface RefTarget {
  * transcripts witnessed and what the store says. Resolving against one table
  * would report every endpoint the other side wrote as dangling.
  */
-const REF_TABLES: Record<string, RefTarget[]> = {
+const REF_TABLES: Record<string, RefTarget[] | undefined> = {
   // `session` is the odd one out: `session` stores the bare id, every other
   // entity table stores the prefixed ref. Comparing without allowing for that
   // reports every session endpoint as dangling — a false alarm, which in a
@@ -151,13 +151,13 @@ function scanTable(db: Db, table: string): ColumnLiveness[] {
   if (columns.length === 0) return [];
   const selects = columns.map((column, index) => `COUNT("${column}") AS c${index}`).join(', ');
   const row = db
-    .prepare<[], Record<string, number>>(`SELECT COUNT(*) AS total, ${selects} FROM "${table}"`)
+    .prepare<[], Record<string, number | undefined>>(`SELECT COUNT(*) AS total, ${selects} FROM "${table}"`)
     .get();
   if (!row) return [];
   return columns.map((column, index) => ({
     table,
     column,
-    rows: row.total,
+    rows: row.total ?? 0,
     nonNull: row[`c${index}`] ?? 0,
   }));
 }

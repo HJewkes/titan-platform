@@ -1,7 +1,6 @@
 export {
   runMcpStdio,
   createMcpServer,
-  attachHandlers,
   commandToTool,
   commandNameToToolName,
   toolNameToCommandName,
@@ -9,7 +8,6 @@ export {
   invokeTool,
   mcpOptions,
 } from './mcp.js';
-export type { McpTool } from './mcp.js';
 
 export { runDaemon } from './daemon.js';
 export { buildHttpApp } from './http.js';

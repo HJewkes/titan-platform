@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a path outside the set no longer refuses",
+      "file": "products/factory/src/approved-set.ts",
+      "find": "changed.filter((path) => !named.has(path))",
+      "replace": "[]",
+      "kills": ["setMatch refusals refuses extra-path when the head's diff names a path outside the set"]
+    },
+    {
+      "name": "a set file left out of the diff no longer refuses",
+      "file": "products/factory/src/approved-set.ts",
+      "find": "set.files.filter((file) => !diff.has(file.path)).map((file) => file.path)",
+      "replace": "[]",
+      "kills": ["setMatch refusals refuses unchanged when a set file is left out of the head's diff"]
+    },
+    {
+      "name": "a set file absent at the head no longer refuses",
+      "file": "products/factory/src/approved-set.ts",
+      "find": "set.files.filter((file) => !atHead.has(file.path)).map((file) => file.path)",
+      "replace": "[]",
+      "kills": ["setMatch refusals refuses missing when a set file is absent at the head"]
+    },
+    {
+      "name": "a set file at another blob no longer refuses",
+      "file": "products/factory/src/approved-set.ts",
+      "find": "atHead.has(file.path) && atHead.get(file.path) !== file.blob",
+      "replace": "false",
+      "kills": ["setMatch refusals refuses blob-mismatch when a set file is at a different blob"]
+    }
+  ]
+}

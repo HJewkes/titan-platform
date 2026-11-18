@@ -18,6 +18,7 @@ import { failedGates, runJudgedChecks, runStageChecks, type CheckJudge } from ".
 import { StageSpecSchema, type StageSpec } from "./stage-spec.js";
 import { kokoroEngine } from "./tts-engine.js";
 import { runTtsStage, type TtsEngine } from "./tts-stage.js";
+import type { FfmpegExec } from "../contact-sheet-render.js";
 import { ffmpegMedia, runSheetsStage, type MediaExec } from "./sheets-stage.js";
 import { chromiumQaEngine, type QaEngine } from "../qa/qa-engine.js";
 import { runQaStage } from "../qa/qa-stage.js";
@@ -38,6 +39,8 @@ interface BodyDeps {
   gather?: GatherDeps;
   /** The sheets stage's ffprobe and ffmpeg; the host's own by default. */
   media?: MediaExec;
+  /** The sheets stage's contact-sheet ffmpeg; the host's own by default. */
+  ffmpeg?: FfmpegExec;
   /** The qa stage's browser and ffprobe; real Chromium and the host's ffprobe by default. */
   qaEngine?: QaEngine;
   /** The render stage's page build and capture; the composition page and Chromium by default. */
@@ -77,14 +80,17 @@ async function runBody(spec: StageSpec, input: ModelStageInput, deps: BodyDeps):
   if (stage === "tts") return runTtsBody(config, input, deps);
   if (stage === "sheets") return runSheetsBody(config, input, deps);
   if (stage === "qa") return runQaBody(config, input, deps);
-  return runRenderBody(config, input, deps);
+  return runRenderBody(spec, input, deps);
 }
 
 /** Render runs qa's gate rows after encode on the qa stage's engine, type and timing, so it refuses what qa would fail. */
-function runRenderBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
+function runRenderBody({ config, steps }: StageSpec, input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   if (!config.render) throw new Error("render stage spec has no render settings");
-  const settings = { ...config.render, spillDir: renderSpillDir(deps.dataDir), ...(config.profile ? { profile: config.profile.type } : {}), ...(deps.qaTiming ? { timing: deps.qaTiming } : {}) };
-  return runRenderStage({ ...input, store: deps.store }, settings, deps.renderEngine ?? defaultRenderEngine(), deps.qaEngine ?? chromiumQaEngine(deps.media));
+  const settings = {
+    ...config.render, spillDir: renderSpillDir(deps.dataDir), ...(config.profile ? { profile: config.profile.type } : {}),
+    ...(deps.qaTiming ? { timing: deps.qaTiming } : {}), ...(steps ? { steps } : {}),
+  };
+  return runRenderStage({ ...input, store: deps.store }, settings, deps.renderEngine ?? defaultRenderEngine(), deps.qaEngine ?? chromiumQaEngine(deps.media), deps.now);
 }
 
 function runScriptBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
@@ -107,9 +113,9 @@ function runTtsBody(config: StageSpec["config"], input: ModelStageInput, deps: B
 
 function runSheetsBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {
   if (!config.sheets) throw new Error("sheets stage spec has no sidecar settings");
-  const { take, status, stem } = config.sheets;
-  const settings = { take, status, stem, ...(config.profile ? { profile: config.profile.type } : {}), ...(config.video ? { video: config.video } : {}) };
-  return runSheetsStage({ ...input, store: deps.store }, settings, deps.media ?? ffmpegMedia());
+  const { take, day, status, stem } = config.sheets;
+  const settings = { status, stem, ...(take ? { take } : {}), ...(day ? { day } : {}), ...(config.profile ? { profile: config.profile.type } : {}), ...(config.video ? { video: config.video } : {}) };
+  return runSheetsStage({ ...input, store: deps.store }, settings, deps.media ?? ffmpegMedia(), deps.ffmpeg);
 }
 
 function runQaBody(config: StageSpec["config"], input: ModelStageInput, deps: BodyDeps): Promise<StageOutcome> {

@@ -14,6 +14,7 @@ const BANNED: Record<string, readonly string[]> = {
 };
 
 const ALLOWED: Record<string, string> = {
+  "eligibility/gh-api-read.ts": "gh api GETs, not agent-chat; readPrFiles' Runner is sync, and only the `dispatch shadow-tick` CLI verb reaches it",
   "review/gh-line-source.ts": "gh, not agent-chat; evidence's LineSource is sync, and only the review CLI reads it",
   "shepherd/spawn-gate.ts": "sysctl, not agent-chat; answers in ms",
 };

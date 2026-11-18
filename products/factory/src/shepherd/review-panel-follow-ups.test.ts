@@ -71,7 +71,7 @@ afterEach(() => hosts.splice(0).forEach((host) => host.close()));
 
 const ORIGIN = "http://127.0.0.1:7400";
 const BLOCK = "Follow-ups:\n- Cache the head lookup | A second lookup at one head reads the cache | medium";
-const verdictText = `Probes: removed bound -> test fails\n\n${BLOCK}\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`;
+const verdictText = `Probes: removed bound -> test fails\nAuthority: unchanged\n\n${BLOCK}\n\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${H}\n`;
 
 function reviewers(now: () => number) {
   const agents: ReviewerAgent[] = [];
@@ -97,7 +97,7 @@ async function review() {
   const store = shepherdStoreRef();
   const deps: ShepherdDeps = { gitCache: hostCarryPorts, port: githubPort(fake.wire), store, now: () => clock, sleep: async (ms) => void (clock += ms), pollMs: 1_000, agentChatBin: "agent-chat", reviewCheckouts: { root: "/data/reviews", remove: async () => undefined }, noReproProceed: "on" };
   const { dispatch, reader } = reviewers(() => clock);
-  const followUps = activeWorkFollowUpTasks({ origin: ORIGIN, fetch: aw.fetch });
+  const followUps = { tasks: activeWorkFollowUpTasks({ origin: ORIGIN, fetch: aw.fetch }), digest: { append: async () => undefined } };
   const routes = reviewRoutes(deps, { reader, dispatch, timeoutMs: 5_000, holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, followUps });
   const database = { extraMigrations: [shepherdMigration(4), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), shepherdEventMigration(16), holdSlotsMigration(19), proofWaiverMigration(32)], bind: store.bind };
   const run = async (ctx: Parameters<typeof reviewPhase>[0]) => void (await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha: H }));

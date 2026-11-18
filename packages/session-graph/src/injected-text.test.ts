@@ -58,6 +58,44 @@ describe("stripInjected keeps a human's words that only mention injected markers
   });
 });
 
+describe("stripInjected on malformed tags", () => {
+  it("keeps the human's words around a close tag that never opened", () => {
+    const text = `${HUMAN}\n</system-reminder>\nthen run the tests`;
+
+    expect(stripInjected(text)).toBe(text);
+  });
+
+  it("cuts a whole block and leaves a stray close tag after it alone", () => {
+    const text = `<system-reminder>\nzebra\n</system-reminder>\n</system-reminder>\n${HUMAN}`;
+
+    expect(stripInjected(text)).toBe(`</system-reminder>\n${HUMAN}`);
+  });
+
+  it("keeps everything after an open tag that never closes", () => {
+    const text = `<system-reminder>\nzebra context\n${HUMAN}`;
+
+    expect(stripInjected(text)).toBe(text);
+  });
+
+  it("does not let an unclosed open swallow a later complete block", () => {
+    const text = `<system-reminder>\n${HUMAN}\n<channel source="agent-chat" from="peer" msg_id="m1">\nzebra\n</channel>`;
+
+    expect(stripInjected(text)).toBe(`<system-reminder>\n${HUMAN}`);
+  });
+
+  it("cuts the outer block of interleaved tags and keeps the human text after it", () => {
+    const text = `<system-reminder>\nzebra <channel from="peer">\n</system-reminder>\n${HUMAN}\n</channel>`;
+
+    expect(stripInjected(text)).toBe(`${HUMAN}\n</channel>`);
+  });
+
+  it("keeps interleaved tags whose close shares a line with human words", () => {
+    const text = `<system-reminder>\nzebra <channel from="peer">\n</system-reminder> ${HUMAN}\n</channel>`;
+
+    expect(stripInjected(text)).toBe(text);
+  });
+});
+
 describe("stripInjected empties a turn nobody typed", () => {
   it.each([
     ["an agent-chat orientation brief", '# Orientation: active-work initiative "demo"\n\nInjected automatically by `agent_spawn`. Your coordinator did not write this section.\n\nBuild the zebra.'],

@@ -71,7 +71,7 @@ export async function assertKnownDeliverables(activeRoot: string, ids: string[])
   throw new ValidationError(`Unknown deliverable id: ${unknown.join(', ')}`);
 }
 
-export interface JoinedTasks {
+interface JoinedTasks {
   open: Task[];
   done: Task[];
 }

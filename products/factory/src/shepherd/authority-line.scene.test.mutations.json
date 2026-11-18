@@ -1,0 +1,53 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "adversaryAttest drops the adversary's Authority value",
+      "file": "products/factory/src/shepherd/review-panel-step.ts",
+      "find": "attests: [...(member.attests ?? [])], ...said };",
+      "replace": "attests: [...(member.attests ?? [])] };",
+      "kills": [
+        "under ownerTier on an adversary MERGE reading Authority: unchanged merges on two MERGEs with no owner gate",
+        "under ownerTier on Authority: tightened merges with no owner gate"
+      ]
+    },
+    {
+      "name": "a panel member's result drops its Authority value",
+      "file": "products/factory/src/shepherd/review-panel-step.ts",
+      "find": ", ...(awaited.authority && { authority: awaited.authority }) };",
+      "replace": " };",
+      "kills": [
+        "under ownerTier on an adversary MERGE reading Authority: unchanged merges on two MERGEs with no owner gate",
+        "under ownerTier on Authority: tightened merges with no owner gate"
+      ]
+    },
+    {
+      "name": "the evidence step returns no Authority stamp, so decide time reads none",
+      "file": "products/factory/src/shepherd/merge-facts.ts",
+      "find": "const ownerTier = { ...authority, ...ownerTierStamp(reads.ownerTier, decidable) };",
+      "replace": "const ownerTier = ownerTierStamp(reads.ownerTier, decidable);",
+      "kills": [
+        "under ownerTier on Authority: widened raises approve-merge on owner-tier",
+        "under ownerTier shadow widened merges and its evidence records the would-gate"
+      ]
+    },
+    {
+      "name": "a missing Authority value reads as unchanged",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "attest?.adversary?.authority ?? \"missing\"",
+      "replace": "attest?.adversary?.authority ?? \"unchanged\"",
+      "kills": [
+        "under ownerTier on an adversary hold with no Authority value raises approve-merge on owner-tier"
+      ]
+    },
+    {
+      "name": "every run is read as owing an adversary",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "const required = registration?.unread !== undefined || adversaryRequired(attest, registration?.holdReason);",
+      "replace": "const required = true;",
+      "kills": [
+        "under ownerTier on a PR with no adversary required records no Authority fact and no gate"
+      ]
+    }
+  ]
+}

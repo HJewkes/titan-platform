@@ -26,6 +26,7 @@ export {
 } from "./plan.js";
 export type { ClassRoles, Headroom, PanelPolicy, ShapeRule } from "./plan.js";
 export {
+  CHECK_CANDIDATES_RULE,
   CI_POLICY_RULE,
   CI_REVIEWER_TEST_RULE,
   CONVERGENCE_HEADING,
@@ -78,6 +79,17 @@ export {
   parseFollowUps,
 } from "./follow-ups.js";
 export type { FollowUp, FollowUpsWarning, ParsedFollowUps } from "./follow-ups.js";
+export {
+  CHECK_CANDIDATES_HEADING,
+  CHECK_CANDIDATES_WARNINGS,
+  CHECK_CLASSES,
+  CHECK_ROUTES,
+  MAX_CHECK_CANDIDATES,
+  MAX_CHECK_SKETCH_CHARS,
+  checkCandidatesFields,
+  parseCheckCandidates,
+} from "./check-candidates.js";
+export type { CheckCandidate, CheckCandidatesWarning, CheckClassRoute, CheckRoute, ParsedCheckCandidates } from "./check-candidates.js";
 export { namesPr, namesTarget } from "./verdict-target.js";
 export { aggregate, fixProofNeedsTests } from "./aggregate.js";
 export type { AggregateInput, MemberResult } from "./aggregate.js";
@@ -87,7 +99,7 @@ export { noReproProceedOf } from "./briefs/tests.js";
 export type { FixProofUnverified, NoReproProceed, WorkflowCiInput, WorkflowCiProof } from "./briefs/tests.js";
 export { CLASS_TAG, IMPORTANT_TAG, MAX_SCOPE_PATHS, usableScope } from "./briefs/scoped-rereview.js";
 export type { ReviewScope, ScopeHunk } from "./briefs/scoped-rereview.js";
-export { PROBES_HEADING, hasProbesLine } from "./briefs/adversary.js";
+export { AUTHORITY_HEADING, PROBES_HEADING, authorityLine, hasProbesLine, type AuthorityLine } from "./briefs/adversary.js";
 export { ATTESTS_HEADING, MAX_ATTEST_CLAIMS, MAX_CLAIM_FILES, attestRule, attestTokens, type AttestClaim } from "./briefs/attest.js";
 export type { AdversaryHoldContext } from "./briefs/adversary.js";
 export { SPAWN_REFUSED_REASON, memberName, reviewPullRequest } from "./review-pull-request.js";

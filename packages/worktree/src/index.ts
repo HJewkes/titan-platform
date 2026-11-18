@@ -15,6 +15,7 @@ export {
   withPinnedGitProtocols,
   findGitRoot,
   gitChildEnv,
+  gitRunnerWithDeadline,
   observedPresence,
   runGit,
   type GitPresence,

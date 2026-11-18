@@ -69,10 +69,11 @@ sudo. It leaves a link that points at another checkout alone unless you add `--f
 (`products/factory/src/config.ts`). The database holds runs, gates and Shepherd
 registrations. Nothing else is written.
 
-A failed Shepherd run's `workflow_run.error` starts with its failure class, one of
-`[ci-timeout]`, `[gh-api-5xx]`, `[gh-rate-limit]`, `[land-rules]`, `[update-branch]` or `[other]`.
-`titan-factory shepherd stats --failures` counts failed runs by class per repo and ISO week, and
-classifies older rows without the prefix from their text. See [Stats](/guides/shepherd#stats).
+A failed Shepherd run records its failure class in `workflow_run.error_class`, set where it failed:
+`ci-timeout`, `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch` or `other`. Its
+`workflow_run.error` also starts with the class as a `[<class>]` prefix, for people reading it.
+`titan-factory shepherd stats --failures` counts failed runs by class per repo and ISO week. Only rows
+written before the column existed are classified from their text. See [Stats](/guides/shepherd#stats).
 
 ## The config file
 
@@ -163,8 +164,13 @@ stays out of the repo.
   step, or at `update-branch` when the PR is behind on a strict repo. A wake still resumes or
   messages the PR's own implementer, but never spawns a successor, and a red main never
   spawns a fixer. Clear the flag and the
-  held run merges on its next poll. Under the hold, the GitHub port itself refuses every
-  merge, branch update, empty-commit push and ref delete for the repo, whatever route asks.
+  held run merges on its next poll. Under the hold, the GitHub port Shepherd's routes use
+  refuses all ten branch and PR writes for the repo, whatever route asks: merge, branch
+  update, PR close, empty-commit push, ref delete, branch create, file commit, PR retarget,
+  merge into a branch and PR open. So the consumer bump and toolchain sweeps skip the repo
+  with a refusal note. Factory build is the one exception: it still creates its own branch
+  and opens its PR there, because an open PR is what the owner merges by hand, and the
+  Shepherd run it registers holds that PR's merge like any other.
   The flag fails closed: the serve process reads it at start and on every check, and only
   a config file that loads cleanly and leaves it off clears it. A file that is missing, half written or invalid
   keeps the repo advisory, but only if this serve process has already read the flag. A serve

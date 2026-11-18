@@ -2,7 +2,8 @@ import type { OwnerOp } from "@titan-design/owner-queue";
 import { refused, type Outcome } from "../console-action/outcome.js";
 import type { OpRead } from "../console-action/record.js";
 import { deployLockPath, releaseLock, takeLock, type LockPorts } from "../deploy-lock.js";
-import { deployHeldHealth, deployPausePath, readDeployPause, runningDeployer, type DeployPause } from "../deploy-pause.js";
+import { runningDeployer } from "../deploy-lock.js";
+import { deployHeldHealth, deployPausePath, readDeployPause, type DeployPause } from "../deploy-pause.js";
 import type { LedgerLine, OwnerOpsLedger } from "./ledger.js";
 
 type PauseClear = Extract<OwnerOp, { kind: "deploy-pause-clear" }>;

@@ -62,7 +62,53 @@ describe("proposeDestination", () => {
   });
 
   it("proposes a new skill named from the group label when nothing else fits", () => {
-    const group = onlyGroup(fact("api-docs", { description: "API docs live on the wiki", type: "reference" }));
+    const group = onlyGroup(fact("api-docs", { description: "API docs live on the wiki", type: "project", modified: "2026-10-01" }));
     expect(proposeDestination(group, [], { now: NOW })).toMatchObject({ destination: "new-skill:api-docs-live", reason: expect.any(String) });
+  });
+
+  it("sends a group of only reference facts to the project's reference data", () => {
+    const group = onlyGroup(fact("api-docs", { description: "API docs live on the wiki", type: "reference", project: "p1" }));
+    expect(proposeDestination(group, [], { now: NOW })).toMatchObject({ destination: "reference:p1", reason: expect.stringContaining("reference") });
+  });
+
+  it("sends feedback about a permission setting to config rather than a CLAUDE.md", () => {
+    const group = onlyGroup(
+      fact("shell-prompts", { description: "Never prompt; set the permission mode in settings", project: "p1" }),
+      fact("shell-prompts", { description: "Never prompt; set the permission mode in settings", project: "p2" }),
+    );
+    expect(proposeDestination(group, [], { now: NOW })).toMatchObject({ destination: "config", reason: expect.stringContaining("config") });
+  });
+
+  it("sends a group naming an environment variable or hook to config", () => {
+    const env = onlyGroup(fact("token-var", { description: "Export the API_TOKEN environment variable", project: "p1" }));
+    const hook = onlyGroup(fact("pre-commit", { description: "A pre-commit hook runs the linter", project: "p1" }));
+    expect([proposeDestination(env, [], { now: NOW }).destination, proposeDestination(hook, [], { now: NOW }).destination]).toEqual(["config", "config"]);
+  });
+
+  it("keeps the old destination for a mixed reference and feedback group", () => {
+    const group = onlyGroup(
+      fact("api-docs", { description: "API docs live on the wiki", type: "reference", project: "p1" }),
+      fact("api-docs-style", { description: "API docs live on the wiki, keep them short", type: "feedback", project: "p1" }),
+    );
+    expect(proposeDestination(group, [], { now: NOW }).destination).toBe("new-skill:api-docs-live");
+  });
+
+  it("still deletes a stale project fact that mentions a setting", () => {
+    const group = onlyGroup(fact("settings-page", { description: "Sprint goal: ship the settings page", type: "project", modified: "2026-01-01" }));
+    expect(proposeDestination(group, [], { now: NOW }).destination).toBe("delete");
+  });
+
+  it("sends a reference group spanning two projects to the first project's reference data", () => {
+    const group = onlyGroup(
+      fact("api-docs", { description: "API docs live on the wiki", type: "reference", project: "p2" }),
+      fact("api-docs", { description: "API docs live on the wiki", type: "reference", project: "p1" }),
+    );
+    expect(proposeDestination(group, [], { now: NOW }).destination).toBe("reference:p1");
+  });
+
+  it("prefers a matching skill over config and reference destinations", () => {
+    const skills = [{ name: "permissions", description: "permission settings mode" }];
+    const group = onlyGroup(fact("perm-mode", { description: "Permission settings mode", project: "p1" }));
+    expect(proposeDestination(group, skills, { now: NOW }).destination).toBe("skill:permissions");
   });
 });

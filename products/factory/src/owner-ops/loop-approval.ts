@@ -36,7 +36,7 @@ type ReleaseResult = z.infer<typeof StepData>["result"];
 const at = (prefix: string, head: string) => new RegExp(`^${prefix}:${head}(:\\d+)?$`);
 
 /**
- * A g10-review release is one MERGE and carries no rule; only the two-MERGE release judges a g10-adversary hold. A release written
+ * A g10-review release is one MERGE and records `g10-review/low-tier`, not the two-MERGE rule; only that release judges a g10-adversary hold. A release written
  * before the tap judged a hold the owner never waited on, so it never counts.
  */
 function judgedWaitedHold(result: ReleaseResult, completedAt: string, { holdClass, approvedAt }: WaitsOut): boolean {

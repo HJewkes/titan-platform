@@ -178,7 +178,7 @@ describe("the G10 class from local git", { timeout: 30_000 }, () => {
     const second = await applyRegistrationHold(port, store, "run-1", { local: read });
 
     expect(first).toBeUndefined();
-    expect(second).toBe("g10-adversary: policy touch");
+    expect(second).toBe("g10-adversary: policy touch (kept: high: owner gate file products/factory/src/shepherd/g10-big.ts)");
     expect(reads).toBe(2);
     expect(fake.calls).toEqual([]);
   });
@@ -202,8 +202,8 @@ describe("a fresh-name copy of a policy file", { timeout: 30_000 }, () => {
     const reason = await applyRegistrationHold(githubPort(fake.wire), store, "run-1", { local: gitRead });
 
     expect(files).toContainEqual({ path: COPY, previousPath: POLICY_FILE, status: "copied", additions: 30, deletions: 0 });
-    expect(reason).toBe("g10-adversary: policy touch");
-    expect(store.byRun("run-1")?.holdReason).toBe("g10-adversary: policy touch");
+    expect(reason).toBe("g10-adversary: policy touch (kept: high: owner gate file products/factory/src/shepherd/registration-hold.ts)");
+    expect(store.byRun("run-1")?.holdReason).toBe("g10-adversary: policy touch (kept: high: owner gate file products/factory/src/shepherd/registration-hold.ts)");
     expect(fake.calls).toEqual([]);
   });
 

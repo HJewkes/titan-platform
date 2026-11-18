@@ -15,8 +15,11 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `DEPOSIT_LENS[kind]`. A repeated `depositId` from one asker yields the same item id.
 - `op` (`ownerOpSchema`, optional on an item and a deposit) is the typed target of an owner
   action, a strict union by `kind`: `resolve-gate`, `release-hold` (`HOLD_CLASSES`),
-  `merge-at-head`, `close-pr`, `factory-config-set`, `deploy-pause-clear` and `retire-agent`.
-  It names a target and grants nothing: whoever acts re-reads the live state. `fromDeposit`
+  `merge-at-head`, `close-pr`, `factory-config-set`, `deploy-pause-clear`, `retire-agent`, and the
+  owner's planning ops `plan-bet-select` (an initiative, an ISO week and the bet ids), `plan-outcome-edit`
+  (an outcome id, the new `statement` or `measure`, and the `from` text the owner read back) and
+  `plan-freeze-set` (set a freeze, with its tag or selector, reason, pm `end_condition` and owner-intent
+  reference, or end one by id). It names a target and grants nothing: whoever acts re-reads the live state. `fromDeposit`
   appends the keys `opKeys(op)` implies, `pr:<repo>#<n>@<head>` for a PR op, so the deposit
   merges with that PR's item at the same head. No op yields a `gate:` key.
 - `audience` (`AUDIENCES`: `owner` or `operator`) is optional on an item and a deposit; absent

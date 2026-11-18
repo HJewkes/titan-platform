@@ -4,7 +4,7 @@ import { ciWait, type CiWaitOutcome } from "./ci-wait.js";
 import { formatPrContext, prContext } from "./pr-context.js";
 import { formatPrStatus, prStatus } from "./pr-status.js";
 import { formatPremerge, premerge } from "./premerge.js";
-import type { GitHubPort, RepoSlug } from "./port.js";
+import type { GitHubPort, RepoSlug } from "./port-types.js";
 import { isRepo } from "./validate.js";
 
 interface TitanGhIo {

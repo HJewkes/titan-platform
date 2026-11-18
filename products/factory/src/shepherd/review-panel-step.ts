@@ -11,10 +11,10 @@ import type { AttestVerdicts } from "./attest-evidence.js";
 import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, type HoldMember, type IntentPlan, type PanelMode } from "./review-panel-plan.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { CORRECT_VERDICT_STEP, correctOnce } from "./correct-verdict.js";
-import { Awaited, Dispatched } from "./review-schemas.js";
+import { AuthoritySchema, Awaited, Dispatched } from "./review-schemas.js";
 import { fileFollowUpsAt } from "./follow-ups-step.js";
 import { freshReviewerBase } from "./cleanup.js";
-import { REVIEW_STEP } from "./review-steps.js";
+import { MAX_NOT_STARTED_REVIEWS, REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
 import type { ScopeRound } from "./scope-check-round.js";
@@ -28,7 +28,8 @@ const MAX_CITED_FILES = 20;
 /** The citation form aggregate checks: `path/to/file.ext:line`. */
 const CITED_PATH = /(?<![\w./-])((?:[\w.-]+\/)*[\w-][\w.-]*\.[A-Za-z]\w*):\d+/g;
 
-type Intent = { kind: "intent"; plan?: { members: readonly { shape: string; profile: string }[] }; panel?: "on"; panelReviewers?: Record<string, string> } & Record<string, unknown>;
+type PlannedMember = { shape: string; profile: string; blocking?: boolean };
+type Intent = { kind: "intent"; plan?: { members: readonly PlannedMember[] }; panel?: "on"; panelReviewers?: Record<string, string> } & Record<string, unknown>;
 /** An intent recorded under `review.panel` on: one recorded before the flag, or under off or shadow, reviews with one reviewer. */
 type PanelIntent = Intent & Required<Pick<Intent, "plan" | "panelReviewers">> & { panel: "on" };
 
@@ -160,15 +161,15 @@ async function dispatchMembers(ctx: WorkflowContext, intent: PanelIntent, base: 
 function memberResultOf(awaited: AwaitedResult): MemberResult["result"] {
   if (awaited.kind !== "verdict") return { kind: "none", ...(typeof awaited.reason === "string" && { reason: awaited.reason }) };
   const verdict = { kind: "verdict" as const, head: awaited.head, locator: awaited.locator, reviewer: awaited.reviewer };
-  if (awaited.verdict === "MERGE") return { ...verdict, verdict: "MERGE", ...(awaited.attests && { attests: awaited.attests }) };
+  if (awaited.verdict === "MERGE") return { ...verdict, verdict: "MERGE", ...(awaited.attests && { attests: awaited.attests }), ...(awaited.authority && { authority: awaited.authority }) };
   const closer = awaited.closer === "yes" || awaited.closer === "no" ? awaited.closer : undefined;
   return { ...verdict, verdict: "FIX_FIRST", text: awaited.text ?? "", ...(closer !== undefined && { closer }) };
 }
 
-/** Only the adversary's verdict has a form beyond the block, so only it gets the correctness member's one correction turn. */
-async function awaitMember(ctx: WorkflowContext, target: ReviewTarget, shape: OverlayShape, awaiting: AwaitVerdictInput & { shape: OverlayShape }): Promise<AwaitedResult> {
+/** The adversary's and the tests member's verdicts have a form beyond the block (Probes, CI-policy), so only they get the correctness member's one correction turn. */
+export async function awaitMember(ctx: WorkflowContext, target: ReviewTarget, shape: OverlayShape, awaiting: AwaitVerdictInput & { shape: OverlayShape }): Promise<AwaitedResult> {
   const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}:${shape}`, awaiting, Awaited);
-  if (shape !== "adversary") return awaited;
+  if (shape !== "adversary" && shape !== "tests") return awaited;
   const replyStep = `${AWAIT_VERDICT_STEP}:${target.head}:${shape}:corrected`;
   return correctOnce(ctx, awaiting, awaited, { ownerBrief: false, replyStep, correctStep: `${CORRECT_VERDICT_STEP}:${target.head}:${shape}` });
 }
@@ -275,11 +276,23 @@ function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string 
 }
 
 /** Names the seat that withheld the verdict, so a round where every dispatched member answered never reads as a silent reviewer. */
-function panelNone(verdict: PanelVerdictRecord): Verdict {
+function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Verdict {
   if (verdict.outcome === "timeout") return { kind: "none", cause: "timeout", reason: "a blocking panel member gave no verdict" };
   const shortfall = "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned";
   const reason = verdict.fixProofShortfall === true ? shortfall : "a blocking panel member gave no verdict";
+  if (unstarted && verdict.fixProofShortfall !== true) return { kind: "none", cause: "not-started", reason: "a blocking panel member never started" };
   return { kind: "none", cause: "no-verdict", reason };
+}
+
+/**
+ * Whether every blocking member that withheld a verdict never started (TP-5296), as the single reviewer's `notStarted` reads in
+ * not-reviewed.ts: the round retries the review and is no failed round. One that started and said nothing keeps the round no-verdict.
+ */
+function withheldNeverStarted(plan: PanelIntent["plan"], members: readonly DispatchedMember[], results: readonly MemberResult[]): boolean {
+  const heard = new Set<string>(results.filter(({ result }) => result.kind === "verdict").map(({ shape }) => shape));
+  const withheld = plan.members.filter((member) => member.blocking === true && !heard.has(member.shape));
+  const unstarted = new Set<string>(members.filter(({ dispatched }) => dispatched.kind === "none" && dispatched.notStarted === true).map(({ shape }) => shape));
+  return withheld.length > 0 && withheld.every((member) => unstarted.has(member.shape));
 }
 
 const MemberVerdict = z.looseObject({
@@ -289,6 +302,7 @@ const MemberVerdict = z.looseObject({
   verdict: z.enum(["MERGE", "FIX_FIRST"]).optional(),
   head: z.string().optional(),
   attests: z.array(z.string()).optional(),
+  authority: AuthoritySchema,
 });
 
 /**
@@ -299,9 +313,10 @@ export function panelMerge(verdict: PanelVerdict, results: readonly { shape: Mem
   const members = results.flatMap(({ shape, result }) => {
     const read = MemberVerdict.safeParse(result);
     if (!read.success) return [];
-    const { reviewer, locator, verdict: said, head, attests } = read.data;
+    const { reviewer, locator, verdict: said, head, attests, authority } = read.data;
     const profile = profiles[shape];
-    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }), ...(attests && { attests }) }];
+    const lines = { ...(attests && { attests }), ...(authority && { authority }) };
+    return [{ shape, ...reviewer, locator, ...(said !== undefined && { verdict: said }), ...(head !== undefined && { head }), ...(profile !== undefined && { profile }), ...lines }];
   });
   return { satisfiesG10: verdict.satisfiesG10, degraded: verdict.degraded, members };
 }
@@ -324,16 +339,18 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
   const shortfall = proofShortfall(verdict, target.head, base.fixProof);
   if (shortfall) return shortfall;
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict);
+  const retryable = ctx.iteration(`${PANEL_VERDICT_STEP}:${target.head}`) < MAX_NOT_STARTED_REVIEWS;
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results));
   const merged = panelMerge(verdict, results, memberProfiles(members));
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;
 }
 
-/** The adversary member's MERGE as the evidence step judges its `Attests:` line, and whether the plan had an adversary at all. */
+/** The adversary member's MERGE as the evidence step judges its `Attests:` and `Authority:` lines, and whether the plan had an adversary at all. */
 function adversaryAttest(intent: PanelIntent, merged: PanelMerge): Omit<AttestVerdicts, "attests"> {
   const member = merged.members.find((m) => m.shape === "adversary" && m.verdict === "MERGE" && m.head !== undefined);
   const planned = intent.plan.members.some((m) => m.shape === "adversary");
-  const adversary = member?.head === undefined ? undefined : { reviewer: { agentId: member.agentId, sessionId: member.sessionId }, head: member.head, attests: [...(member.attests ?? [])] };
+  const said = member?.authority && { authority: member.authority };
+  const adversary = member?.head === undefined ? undefined : { reviewer: { agentId: member.agentId, sessionId: member.sessionId }, head: member.head, attests: [...(member.attests ?? [])], ...said };
   return { ...(adversary && { adversary }), ...(planned && { adversaryPlanned: true as const }) };
 }

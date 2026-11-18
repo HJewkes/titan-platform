@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { OwnerItem } from "@titan-design/owner-queue";
-import { ManifestSchema } from "@titan-design/review-schema";
 import { roundQueueItems } from "./approval-items.js";
 import { inboxItems, type InboxItem, type WatchRow } from "./inbox-view.js";
 import { readQueueRounds } from "./rounds.js";
@@ -69,8 +68,6 @@ const roundRow = (items: readonly InboxItem[]): InboxItem | undefined => items.f
 
 describe("a round only review-schema 0.3 reads, in the inbox (TP-4356)", () => {
   it("is one blocking row with its question count and no unreadable-round gap", async () => {
-    expect(ManifestSchema.safeParse(backlogRound()).success).toBe(false);
-
     const { items, gaps } = await inbox([], []);
 
     expect(gaps).toEqual([]);

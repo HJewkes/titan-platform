@@ -7,7 +7,7 @@ import { buildFileModuleNodes } from "./file-nodes.js";
 import { paramAttrs } from "./call-sites.js";
 import { collectParamShapes } from "./callable-params.js";
 import { collectPythonCallEdges } from "./python-calls.js";
-import { externalId, fileId, symbolId } from "./ids.js";
+import { fileId, pythonExternalId, symbolId } from "./ids.js";
 import { inRepoFileId } from "./module-resolution.js";
 import type { GraphEdge, GraphFragment, GraphNode } from "../types.js";
 
@@ -50,7 +50,9 @@ export class PythonGraphExtractor implements Extractor<GraphFragment> {
     const externals: GraphNode[] = [];
     for (const specifier of importSpecifiers(file.tree.rootNode)) {
       const internal = this.resolveDotted(file.filePath, specifier);
-      const dstId = internal ?? externalId(specifier);
+      // A missed relative import points at a file the tree lacks, not at an installable package.
+      if (!internal && specifier.startsWith(".")) continue;
+      const dstId = internal ?? pythonExternalId(specifier);
       if (!internal && !edges.has(dstId)) {
         externals.push({ id: dstId, kind: "external", name: specifier });
       }

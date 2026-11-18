@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { checkAreas, loadAreas } from "./areas.mjs";
+import { classProblems, loadRuleClasses, renderRegistry } from "./checks-registry.mjs";
 import { metricsCoverageGaps } from "./metrics-check.mjs";
 import {
   checkAgentsMatchesClaude,
@@ -89,7 +90,7 @@ function carryImportViolationRoot() {
   return carryImportRoot({ "src/fixtures/data.ts": "export default 1;\n", "src/use.ts": CARRY_IMPORT });
 }
 
-function undeclaredImportRoot() {
+function undeclaredImportRoot(source = 'import { c } from "@titan-design/c";\n') {
   const root = tempRoot("structure-imports-");
   writeFileSync(join(root, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n');
   const members = {
@@ -101,7 +102,7 @@ function undeclaredImportRoot() {
     mkdirSync(join(root, "packages", dir, "src"), { recursive: true });
     writeFileSync(join(root, "packages", dir, "package.json"), JSON.stringify(pkg));
   }
-  writeFileSync(join(root, "packages/a/src/x.test.ts"), 'import { b } from "@titan-design/b";\nimport { c } from "@titan-design/c";\n');
+  writeFileSync(join(root, "packages/a/src/x.test.ts"), `import { b } from "@titan-design/b";\n${source}`);
   return root;
 }
 
@@ -251,6 +252,18 @@ const cases = [
     message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
   },
   {
+    rule: "R58 a vi.mock of an undeclared workspace package is an import",
+    check: checkWorkspaceImportsDeclared,
+    root: () => undeclaredImportRoot('vi.mock("@titan-design/c", () => ({}));\n'),
+    message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
+  },
+  {
+    rule: "R58 a template-literal import() of an undeclared workspace package is an import",
+    check: checkWorkspaceImportsDeclared,
+    root: () => undeclaredImportRoot("const c = await import(`@titan-design/c`);\n"),
+    message: "`packages/a/src/x.test.ts` imports `@titan-design/c`, which `@titan-design/a` does not declare.",
+  },
+  {
     rule: "R60 no source file imports a fix-proof test or carry path",
     check: checkNoCarryImports,
     root: carryImportViolationRoot,
@@ -390,6 +403,17 @@ describe("TP-3412 the token path counts as a read", () => {
     writeFileSync(join(root, "products/factory/src/sneaky.ts"), "export {};\n");
     writeFileSync(join(root, "products/factory/src/pathy.ts"), "import { BOT_TOKEN_PATH } from \"./bot-token-path.js\";\n");
     expect(checkBotTokenReaders(root)).toEqual([expect.stringContaining("products/factory/src/pathy.ts")]);
+  });
+});
+
+describe("TP-6483 every rule names the class keys it covers", () => {
+  it("every titan/*, structure and check.json rule names class keys from the vocabulary", async () => {
+    expect(classProblems(await loadRuleClasses(REPO))).toEqual([]);
+  });
+
+  it("checks-registry.json is up to date", async () => {
+    const committed = readFileSync(join(REPO, "checks-registry.json"), "utf8");
+    expect(committed, "Run `pnpm checks:registry` and commit checks-registry.json.").toBe(renderRegistry(await loadRuleClasses(REPO)));
   });
 });
 

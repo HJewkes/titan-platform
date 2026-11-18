@@ -3,22 +3,17 @@ import { z } from 'zod';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { defineCommand } from '../registry/index.js';
-import {
-  assembleBootstrap,
-  readMarkdownWithSchema,
-  type BootstrapMetadata,
-} from '../bootstrap/prompt.js';
+import { assembleBootstrap, type BootstrapMetadata } from '../bootstrap/prompt.js';
+import { readMarkdownWithSchema } from '../utils/markdown-schema.js';
 import { archiveStaleTasks } from '../bootstrap/archive-tasks.js';
 import { mergeChannels } from '../launcher-args.js';
 import { resolveDefaultChannels } from '../utils/global-config.js';
 import { acquireLease } from '../sessions/lease.js';
 import type { LoadedFacet } from '../facets/facet-file.js';
-import {
-  listInitiativeSlugs,
-  resolveSlugOrFacet,
-  resolveSlugFromCwd,
-  resolveCwdHint,
-} from './_open-helpers.js';
+import { resolveSlugFromCwd } from '../sessions/initiatives.js';
+import { listSlugsForCaller } from '../sessions/visibility.js';
+import type { CommandContext } from '../registry/types.js';
+import { resolveSlugOrFacet, resolveCwdHint } from './_open-helpers.js';
 
 /** Done tasks older than this are auto-archived on bootstrap (AW-8). */
 const ARCHIVE_DONE_AFTER_DAYS = 30;
@@ -151,15 +146,19 @@ function compareInitiatives(a: InitiativeSummary, b: InitiativeSummary): number 
   return a.slug.localeCompare(b.slug);
 }
 
-async function collectInitiatives(activeRoot: string): Promise<InitiativeSummary[]> {
-  const slugs = await listInitiativeSlugs(activeRoot);
-  const summaries: InitiativeSummary[] = [];
-  for (const slug of slugs) {
-    const summary = await loadInitiativeSummary(activeRoot, slug);
-    if (summary) summaries.push(summary);
+async function collectInitiatives(
+  activeRoot: string,
+  ctx: Pick<CommandContext, 'caller' | 'warnings'>,
+): Promise<InitiativeSummary[]> {
+  try {
+    const slugs = await listSlugsForCaller(activeRoot, ctx);
+    const loaded = await Promise.all(slugs.map((slug) => loadInitiativeSummary(activeRoot, slug)));
+    return loaded.filter((s): s is InitiativeSummary => s !== null).sort(compareInitiatives);
+  } catch {
+    // A non-owner caller's visibility check may already have said so.
+    if (!ctx.warnings.some((w) => w.includes('root could not be read'))) ctx.warnings.push('the active root could not be read');
+    return [];
   }
-  summaries.sort(compareInitiatives);
-  return summaries;
 }
 
 /**
@@ -229,11 +228,13 @@ async function bootstrapInitiative(
   // not the brief's default worktree.
   const cwdHint = opts.cwdHintOverride ?? (await resolveCwdHint(activeRoot, slug));
   const archiveStart = clock();
-  const { archivedIds: archivedTaskIds, tasks, malformed } = await archiveStaleTasks(path.join(activeRoot, slug), {
+  // Not awaited here: live branch status starts inside assembleBootstrap while the archive runs.
+  const archivePending = archiveStaleTasks(path.join(activeRoot, slug), {
     retentionDays: ARCHIVE_DONE_AFTER_DAYS,
     now: new Date(),
   });
-  const archiveMs = clock() - archiveStart;
+  let archiveMs = 0;
+  const timedArchive = archivePending.finally(() => (archiveMs = clock() - archiveStart));
   const detectSiblings = opts.detectSiblings !== false;
   const { facet } = opts;
   const about = sessionAbout(opts.about, facet);
@@ -241,8 +242,7 @@ async function bootstrapInitiative(
     activeRoot,
     slug,
     includeLiveStatus: !opts.offline,
-    archivedTaskIds,
-    loadedTasks: { tasks, malformed },
+    pendingArchive: timedArchive,
     adhoc: opts.adhoc,
     init: opts.init,
     ...(about !== undefined ? { about } : {}),
@@ -329,7 +329,7 @@ const openCommand = defineCommand<OpenArgs, OpenResult>({
     const deferLease = args.lease_mode === 'defer';
 
     if (args.slug) {
-      const { slug, facet } = await resolveSlugOrFacet(activeRoot, args.slug);
+      const { slug, facet } = await resolveSlugOrFacet(activeRoot, args.slug, ctx);
       return bootstrapInitiative(activeRoot, slug, {
         ...(facet ? { facet } : {}),
         offline: args.offline,
@@ -363,7 +363,7 @@ const openCommand = defineCommand<OpenArgs, OpenResult>({
       }
     }
 
-    const initiatives = await collectInitiatives(activeRoot);
+    const initiatives = await collectInitiatives(activeRoot, ctx);
     return { picker: true, initiatives };
   },
 });

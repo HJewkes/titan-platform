@@ -10,8 +10,8 @@ export {
   openDatabase,
   quoteIdent,
 } from "./open.js";
-export type { Migration } from "./migrations.js";
-export { MigrationIdentityError, appliedVersions, runMigrations } from "./migrations.js";
+export type { Migration, RunMigrationsOptions } from "./migrations.js";
+export { MigrationDriftError, MigrationIdentityError, appliedVersions, runMigrations } from "./migrations.js";
 export type { ParsedRef } from "./ref.js";
 export { isRef, parseRef, ref, refKind } from "./ref.js";
 export type { KitSelection } from "./kit.js";
@@ -20,7 +20,7 @@ export type { EdgeInput, EdgeRow, EdgeTableOptions } from "./tables/edge.js";
 export { EdgeTable, edgeTableDdl } from "./tables/edge.js";
 export type { EntityInput, EntityRow, TableName } from "./tables/entity.js";
 export { EntityTable, entitySnapTableDdl, entityTableDdl, snapshotTableDdl } from "./tables/entity.js";
-export type { CacheBlobOptions, CacheHit, CacheKey } from "./tables/cache-blob.js";
+export type { CacheBlobOptions, CacheHit, CacheKey, CacheModelRows } from "./tables/cache-blob.js";
 export { CacheBlobTable, cacheBlobTableDdl, contentHashOf } from "./tables/cache-blob.js";
 export type { SpanFtsOptions, SpanHit, SpanInput, SpanScope } from "./tables/span-fts.js";
 export { SpanFtsTables, spanFtsTablesDdl } from "./tables/span-fts.js";

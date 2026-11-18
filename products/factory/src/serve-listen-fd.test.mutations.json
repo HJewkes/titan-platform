@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "serve logs the requested port instead of the port it listens on",
+      "file": "packages/daemon/src/daemon.ts",
+      "find": "log.info({ pid: process.pid, port: boundPort,",
+      "replace": "log.info({ pid: process.pid, port: options.port ?? 0,",
+      "kills": [
+        "serve on an inherited listening socket answers /health on the passed socket's port, names listenFd, and binds the requested port nowhere"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { EXIT } from "@titan-design/registry";
 import type { OwnerOp } from "@titan-design/owner-queue";
+import { BetSchema, FreezeSchema, OutcomeSchema } from "@titan-design/pm";
 import { liveSource } from "@titan-design/rpc-client";
 import { failure, unexpectedShape } from "./active-work.js";
 import { readCommand } from "./owner-guard.js";
@@ -52,7 +53,7 @@ const released = z.object({ runId: z.string(), held: z.object({ reason: z.string
 
 /**
  * The factory's `owner-op.preview`, pinned to the fields the read-back shows: a PR op's PR, where `head` is there only while
- * the PR is open, a retire-agent's agent, or a deploy-pause-clear's failure pause as `/health` reads it.
+ * the PR is open, a retire-agent's agent, a deploy-pause-clear's failure pause as `/health` reads it, or a planning op's records.
  */
 const opPreview = z
   .object({
@@ -98,6 +99,14 @@ const opPreview = z
         manualHold: z.string().nullable(),
       })
       .passthrough()
+      .optional(),
+    /** For a planning op: the bets, outcome or freeze it names, as active-work's plan store holds them now; null where none exists. */
+    plan: z
+      .object({
+        bets: z.array(z.object({ id: z.string(), bet: BetSchema.nullable(), outcome: OutcomeSchema.nullable() })).optional(),
+        outcome: OutcomeSchema.nullable().optional(),
+        freeze: FreezeSchema.nullable().optional(),
+      })
       .optional(),
   })
   .passthrough();

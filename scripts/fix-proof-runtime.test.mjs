@@ -19,13 +19,21 @@ function publishedEntries() {
     readdirSync(path.join(root, tier))
       .map((name) => `${tier}/${name}`)
       .filter((dir) => existsSync(path.join(root, dir, "package.json")))
-      .flatMap((dir) => (JSON.parse(readFileSync(path.join(root, dir, "package.json"), "utf8")).files ?? []).map((entry) => `${dir}/${entry}`)),
+      .flatMap((dir) => (JSON.parse(readFileSync(path.join(root, dir, "package.json"), "utf8")).files ?? []).map((entry) => packEntry(dir, entry))),
   );
 }
 
+// npm drops whatever a `!` entry matches from the tarball, so it ships nothing and its matches are not published.
+function packEntry(dir, entry) {
+  return entry.startsWith("!") ? { path: `${dir}/${entry.slice(1)}`, negated: true } : { path: `${dir}/${entry}`, negated: false };
+}
+
+const unpublished = (entries) => (file) => entries.some((entry) => entry.negated && path.matchesGlob(file, entry.path));
+
 // The probe covers a directory entry with nothing tracked under it yet; the tracked files cover a carry dir nested inside one.
 function shippedPaths(entry, tracked) {
-  return [entry, `${entry}/x`, ...tracked.filter((file) => file.startsWith(`${entry}/`))];
+  if (entry.negated) return [];
+  return [entry.path, `${entry.path}/x`, ...tracked.filter((file) => file.startsWith(`${entry.path}/`))];
 }
 
 function readingOf(...lines) {
@@ -38,8 +46,11 @@ describe(".github/fix-proof.json runtime globs", () => {
   it("every published files entry under a carry glob is runtime", () => {
     const tracked = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n");
 
-    const unlisted = publishedEntries()
+    const entries = publishedEntries();
+    const isUnpublished = unpublished(entries);
+    const unlisted = entries
       .flatMap((entry) => shippedPaths(entry, tracked))
+      .filter((file) => !isUnpublished(file))
       .filter((file) => isCarryOrTest(file) && !isRuntime(file));
 
     expect(unlisted).toEqual([]);

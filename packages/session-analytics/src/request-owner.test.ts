@@ -68,4 +68,16 @@ describe("readRequestToolCalls", () => {
 
     expect(readRequestToolCalls(fixture.openReadOnly(), WINDOW).size).toBe(0);
   });
+
+  it("reads only the named sessions' calls when given session ids", () => {
+    const db = fixture.graph.db;
+    insertRequest(db, { sessionId: "in", transcriptId: 1, requestId: "mine", ts: at(0), offset: 10 });
+    insertToolCall(db, { sessionId: "in", transcriptId: 1, ts: at(0), toolUseId: "tu-in", name: "Bash", offset: 11 });
+    insertRequest(db, { sessionId: "out", transcriptId: 2, requestId: "other", ts: at(0), offset: 10 });
+    insertToolCall(db, { sessionId: "out", transcriptId: 2, ts: at(0), toolUseId: "tu-out", name: "Bash", offset: 11 });
+
+    const calls = readRequestToolCalls(fixture.openReadOnly(), WINDOW, ["in"]);
+
+    expect([...calls.keys()]).toEqual(["mine"]);
+  });
 });

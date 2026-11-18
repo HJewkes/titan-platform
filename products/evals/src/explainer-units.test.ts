@@ -25,7 +25,7 @@ function caseOf(file: string) {
 
 describe("explainer units", () => {
   it("has one unit per stage of the explainer.<stage> child workflows", () => {
-    expect(STAGE_UNITS).toEqual(["explainer-eval", "explainer-qa", "explainer-render", "explainer-rewrite", "explainer-script", "explainer-sheets", "explainer-tts"]);
+    expect(STAGE_UNITS).toEqual(["explainer-eval", "explainer-qa", "explainer-render", "explainer-resolve", "explainer-rewrite", "explainer-script", "explainer-sheets", "explainer-tts"]);
   });
 
   it("strict-validates every unit, variant, case and suite file with no stale prompt digest", async () => {

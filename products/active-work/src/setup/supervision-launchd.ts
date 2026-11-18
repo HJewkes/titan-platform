@@ -11,13 +11,14 @@ import nodePath from 'node:path';
 import { spawn as nodeSpawn } from 'node:child_process';
 import os from 'node:os';
 import { errorCode } from '@titan-design/rpc-protocol/narrow';
+import { renderLaunchAgentPlist } from '@titan-design/service-supervisor';
 import { errorText, toError } from './errors.js';
 import { daemonPath } from './supervision-shared.js';
 import { STEP_SUPERVISION } from './supervision-systemd.js';
 import type { SetupDeps, StepPaths, StepResult } from './steps.js';
 
 export const PLIST_LABEL = 'dev.hjewkes.active-work';
-export const PLIST_NAME = `${PLIST_LABEL}.plist`;
+const PLIST_NAME = `${PLIST_LABEL}.plist`;
 
 function isDarwin(platform: NodeJS.Platform = process.platform): boolean {
   return platform === 'darwin';
@@ -47,7 +48,7 @@ function resolveLocalDeps(deps: SetupDeps): {
   return { fs, spawn, paths, cliEntry, uid, platform: process.platform };
 }
 
-export function getAgentDir(homeDir: string): string {
+function getAgentDir(homeDir: string): string {
   return nodePath.join(homeDir, 'Library', 'LaunchAgents');
 }
 
@@ -64,11 +65,7 @@ function serviceTarget(uid: number): string {
   return `gui/${uid}/${PLIST_LABEL}`;
 }
 
-function escapeXml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-export interface PlistOptions {
+interface PlistOptions {
   cliEntry: string;
   homeDir: string;
   port?: number;
@@ -81,40 +78,16 @@ export function renderPlist(opts: PlistOptions): string {
   const argv = [node, opts.cliEntry, 'mcp', 'serve'];
   if (opts.port !== undefined) argv.push('--port', String(opts.port));
   const logDir = getLogDir(opts.homeDir);
-  const programArgs = argv.map((a) => `    <string>${escapeXml(a)}</string>`).join('\n');
-  return [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
-    '<plist version="1.0">',
-    '<dict>',
-    '  <key>Label</key>',
-    `  <string>${PLIST_LABEL}</string>`,
-    '  <key>ProgramArguments</key>',
-    '  <array>',
-    programArgs,
-    '  </array>',
-    '  <key>RunAtLoad</key>',
-    '  <true/>',
-    '  <key>KeepAlive</key>',
-    '  <true/>',
+  return renderLaunchAgentPlist({
+    label: PLIST_LABEL,
+    description: 'active-work HTTP daemon (MCP + REST + dashboard)',
+    argv,
+    environment: { NODE_ENV: 'production', PATH: daemonPath(node) },
+    stdoutPath: nodePath.join(logDir, 'daemon.out.log'),
+    stderrPath: nodePath.join(logDir, 'daemon.err.log'),
     // Background throttles CPU and I/O enough to stall related queries past agent-chat's budget (TP-343).
-    '  <key>ProcessType</key>',
-    '  <string>Interactive</string>',
-    '  <key>EnvironmentVariables</key>',
-    '  <dict>',
-    '    <key>NODE_ENV</key>',
-    '    <string>production</string>',
-    '    <key>PATH</key>',
-    `    <string>${escapeXml(daemonPath(node))}</string>`,
-    '  </dict>',
-    '  <key>StandardOutPath</key>',
-    `  <string>${escapeXml(nodePath.join(logDir, 'daemon.out.log'))}</string>`,
-    '  <key>StandardErrorPath</key>',
-    `  <string>${escapeXml(nodePath.join(logDir, 'daemon.err.log'))}</string>`,
-    '</dict>',
-    '</plist>',
-    '',
-  ].join('\n');
+    launchdProcessType: 'Interactive',
+  });
 }
 
 /** Spawn a process and capture its exit code + stderr. */
@@ -161,7 +134,7 @@ export async function isAgentLoaded(deps: SetupDeps = {}): Promise<boolean> {
   return result.code === 0;
 }
 
-export interface InstallLaunchAgentOptions {
+interface InstallLaunchAgentOptions {
   /** Override the port baked into the plist's ProgramArguments. */
   port?: number;
 }

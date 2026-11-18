@@ -1,8 +1,10 @@
+import { LINKS_OMITTED } from "./console-probe.js";
 import type { WaitingGate } from "../shepherd/waiting-schema.js";
 import type { FrictionDay } from "../shepherd/owner-friction.js";
 import type { Ask, AttestedLine, DecidedLine, DigestModel, FlowStats, PoolLine, ProofFixture, ReversalLine } from "./model.js";
 import { alarmLine, gateAlarm, safeConsoleOrigin } from "./gate-alarm.js";
 import { DEFAULT_CAPS, type RankedDigest } from "./rank.js";
+import { scorecardLines } from "./scorecard.js";
 
 export const WORD_LIMIT = DEFAULT_CAPS.words;
 export const FULL_COMMAND = "titan-factory digest run --full";
@@ -29,7 +31,7 @@ function busiestPool(spend: readonly PoolLine[]): PoolLine | undefined {
   return spend.filter((p) => !p.stale && p.sevenDay !== undefined).sort((a, b) => b.sevenDay! - a.sevenDay!)[0];
 }
 
-export function deterministicHeadline(d: RankedDigest): string {
+function deterministicHeadline(d: RankedDigest): string {
   const parts = [`${d.totals.needsYou} need you`, `${d.totals.merged} merged`, `${d.totals.stuck} stuck`];
   const pool = busiestPool(d.spend);
   if (pool) parts.push(`${pool.pool} pool ${percent(pool.sevenDay)} of week`);
@@ -125,12 +127,12 @@ function body(d: RankedDigest, decidedShown: number): string[] {
     ...waitingLines(d.waiting),
     ...flowLines(d.flow),
     ...frictionLines(d.friction),
+    ...scorecardLines(d.scorecard),
     ...(d.gaps.length > 0 ? section("Gaps", d.gaps.map((gap) => `- ${clip(gap, REASON_WORDS)}`), "") : []),
   ];
 }
 
 const ALARM_CUT = 3;
-const LINKS_OMITTED = "digest.consoleOrigin unset: alarm links omitted";
 
 /** The alarm line goes straight after the title so the push headline, the first three lines, carries it. */
 function alarmLines(d: RankedDigest, shown: number | undefined): string[] {
@@ -141,7 +143,7 @@ function alarmLines(d: RankedDigest, shown: number | undefined): string[] {
 
 function withAlarmGap(d: RankedDigest): RankedDigest {
   const origin = d.consoleOrigin === undefined ? undefined : safeConsoleOrigin(d.consoleOrigin);
-  return origin === undefined && gateAlarm(d.friction, d.ownerGateAlarm ?? []) !== undefined ? { ...d, gaps: [...d.gaps, LINKS_OMITTED] } : d;
+  return origin === undefined && gateAlarm(d.friction, d.ownerGateAlarm ?? []) !== undefined ? { ...d, gaps: [...d.gaps, d.consoleLinkGap ?? LINKS_OMITTED] } : d;
 }
 
 function document(d: RankedDigest, decidedShown: number, alarmShown?: number): string {

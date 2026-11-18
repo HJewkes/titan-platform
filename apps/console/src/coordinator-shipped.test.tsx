@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
 import type { ServedCommands } from "./data/rpc.js";
@@ -52,7 +52,13 @@ describe("what shipped on the coordinator page", () => {
 
     const theme = await screen.findByTestId("coord-shipped-theme-Docks index");
     expect(within(theme).getByText("The dock index now lists every berth.")).toBeTruthy();
-    expect(within(theme).getByTestId("coord-shipped-pr-harbor/dock#7").closest("a")?.getAttribute("href")).toBe(DOCK.url);
+    const opened = vi.spyOn(window, "open").mockReturnValue(null);
+    const link = within(theme).getByTestId("coord-shipped-pr-harbor/dock#7").closest("a");
+    expect(link?.getAttribute("href")).toBe(DOCK.url);
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toContain("noopener");
+    if (link) fireEvent.click(link);
+    expect(opened).not.toHaveBeenCalled();
     expect(within(screen.getByTestId("coord-shipped-unsummarized-harbor")).getByTestId("coord-shipped-pr-harbor/quay#9")).toBeTruthy();
     expect(screen.queryByTestId("coord-shipped-unbuilt")).toBeNull();
   });

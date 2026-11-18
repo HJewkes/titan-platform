@@ -4,7 +4,7 @@ import { partialFake } from "@titan-design/test-kit";
 import type { StepResult, WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { MERGE_EVIDENCE_STEP, mergeEvidence, noFreezeStoreUntilTp523, type MergeEvidenceInput } from "./merge-facts.js";
-import { ownerHoldOf, riskFactsOf, riskTier, type AuthorityLine, type RiskTierName } from "./risk-tier.js";
+import { ownerHoldOf, riskFactsOf, riskTier, type AuthorityRead, type RiskTierName } from "./risk-tier.js";
 import type { Registration } from "./store.js";
 import { watchRow } from "./view.js";
 
@@ -16,12 +16,12 @@ interface Row {
   tier: RiskTierName;
   lines?: number;
   ciPolicy?: CiPolicy;
-  authorityLine?: AuthorityLine;
+  authorityLine?: AuthorityRead;
   ownerHold?: string;
 }
 
 const tierOf = ({ paths, lines, ciPolicy, authorityLine, ownerHold }: Omit<Row, "scene" | "tier">) =>
-  riskTier({ ...riskFactsOf({ paths, changedLines: lines, unread: undefined, ...(ciPolicy && { ciPolicy }), visualPaths: VISUAL, ownerHold }), ...(authorityLine && { authorityLine }) });
+  riskTier(riskFactsOf({ paths, changedLines: lines, unread: undefined, ...(ciPolicy && { ciPolicy }), visualPaths: VISUAL, ownerHold, ...(authorityLine && { authorityLine }) }));
 
 /** One row per line of the plan's section 3 that a head's facts decide; route escalations are no fact of the head. */
 const TABLE: Row[] = [
@@ -33,6 +33,7 @@ const TABLE: Row[] = [
   { scene: "a tool-guard security touch", paths: ["packages/tool-guard/src/deny.ts"], tier: "medium" },
   { scene: "a tool-guard security touch whose adversary says Authority widened", paths: ["packages/tool-guard/src/deny.ts"], authorityLine: "widened", tier: "high" },
   { scene: "a tool-guard security touch whose adversary says Authority tightened", paths: ["packages/tool-guard/src/deny.ts"], authorityLine: "tightened", tier: "medium" },
+  { scene: "a tool-guard security touch whose required adversary wrote no Authority line", paths: ["packages/tool-guard/src/deny.ts"], authorityLine: "missing", tier: "high" },
   { scene: "a generic policy touch", paths: ["packages/store/src/retention-policy.ts"], tier: "medium" },
   { scene: "a Shepherd merge-policy file", paths: ["products/factory/src/shepherd/g10-release.ts"], tier: "high" },
   { scene: "the risk classifier itself", paths: ["products/factory/src/shepherd/risk-tier.ts"], tier: "high" },
@@ -47,6 +48,10 @@ const TABLE: Row[] = [
   { scene: "a CI workflow spelt with folded case and a trailing dot", paths: [".GitHub./Workflows/ci.yml"], ciPolicy: { kind: "unchanged" }, tier: "high" },
   { scene: "CODEOWNERS", paths: [".github/CODEOWNERS"], ciPolicy: { kind: "unchanged" }, tier: "high" },
   { scene: "codewatch config", paths: [".codewatch/check.json"], tier: "high" },
+  { scene: "a publish file", paths: ["products/factory/src/shepherd/version-packages.ts"], tier: "high" },
+  { scene: "a changeset config publish file", paths: [".changeset/config.json"], tier: "high" },
+  { scene: "a settings file", paths: ["products/factory/src/config.ts"], tier: "high" },
+  { scene: "an agent-chat settings file", paths: [".agent-chat/generated"], tier: "high" },
   { scene: "another .github path", paths: [".github/pull_request_template.md"], ciPolicy: { kind: "unchanged" }, tier: "medium" },
   { scene: "a reviewer saying CI policy is weakened", paths: ["packages/store/src/a.ts"], ciPolicy: { kind: "weakened", keys: ["required-check"] }, tier: "high" },
   { scene: "a CI-policy line in a shape the parser refuses", paths: ["packages/store/src/a.ts"], ciPolicy: { kind: "malformed" }, tier: "high" },

@@ -1,10 +1,13 @@
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DEFAULT_GROUP_THRESHOLD, type MemoryFactType, type ParseFailure } from "@titan-design/memory";
 import { defineCommand, EXIT } from "@titan-design/registry";
-import { expandHome } from "@titan-design/session-read";
+import { claudeTranscriptRoots, expandHome } from "@titan-design/session-read";
 import { z } from "zod";
 import type { MinerContext } from "../context.js";
 import { scanMemory, type MemoryScan } from "../memory/discover.js";
+import { checkIndex, type IndexCheck } from "../memory/index-check.js";
+import { instructionFacts, scanInstructions } from "../memory/instructions.js";
 import { buildMemoryReport, writeMemoryReport, type MemoryReport } from "../memory/report.js";
 import { defaultSkillsRoots, readSkills } from "../memory/skills.js";
 
@@ -13,9 +16,22 @@ interface Unparsed {
   error: string;
 }
 
+interface IndexFinding extends IndexCheck {
+  index: string;
+}
+
+interface IndexSummary {
+  checked: number;
+  dangling: number;
+  unindexed: number;
+  unloaded: number;
+  findings: IndexFinding[];
+}
+
 interface MemoryScanResult {
   files: number;
   indexes: number;
+  index: IndexSummary;
   byAccount: Record<string, number>;
   byType: Partial<Record<MemoryFactType, number>>;
   unparsed: Unparsed[];
@@ -28,6 +44,7 @@ interface MemoryReportResult {
   decisions: string;
   files: number;
   skillsIndexed: number;
+  instructionSections: number;
   groups: number;
   singletons: number;
   largestGroup: number;
@@ -43,10 +60,34 @@ function tally(keys: readonly string[]): Record<string, number> {
 
 const unparsedOf = (failures: readonly ParseFailure[]): Unparsed[] => failures.map(({ ref, error }) => ({ path: ref.path, error }));
 
+function checkIndexFile(indexPath: string): IndexFinding | undefined {
+  try {
+    const dir = path.dirname(indexPath);
+    const check = checkIndex(readFileSync(indexPath, "utf8"), readdirSync(dir).filter((name) => name.endsWith(".md")));
+    return { index: indexPath, ...check, unindexed: check.unindexed.map((name) => path.join(dir, name)) };
+  } catch {
+    return undefined;
+  }
+}
+
+// Paths and line numbers only: an index's prose never leaves the machine.
+function summarizeIndexes(indexes: readonly string[]): IndexSummary {
+  const findings = indexes.map(checkIndexFile).filter((finding): finding is IndexFinding => finding !== undefined);
+  const sum = (pick: (finding: IndexFinding) => number): number => findings.reduce((total, finding) => total + pick(finding), 0);
+  return {
+    checked: findings.length,
+    dangling: sum((finding) => finding.dangling.length),
+    unindexed: sum((finding) => finding.unindexed.length),
+    unloaded: sum((finding) => finding.unloaded.length),
+    findings: findings.filter((finding) => finding.dangling.length + finding.unindexed.length + finding.unloaded.length > 0),
+  };
+}
+
 function summarizeScan(scan: MemoryScan): MemoryScanResult {
   return {
     files: scan.facts.length + scan.unparsed.length,
     indexes: scan.indexes.length,
+    index: summarizeIndexes(scan.indexes),
     byAccount: tally([...scan.facts, ...scan.unparsed].map(({ ref }) => ref.account)),
     byType: tally(scan.facts.map((fact) => fact.type)),
     unparsed: unparsedOf(scan.unparsed),
@@ -54,7 +95,7 @@ function summarizeScan(scan: MemoryScan): MemoryScanResult {
 }
 
 // Group stats and paths only: fact text never leaves the machine through MCP or HTTP.
-function summarizeReport(scan: MemoryScan, report: MemoryReport, skillsIndexed: number): Omit<MemoryReportResult, "dir" | "report" | "decisions"> {
+function summarizeReport(scan: MemoryScan, report: MemoryReport, skillsIndexed: number): Omit<MemoryReportResult, "dir" | "report" | "decisions" | "instructionSections"> {
   const sizes = report.groups.map((group) => group.facts.length);
   return {
     reportId: report.reportId,
@@ -103,9 +144,10 @@ export const memoryReport = defineCommand<z.infer<typeof ReportArgs>, MemoryRepo
   async run(args, ctx) {
     refuseOffCli([...(args.skillsRoot.length > 0 ? ["--skills-root"] : []), ...(args.out ? ["--out"] : [])], ctx);
     const scan = scanMemory();
+    const instructions = instructionFacts(scanInstructions(claudeTranscriptRoots()));
     const skills = readSkills(args.skillsRoot.length > 0 ? args.skillsRoot.map((root) => expandHome(root)) : defaultSkillsRoots());
-    const report = buildMemoryReport(scan.facts, skills, new Date(), args.groupThreshold);
+    const report = buildMemoryReport([...scan.facts, ...instructions], skills, new Date(), args.groupThreshold);
     const written = writeMemoryReport(args.out ? expandHome(args.out) : path.join(ctx.config.stateDir, "memory-miner"), report);
-    return { ...summarizeReport(scan, report, skills.length), ...written };
+    return { ...summarizeReport(scan, report, skills.length), instructionSections: instructions.length, ...written };
   },
 });

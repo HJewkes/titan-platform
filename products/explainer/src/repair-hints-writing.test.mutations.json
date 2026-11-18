@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the naming hint quotes every sentence of its beats",
+      "file": "products/explainer/src/repair-hints-writing.ts",
+      "find": ".filter((s) => isNamingRefrain(s, maxWords))",
+      "replace": ".filter((s) => isNamingRefrain(s, maxWords) || s.words > 0)",
+      "kills": [
+        "the naming-refrain repair hint quotes the naming lines with their beats and none of the filler"
+      ]
+    },
+    {
+      "name": "the named-before-defined hint swaps the speaking and declaring beats",
+      "file": "products/explainer/src/repair-hints-writing.ts",
+      "find": "is spoken in ${spokenIn} but declared in ${declaredIn}",
+      "replace": "is spoken in ${declaredIn} but declared in ${spokenIn}",
+      "kills": [
+        "the named-before-defined repair hint names the term, the beat that speaks it and the beat that declares it, and moving the declaration to the speaking beat passes"
+      ]
+    },
+    {
+      "name": "the short-register hint swaps the measured mean and the floor",
+      "file": "products/explainer/src/repair-hints-writing.ts",
+      "find": "average ${row.value} words (at least ${row.threshold} needed)",
+      "replace": "average ${row.threshold} words (at least ${row.value} needed)",
+      "kills": [
+        "the short-register repair hint states the measured mean and the 12-word floor, and joining the short sentences into longer ones passes"
+      ]
+    }
+  ]
+}

@@ -5,6 +5,8 @@ import { openRepoFindings, openRunsSettled, type OpenSeen } from "./land-open-ch
 import type { HeadObserver } from "../head-guard/head-regression.js";
 import type { OrphanedCheck } from "./land-orphan.js";
 import { portReads, type PrReads } from "./pr-snapshot.js";
+import { newestRanPerCheck, SKIPS } from "./skip-hidden.js";
+import { fixProofSkippedAt, isFixProofExempt, isSkippedFixProofJob } from "../shepherd/fix-proof-jobs.js";
 
 /** mergeable_state values that let a merge through; `unknown` means GitHub has not settled, and `blocked` is judged apart. */
 const MERGEABLE = new Set(["clean", "unstable", "has_hooks"]);
@@ -106,26 +108,34 @@ interface Judged {
   red: CheckRun[];
 }
 
-/** The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is red, nothing is still running. */
-function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[]): Judged {
+/**
+ * The runs a verdict is judged on. The snapshot settles a head on this same set: once every finding left is red, nothing is still running.
+ * `proofExempt` marks the one head fix-proof.yml exempts itself from; see `withoutExemptProofSkips`.
+ */
+function findingsAt(input: Pick<CiInput, "contexts">, headSha: string, allRuns: readonly CheckRun[], proofExempt: boolean): Judged {
   const runs = withoutSupersededCancels(withoutCancelledWorkflowRuns(allRuns));
-  const findings = input.contexts.length === 0 ? openRepoFindings(headSha, runs) : headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const all = input.contexts.length === 0 ? openRepoFindings(headSha, runs) : headCheckFindings({ headSha, contexts: input.contexts, runs, requiredApps: [GITHUB_ACTIONS_APP_ID] });
+  const findings = proofExempt && fixProofSkippedAt(allRuns, headSha) ? withoutExemptProofSkips(all) : all;
   return { findings, red: redRuns(findings, runs.filter((run) => run.headSha === headSha && run.appId === GITHUB_ACTIONS_APP_ID)) };
 }
 
-/** A skip ran nothing that could fail, so it is never red; it is not a pass of a required check either. */
-const SKIPS: ReadonlySet<string> = new Set(["skipped", "neutral"]);
+/**
+ * On the release head every fix-proof job skips by design, so a required one is settled, as GitHub's merge gate reads it (TP-5470).
+ * The skip test runs on the unfiltered runs: a cancelled or timed-out proof job means the workflow applied there.
+ */
+const withoutExemptProofSkips = (findings: readonly CheckFinding[]): CheckFinding[] => findings.filter((finding) => !(finding.kind === "failed" && isSkippedFixProofJob(finding.run)));
 
 /** A run that has not concluded, or concluded without running its job. A lone cancel is still red, so land reruns it. */
 const ranNothing = (run: CheckRun): boolean => !isConcluded(run) || SKIPS.has(run.conclusion ?? "") || run.conclusion === "cancelled";
 
 /**
- * Red needs a concluded failure the fixer can find: its check's newest run at the head, or an older run beside a newer
- * one that ran and passed, as TP-497 judges. A failure whose newer run is still going or ran nothing (tp#2576, tp#2622,
- * a rerun in flight) is waited on, since it is not green either.
+ * Red needs a concluded failure the fixer can find, judged against its check's newest run that ran, past any newer skip
+ * (tp#3329): the failure is that run, or an older run beside a newer one that ran and passed, as TP-497 judges. A skip is
+ * never red, nor a pass of a required check. A failure whose newer run is still going or was cancelled (tp#2576, a rerun
+ * in flight) is waited on, not green either.
  */
 function redRuns(findings: readonly CheckFinding[], counted: readonly CheckRun[]): CheckRun[] {
-  const newest = new Map(latestPerName(counted).map((run) => [run.name, run]));
+  const newest = new Map(newestRanPerCheck(counted).map((run) => [run.name, run]));
   const replacedBy = (run: CheckRun) => {
     const latest = newest.get(run.name);
     return latest !== undefined && latest.id !== run.id ? latest : undefined;
@@ -151,10 +161,10 @@ function withoutCancelledWorkflowRuns(runs: readonly CheckRun[]): CheckRun[] {
   return runs.filter((run) => run.workflowRunId === null || !cancelled.has(run.workflowRunId));
 }
 
-/** True when every required check at `headSha` has passed, as ci-wait judges them when the base names required contexts; mergeability is not read. */
-export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts">, headSha: string, reads: PrReads): Promise<boolean> {
-  const runs = await reads.checkRuns(input.repo, headSha, () => true);
-  return findingsAt(input, headSha, runs).findings.length === 0;
+/** True when every required check at the PR's head has passed, as ci-wait judges them when the base names required contexts; mergeability is not read. */
+export async function requiredChecksPass(input: Pick<CiInput, "repo" | "contexts">, pr: Pick<PullRequest, "headSha" | "headRef" | "headRepo">, reads: PrReads): Promise<boolean> {
+  const runs = await reads.checkRuns(input.repo, pr.headSha, () => true);
+  return findingsAt(input, pr.headSha, runs, isFixProofExempt(pr, input.repo)).findings.length === 0;
 }
 
 async function readCiFrom(port: GitHubPort, recorded: CiInput, snapshotReads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
@@ -168,11 +178,12 @@ async function readCiFrom(port: GitHubPort, recorded: CiInput, snapshotReads: Pr
 
 async function judgeOpenPr(port: GitHubPort, input: CiInput, pr: PullRequest, reads: PrReads, options: CiReadOptions): Promise<CiSnapshot> {
   const base = { headSha: pr.headSha, mergeableState: pr.mergeableState, baseRef: pr.baseRef };
+  const proofExempt = isFixProofExempt(pr, input.repo);
   const runs = await reads.checkRuns(input.repo, pr.headSha, (all) => {
-    const judged = findingsAt(input, pr.headSha, all);
+    const judged = findingsAt(input, pr.headSha, all, proofExempt);
     return judged.red.length === judged.findings.length;
   });
-  const { findings, red } = findingsAt(input, pr.headSha, runs);
+  const { findings, red } = findingsAt(input, pr.headSha, runs, proofExempt);
   if (findings.length === 0 && awaitsSecondRead(input, options, pr.headSha, runs)) return { ...base, verdict: "pending", waitingOn: [SECOND_READ] };
   if ((input.strict && pr.behind) || pr.mergeableState === "behind") return behindVerdict(base, findings, pr.draft, options.missingSettled?.(pr.headSha) ?? false);
   if (red.length > 0) return { ...base, verdict: "red", failing: red.map(failingCheck) };

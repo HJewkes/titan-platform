@@ -16,7 +16,7 @@ type ReclassInput = z.infer<typeof ReclassInput>;
 const ReclassResult = z.looseObject({ reclassed: z.boolean(), kept: z.string().optional(), held: z.string().optional() });
 type ReclassResult = z.infer<typeof ReclassResult>;
 
-type ReclassDeps = Pick<ShepherdDeps, "port" | "store" | "now" | "sleep" | "prFiles">;
+type ReclassDeps = Pick<ShepherdDeps, "port" | "store" | "now" | "sleep" | "prFiles" | "lowTierPolicy">;
 
 /**
  * A run held because its changed files were unread at registration reads them again at `head`. A whole read that finds no
@@ -42,7 +42,7 @@ export async function reclassUnread(deps: ReclassDeps, input: ReclassInput, sign
 
 /** A G10 hold as strong as the head's class, placed or released before, decided it already, so this reads nothing then. */
 async function classHead(deps: ReclassDeps, input: ReclassInput, pause: (ms: number) => Promise<void>): Promise<ReclassResult> {
-  const files = { head: input.head, pause, ...(deps.prFiles && { local: deps.prFiles }) };
+  const files = { head: input.head, pause, ...(deps.prFiles && { local: deps.prFiles }), ...(deps.lowTierPolicy && { lowTier: deps.lowTierPolicy }) };
   const held = await applyRegistrationHold(deps.port, deps.store.get(), input.runId, files);
   return { reclassed: false, ...(held !== undefined && { held }) };
 }

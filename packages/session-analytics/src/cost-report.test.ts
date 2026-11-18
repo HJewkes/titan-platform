@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { costReport, costReportSchema, type CostReport } from "./cost-report.js";
 import { writeEpisodes } from "./episodes.js";
-import { SCENARIO_WINDOW, createFixtureGraph, insertInbound, insertRequest, insertSignal, seedCostScenario, type FixtureGraph } from "./fixture.js";
+import { SCENARIO_WINDOW, createFixtureGraph, insertInbound, insertRequest, insertSignal, insertTranscript, seedCostScenario, type FixtureGraph } from "./fixture.js";
 import { priceRequest } from "./price-request.js";
 import { PRICE_TABLE_VERSION } from "./prices.js";
 
@@ -92,6 +92,17 @@ describe("costReport", () => {
       transcriptsDiscovered: 5,
       facetBacklog: 3,
     });
+  });
+
+  it("leaves quarantined and missing transcripts out of the facet backlog while still counting them as indexed", () => {
+    insertTranscript(fixture.graph, "quarantined.jsonl", null);
+    insertTranscript(fixture.graph, "gone.jsonl", null);
+    fixture.graph.transcripts.markStatus("quarantined.jsonl", "quarantined", "unparseable");
+    fixture.graph.transcripts.markStatus("gone.jsonl", "missing", "source unavailable");
+
+    const { coverage } = costReport(fixture.openReadOnly(), { ...SCENARIO_WINDOW, facetVersion: 4 });
+
+    expect(coverage).toMatchObject({ transcriptsIndexed: 5, facetBacklog: 3 });
   });
 
   it("ranks top sessions by cost and carries their tags", () => {

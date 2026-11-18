@@ -58,6 +58,8 @@ export function mergeableState(raw: string, draft: boolean): MergeableState {
 export const MAX_FAILED_ROUNDS = 3;
 /** Rounds at one head whose own MERGE the seat held before the owner is asked; above `MAX_FAILED_ROUNDS`, since a seat waiting on slow CI held three (tp#1300). */
 export const MAX_SEAT_HELD_ROUNDS = 6;
+/** Land rounds at one head whose observe read stayed `mergeable_state` unknown before the owner is asked (TP-1956). */
+export const MAX_UNKNOWN_OBSERVE_ROUNDS = 6;
 /** The seat-held gate's own words: it shares the failed-rounds row id, but no review round failed there. */
 export const SEAT_HELD_ROUNDS_WORDS = `the seat held Shepherd's own MERGE for ${MAX_SEAT_HELD_ROUNDS} rounds at one head`;
 /** Throttled rounds at one run that count no round; a later one counts as stuck, so a machine that never settles still reaches the owner. */
@@ -122,7 +124,7 @@ const REVIEWS_AGAIN: ReadonlySet<Route> = new Set(["fresh-reviewer", "retry-revi
  * `throttled` is a reviewer that went silent while the machine stop held; on a route that reviews again it is neither stuck nor
  * progress until its cap, and on any other route it counts as a timeout would.
  */
-export type RoundKind = "stuck" | "fix-first" | "progress" | "not-started" | "throttled";
+type RoundKind = "stuck" | "fix-first" | "progress" | "not-started" | "throttled";
 
 export function roundKind(route: Route, outcome: ReviewOutcome): RoundKind {
   if (outcome === "not-started") return outcome;

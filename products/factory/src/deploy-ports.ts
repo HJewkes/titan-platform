@@ -1,11 +1,10 @@
 import { execFile, type ExecFileException } from "node:child_process";
-import { cpSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
-import { isProcessAlive } from "@titan-design/daemon";
 import { gitChildEnv, setupEnv } from "@titan-design/worktree";
-import { errorCode } from "@titan-design/rpc-protocol/narrow";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { resolveDbPath } from "./config.js";
+import { systemLockPorts } from "./deploy-lock.js";
 import { deployRecordPath, parseDeployRecord, type DeployPorts, type DeployRecord } from "./deploy.js";
 import { z } from "zod";
 import { deployWindowPath } from "./deploy-output.js";
@@ -49,26 +48,6 @@ function listDirs(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => (entry.isDirectory() ? [entry.name] : []));
   } catch {
     return [];
-  }
-}
-
-function createExclusive(path: string, text: string): boolean {
-  try {
-    writeFileSync(path, text, { flag: "wx" });
-    return true;
-  } catch (err) {
-    if (errorCode(err) === "EEXIST") return false;
-    throw err;
-  }
-}
-
-function rename(from: string, to: string): boolean {
-  try {
-    renameSync(from, to);
-    return true;
-  } catch (err) {
-    if (errorCode(err) === "ENOENT") return false;
-    throw err;
   }
 }
 
@@ -122,6 +101,7 @@ function openIntentsAt(dbPath: string, steps: readonly string[]): Record<string,
 
 export function systemDeployPorts(checkout: string, env: NodeJS.ProcessEnv = process.env): DeployPorts {
   const gitEnv = gitChildEnv(process.env);
+  const lock = systemLockPorts();
   return {
     ...systemServicePorts(),
     pid: process.pid,
@@ -133,24 +113,16 @@ export function systemDeployPorts(checkout: string, env: NodeJS.ProcessEnv = pro
     listFiles: nodeMorningHoldPorts.listFiles,
     copyTree: (from, to) => cpSync(from, to, { recursive: true }),
     removeTree: (path) => rmSync(path, { recursive: true, force: true }),
-    createExclusive,
-    rename,
-    isAlive: isProcessAlive,
+    createExclusive: lock.createExclusive,
+    rename: lock.rename,
+    isAlive: lock.isAlive,
     openIntents: (steps) => openIntentsAt(resolveDbPath({ env }), steps),
   };
 }
 
-function readIfPresent(path: string): string | undefined {
-  try {
-    return readFileSync(path, "utf8");
-  } catch {
-    return undefined;
-  }
-}
-
 /** Only the deploy lock and the pause files: serve's console clear needs no checkout, git or pnpm. */
 export function systemPauseClearPorts(): PauseClearPorts {
-  return { pid: process.pid, exists: existsSync, readFile: readIfPresent, remove: (path) => rmSync(path, { force: true }), createExclusive, rename, isAlive: isProcessAlive };
+  return { ...systemLockPorts(), exists: existsSync };
 }
 
 /** The origin URL of `checkout`, the canonical remote a deploy clone defaults to; undefined when it has none. */

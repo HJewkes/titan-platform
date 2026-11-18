@@ -9,9 +9,9 @@ import { openDatabase, SpanFtsTables, spanFtsTablesDdl, type Db } from '@titan-d
  * text out of any file the miner owns.
  */
 
-export interface PrecedentSearchOptions {
-  /** Initiatives whose rows are never returned; required so no caller can forget it. */
-  humanOnly: ReadonlySet<string>;
+interface PrecedentSearchOptions {
+  /** False withholds an initiative's rows; required so no caller can forget it (TP-5453 P6). */
+  isVisible: (initiative: string) => boolean;
   /** Return rows no initiative claims; off by default (TP-695 Q6). */
   includeUnclaimed?: boolean;
   limit?: number;
@@ -21,7 +21,7 @@ export interface PrecedentSearchOptions {
   category?: string;
 }
 
-export interface PrecedentHit {
+interface PrecedentHit {
   score: number;
   row: LedgerRow;
 }
@@ -33,9 +33,9 @@ export function isUnclaimed(row: LedgerRow): boolean {
   return row.unclaimed || row.initiative === null;
 }
 
-export function visibleRows(rows: LedgerRow[], options: PrecedentSearchOptions): LedgerRow[] {
+function visibleRows(rows: LedgerRow[], options: PrecedentSearchOptions): LedgerRow[] {
   return rows.filter((row) => {
-    if (row.initiative !== null && options.humanOnly.has(row.initiative)) return false;
+    if (row.initiative !== null && !options.isVisible(row.initiative)) return false;
     if (isUnclaimed(row) && options.includeUnclaimed !== true) return false;
     return options.category === undefined || row.category === options.category;
   });
@@ -43,7 +43,7 @@ export function visibleRows(rows: LedgerRow[], options: PrecedentSearchOptions):
 
 function searchableText(row: LedgerRow): string {
   const options = row.options.map((o) => o.label).join(' / ');
-  return [row.header, row.question, options, row.answer].filter(Boolean).join('\n');
+  return [row.header, row.question, options, row.answer, row.free_text].filter(Boolean).join('\n');
 }
 
 function buildIndex(db: Db, rows: LedgerRow[]): SpanFtsTables {
@@ -85,10 +85,11 @@ function rankHits(
   results: { id: string; score: number }[],
   initiative: string | undefined,
 ): PrecedentHit[] {
-  const hits = results.map((result) => {
-    const row = pool[Number(result.id.slice(OWNER_PREFIX.length))];
+  const hits = results.flatMap((result) => {
+    const row = pool.at(Number(result.id.slice(OWNER_PREFIX.length)));
+    if (row === undefined) return [];
     const boost = initiative !== undefined && row.initiative === initiative;
-    return { score: result.score + (boost ? AFFINITY_BOOST : 0), row };
+    return [{ score: result.score + (boost ? AFFINITY_BOOST : 0), row }];
   });
   return hits.sort((a, b) => b.score - a.score);
 }

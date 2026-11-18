@@ -85,6 +85,16 @@ every caller plans, briefs and aggregates the same way:
   from `FOLLOW_UPS_WARNINGS` (`multiple_blocks`, `bad_item`, `bad_severity`, `too_many`, `too_long`,
   `placeholder`), so a block is never filed in part. `followUpsFields` gives the two optional fields
   `acceptVerdict` adds, and `FOLLOW_UPS_RULE` is the sentence `reviewerBrief` places before the verdict lines.
+- `parseCheckCandidates(text)`: the optional `Check-candidates:` section, one
+  `- <class key> | <route> | <rule sketch>` line per finding a check could have caught, at most
+  `MAX_CHECK_CANDIDATES`, sketch at most `MAX_CHECK_SKETCH_CHARS`. Route is one of `CHECK_ROUTES`
+  (`lint`, `type`, `structure`, `test`, `analysis`, `design`, `prompt`, `docs`). `CHECK_CLASSES` holds the
+  review audit's 45 standard class keys with each one's default route (`none` for classes that never become
+  a check). A key is normalised to kebab case; one off the list is kept as `other:<slug>`. Placement,
+  fences and `none` read as for `parseFollowUps`. Any fault drops the whole block with one warning from
+  `CHECK_CANDIDATES_WARNINGS` (`multiple_blocks`, `bad_item`, `bad_route`, `too_many`, `too_long`); it never
+  changes the verdict. `CHECK_CANDIDATES_RULE` is the sentence `reviewerBrief` places before the verdict
+  lines, followed by the class keys grouped by default route.
 - `aggregate(plan, results, input)`: the pure panel verdict from the members' results
   (`MemberResult`: shape, accepted verdict or `none` or `timeout`, degraded at spawn). Only
   a verdict of exactly `MERGE` or `FIX_FIRST` naming `input.head` counts; any other

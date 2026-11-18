@@ -1,5 +1,11 @@
 # @titan-design/locator
 
+## 0.2.2
+
+### Patch Changes
+
+- 7813c1f: Narrow stream chunks and errno errors instead of asserting them, clearing the typed-lint baseline.
+
 ## 0.2.1
 
 ### Patch Changes

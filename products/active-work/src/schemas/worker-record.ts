@@ -9,7 +9,7 @@ import { WorkerFactsSchema } from '@titan-design/agent-protocol/worker-facts';
  * plus an optional, size-capped `authored` block.
  */
 
-export const MAX_AUTHORED_LENGTH = 1500;
+const MAX_AUTHORED_LENGTH = 1500;
 export const NO_REPORT_OUTCOME = 'exited-no-report';
 
 const TaskIdSchema = z.string().regex(/^[A-Z][A-Z0-9]*-\d+$/, {

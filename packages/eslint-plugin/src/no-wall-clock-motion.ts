@@ -1,9 +1,10 @@
-import type { Rule } from "eslint";
 import type { CallExpression, Node } from "estree";
+import type { TitanRule } from "./titan-rule.js";
 
 export const DEFAULT_MOTION_PATHS: readonly string[] = ["/ui/beats/", "/motion/"];
 
-const TEST_FILE = /(\.(test|spec)\.[cm]?[jt]sx?$)|(\/__tests__\/)/;
+// Test helpers hold models that break the purity contract on purpose, to prove the pure-run traps catch them.
+const TEST_FILE = /(\.(test|spec|test-helpers)\.[cm]?[jt]sx?$)|(\/__tests__\/)/;
 const GLOBAL_OBJECTS = new Set(["globalThis", "window", "self"]);
 const TIMERS = new Set(["setTimeout", "setInterval", "setImmediate", "requestAnimationFrame"]);
 const BANNED_MEMBERS: Readonly<Record<string, ReadonlySet<string>>> = {
@@ -45,10 +46,10 @@ function configuredPaths(option: unknown): readonly string[] {
   return Array.isArray(paths) ? paths.filter((path): path is string => typeof path === "string") : DEFAULT_MOTION_PATHS;
 }
 
-export const noWallClockMotion: Rule.RuleModule = {
+export const noWallClockMotion: TitanRule = {
   meta: {
     type: "problem",
-    docs: { description: "Disallow wall-clock time and unseeded randomness in beat and motion code" },
+    docs: { description: "Disallow wall-clock time and unseeded randomness in beat and motion code", classes: ["real-clock-in-test"] },
     schema: [
       {
         type: "object",

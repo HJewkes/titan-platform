@@ -4,7 +4,8 @@ import { z } from "zod";
 import type { PostMergeConfig } from "../config.js";
 import type { StepDeclaration } from "../definition.js";
 import { evidenceRecord, type StepAttempt } from "../evidence.js";
-import { redactCredentials, redactForEvidence } from "../redact.js";
+import { redactCredentials } from "../redact.js";
+import { failedStep } from "../shepherd/failure-class.js";
 import { isoAt } from "../time-iso.js";
 import { step } from "./land.js";
 import type { ChoreExec, ChoreOptions, ChoreResult, ChoreSpecHost, PostMergeHost } from "./post-merge-adapter.js";
@@ -16,13 +17,13 @@ export type { ChoreExec, ChoreOptions, ChoreResult };
 export const TAIL_CHARS = 2_000;
 export const NO_COMMAND = "no post-merge command";
 
-export interface PostMergeInput {
+interface PostMergeInput {
   repo: RepoSlug;
   pr: number;
   mergeSha: string | null;
 }
 
-export const PostMergeResult = z.union([
+const PostMergeResult = z.union([
   z.looseObject({ skipped: z.literal(NO_COMMAND) }),
   z.looseObject({ exitCode: z.number().nullable(), signal: z.string().nullable(), timedOut: z.boolean(), stdoutTail: z.string(), stderrTail: z.string() }),
 ]);
@@ -51,7 +52,7 @@ export function postMergeRoute(deps: PostMergeDeps): StepRoute {
       const result = await runPostMerge(deps, PostMergeInputSchema.parse(JSON.parse(step.prompt)), step);
       return { ok: true, output: postMergeOutput(step, now(), result) };
     } catch (error) {
-      return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false };
+      return failedStep("post-merge", error);
     }
   };
   return { match: "post-merge", onRestart: "park", runner: { run }, reconcile: (step, signal) => reconcilePostMerge(deps, step, signal) };

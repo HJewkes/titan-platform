@@ -18,7 +18,7 @@ import { failure } from "./active-work.js";
 import { ownerWriteCommand } from "./owner-guard.js";
 import type { Manifest } from "./round-schema.js";
 import type { SubmittedAnswer } from "./round2-adapter.js";
-import { RecommendationSchema } from "./review-schema-0.3/index.js";
+import { RecommendationSchema } from "@titan-design/review-schema";
 import { OPEN_FLAGS, readCapped, readManifest, roundDirExists, statusOf, type RoundsSource } from "./rounds.js";
 
 export const REVEALED_FILE = "revealed.json";

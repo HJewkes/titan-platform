@@ -10,6 +10,7 @@ import { DraftDiscarded } from "./RoundDraft.js";
 import { RoundNote } from "./RoundNote.js";
 import { RoundRevealProvider } from "./RoundReveal.js";
 import { DesignRound } from "./RoundDesign.js";
+import { FeedbackRound } from "./RoundFeedback.js";
 import { RoundSend, useRoundSend } from "./RoundSend.js";
 import { RoundSetNav } from "./RoundSetNav.js";
 import { PagedSections } from "./RoundPager.js";
@@ -21,7 +22,7 @@ import { ShipRound } from "./RoundShip.js";
 
 type ValidRound = Extract<RoundDetail, { valid: true }>;
 
-/** One round: a merge gate's Ship view, a design round's frames, or its sections with each question answerable by pointer or keys 1-9. */
+/** One round: a merge gate's Ship view, a post-merge feedback sheet, a design round's frames, or its sections with each question answerable by pointer or keys 1-9. */
 export function RoundDetailPage({ id }: { id: string }): ReactNode {
   const detail = useQuery("rounds.get", { id });
   if (detail.status === "loading") return <Spinner size="sm" label="Loading round" />;
@@ -38,7 +39,7 @@ export function RoundDetailPage({ id }: { id: string }): ReactNode {
 }
 
 function RoundBody({ round }: { round: ValidRound }): ReactNode {
-  const body = round.ship ? <ShipRound round={round} /> : round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
+  const body = round.ship ? <ShipRound round={round} /> : isFeedback(round) ? <FeedbackRound round={round} /> : round.design ? <DesignRound round={round} /> : <QuestionRound round={round} />;
   return (
     <LiveViewedProvider key={round.id}>
       <RoundFramesProvider roundId={round.id} manifest={round.manifest}>
@@ -68,17 +69,22 @@ function ContrastOverrideBanner({ round }: { round: ValidRound }): ReactNode {
   return <Alert status="warning" message={`Contrast gate overridden: ${override.reason}`} testID="round-contrast-override" />;
 }
 
+const isFeedback = (round: ValidRound): boolean => round.manifest.kind === "feedback";
+
+/** A feedback sheet waits on no decision, so its open state is not shown as one, and it has no keys to legend. */
 function RoundHeading({ round }: { round: ValidRound }): ReactNode {
   const { manifest } = round;
+  const feedback = isFeedback(round);
   return (
     <VStack gap={1}>
       <HStack gap={3} align="center" wrap>
         <Heading level={3}>{`${manifest.unit} · round ${manifest.round}`}</Heading>
-        <Pill variant="subtle" size="xs">{round.status}</Pill>
+        {feedback ? <Pill variant="subtle" size="xs">feedback</Pill> : null}
+        {feedback && round.status === "open" ? null : <Pill variant="subtle" size="xs">{round.status}</Pill>}
         <DateTime value={round.updatedAt} format="datetime" variant="caption" color="secondary" fallback="unknown" />
       </HStack>
       {manifest.context ? <RoundNote heading="Context" text={manifest.context} /> : null}
-      <RoundKeyLegend />
+      {feedback ? null : <RoundKeyLegend />}
     </VStack>
   );
 }

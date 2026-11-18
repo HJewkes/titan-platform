@@ -1,4 +1,4 @@
-import type { GitHubWire, PullRequest, RepoSlug, SkipReason, WriteResult } from "./port.js";
+import type { GitHubWire, PullRequest, RepoSlug, SkipReason, WriteResult } from "./port-types.js";
 
 export function closedSkip(pr: PullRequest): SkipReason | undefined {
   if (pr.merged) return "merged";

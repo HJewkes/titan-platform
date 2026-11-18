@@ -21,9 +21,14 @@ export interface CommandContext extends BaseContext {
   // MCP server, whose process cwd is not the user's — those callers must pass
   // an explicit `cwd` arg to opt into cwd-based resolution.
   cwd?: string;
-  // Set by surfaces that know an agent is calling (MCP, or a CLI run under an
-  // agent's environment). Commands may hold agents to stricter input rules.
-  caller?: 'agent';
+  // Set by each surface: 'agent' for MCP or a CLI run under an agent's environment,
+  // 'owner' for the owner's plain terminal and the daemon's HTTP. Commands may hold
+  // agents to stricter input rules; owner-only initiatives are served only to 'owner',
+  // so a surface that sets nothing reads as restricted (TP-5453 P6b).
+  caller?: 'owner' | 'agent';
+  // Set by the daemon's /rpc and MCP-over-HTTP surfaces: the process environment there is the daemon's, so it says
+  // nothing about who called. Stdio MCP runs as the caller's child and leaves it unset.
+  remote?: true;
 }
 
 export type Command<Args = unknown, Result = unknown> = PkgCommand<Args, Result, CommandContext>;

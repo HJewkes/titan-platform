@@ -57,13 +57,12 @@ describe("script variety lints", () => {
     expect(connectorShareRow(beats)).toMatchObject({ pass: true, value: 0.3, beats: [] });
   });
 
-  it("warns when 31 % of beats open on a connector, naming them", () => {
-    const beats = ids(100).map((id, i) => beat(id, i < 31 ? ["So,", "But", "Then", "And", "Now"][i % 5]! + " the desk waits." : "The desk waits."));
+  it("reports 60 % connector openers without warning, keeping the share and naming them in the hint", () => {
+    const beats = ids(10).map((id, i) => beat(id, i < 6 ? ["So,", "But", "Then", "And", "Now"][i % 5]! + " the desk waits." : "The desk waits."));
 
     const verdict = connectorShareRow(beats);
 
-    expect(verdict.pass).toBe(false);
-    expect(verdict.beats).toEqual(ids(31));
+    expect(verdict).toMatchObject({ pass: true, value: 0.6, threshold: 0.3, beats: [] });
     expect(verdict.hint).toContain("b01, b02");
   });
 

@@ -81,7 +81,8 @@ describe("the agents pages on a phone", () => {
     const run = await screen.findByTestId("run-card-run-1");
     expect(screen.queryAllByTestId(/^run-row-/)).toEqual([]);
     expect(within(run).getByText("Dock index build")).toBeTruthy();
-    expect(within(run).getByText("HB-7 · 12 turns · $0.50")).toBeTruthy();
+    expect(within(run).getByRole("link", { name: "HB-7" })).toBeTruthy();
+    expect(within(run).getByText("12 turns · $0.50")).toBeTruthy();
     expect(within(run).getByTestId("run-link-run-1").className).toContain("max-md:min-h-11");
   });
 

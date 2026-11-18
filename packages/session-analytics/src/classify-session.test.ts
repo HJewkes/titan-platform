@@ -16,6 +16,13 @@ describe("classifySession", () => {
     expect(classifySession({ startType: "sdk-cli" }).sessionClass).toBe("headless_sdk");
   });
 
+  it.each(["sdk-ts", "sdk-py"])("a %s session with no origin is other_headless", (startType) => {
+    const result = classifySession({ startType, firstUserText: "run the nightly digest", humanTurnCount: 1 });
+
+    expect(result.sessionClass).toBe("other_headless");
+    expect(result.humanRole).toBeNull();
+  });
+
   it("splits human sessions into coordinator and adhoc", () => {
     const base = { startType: "cli" };
 

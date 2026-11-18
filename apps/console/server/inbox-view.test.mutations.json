@@ -2,28 +2,10 @@
   "v": 1,
   "mutations": [
     {
-      "name": "a merge-at-head deposit never joins its PR's live row",
-      "file": "apps/console/server/inbox-view.ts",
-      "find": "item.op.kind === \"release-hold\" || item.op.kind === \"merge-at-head\" ? rowOfPr",
-      "replace": "item.op.kind === \"release-hold\" ? rowOfPr",
-      "kills": [
-        "a deposit's typed op shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge"
-      ]
-    },
-    {
-      "name": "a deploy-pause-clear deposit gets no console tap",
-      "file": "apps/console/server/inbox-view.ts",
-      "find": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\"]);",
-      "replace": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\"]);",
-      "kills": [
-        "a deposit's typed op becomes an owner-op tap for a deploy-pause-clear"
-      ]
-    },
-    {
       "name": "a factory-config-set deposit gets a console tap before its effect lands",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\"]);",
-      "replace": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\", \"factory-config-set\"]);",
+      "find": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\", \"plan-bet-select\", \"plan-outcome-edit\", \"plan-freeze-set\"]);",
+      "replace": "new Set([\"merge-at-head\", \"retire-agent\", \"close-pr\", \"deploy-pause-clear\", \"plan-bet-select\", \"plan-outcome-edit\", \"plan-freeze-set\", \"factory-config-set\"]);",
       "kills": [
         "a deposit's typed op stays on the terminal for a kind with no console tap yet"
       ]
@@ -45,6 +27,24 @@
       "kills": [
         "inbox.list on a fixture factory joins each gate on a live PR to its gate strip at that head",
         "inbox.list on a fixture factory shows a gate's unreadable sources as unknown unmet rows without failing the list"
+      ]
+    },
+    {
+      "name": "the inbox reads its flow without Shepherd's live heads",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "readFlow(sources, liveRead.then((read) => liveHeads(read.value))),",
+      "replace": "readFlow(sources),",
+      "kills": [
+        "inbox.list on a fixture factory drops a deposit pinned to an old head of a PR Shepherd watches at a newer one"
+      ]
+    },
+    {
+      "name": "a diverged gate's hold text names no command",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "\"resolve from the terminal with the command shown\"",
+      "replace": "\"resolve from the console\"",
+      "kills": [
+        "actionFor holds a gate on a replay-diverged run to the terminal, and still taps a healthy one"
       ]
     }
   ]

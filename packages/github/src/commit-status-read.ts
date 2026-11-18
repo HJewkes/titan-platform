@@ -1,4 +1,4 @@
-import type { CommitStatus } from "./port.js";
+import type { CommitStatus } from "./port-types.js";
 import type { Rest } from "./rest.js";
 
 /** A list shorter than `total_count` throws rather than read as complete, because a missing failure would read as green. */

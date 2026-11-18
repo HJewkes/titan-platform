@@ -4,12 +4,16 @@ import { loadNotesFromDir, type LoadedNote } from '../notes/note-file.js';
 import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
 import { defineCommand } from '../registry/index.js';
 import { itemId, mtimeOf } from '../workspace-index/wire.js';
+import { pageList } from './_list-page.js';
 import { humanOnlyPredicate, resolveListSlugs } from './_list-scope.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1).optional(),
   all_initiatives: z.boolean().optional(),
   kind: NoteKindSchema.optional(),
+  tag: z.array(z.string().min(1)).optional(),
+  limit: z.coerce.number().int().positive().optional(),
+  cursor: z.string().min(1).optional(),
 });
 
 const NoteEntrySchema = z.object({
@@ -32,6 +36,11 @@ const NoteEntrySchema = z.object({
 
 const ResultSchema = z.object({
   notes: z.array(NoteEntrySchema),
+  // Notes matching the filters, before paging.
+  total: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+  // Pass back as `cursor` for the next page; null on the last page.
+  next_cursor: z.string().nullable(),
   // Unreadable files are reported, never dropped: a note that silently
   // disappears is exactly the knowledge loss notes exist to prevent.
   errors: z.array(
@@ -70,11 +79,16 @@ async function toEntry(slug: string, note: LoadedNote, humanOnly: boolean): Prom
 
 async function listForSlug(
   slug: string,
-  kind: Args['kind'],
+  filter: Pick<Args, 'kind' | 'tag'>,
   humanOnly: boolean,
 ): Promise<SlugListing> {
   const { notes, malformed } = await loadNotesFromDir(getInitiativeDir(slug));
-  const selected = kind ? notes.filter((note) => note.frontmatter.kind === kind) : notes;
+  const wanted = filter.tag ?? [];
+  const selected = notes.filter(
+    (note) =>
+      (!filter.kind || note.frontmatter.kind === filter.kind) &&
+      wanted.every((tag) => note.frontmatter.tags?.includes(tag)),
+  );
   return {
     notes: await Promise.all(selected.map((note) => toEntry(slug, note, humanOnly))),
     errors: malformed.map((entry) => ({
@@ -108,21 +122,40 @@ export default defineCommand<Args, Result>({
         long: '--kind',
         description: 'Only notes of this kind: process | gotcha | fyi | decision | plan',
       },
+      tag: {
+        long: '--tag',
+        description: 'Only notes carrying this tag. Repeat the flag to require every tag',
+      },
+      limit: {
+        long: '--limit',
+        description: 'Return at most this many notes; the result reports total, truncated and next_cursor',
+      },
+      cursor: {
+        long: '--cursor',
+        description: 'Resume after the page whose next_cursor this is',
+      },
     },
     usage:
-      'active-work note list <slug>|--all-initiatives [--kind process|gotcha|fyi|decision|plan]',
+      'active-work note list <slug>|--all-initiatives [--kind process|gotcha|fyi|decision|plan] [--tag a --tag b] [--limit N] [--cursor C]',
   },
   async run(args, ctx) {
     const [slugs, humanOnly] = await Promise.all([
-      resolveListSlugs('note.list', args),
+      resolveListSlugs('note.list', args, ctx),
       humanOnlyPredicate(getActiveRoot(), ctx.warnings),
     ]);
     const perSlug = await Promise.all(
-      slugs.map((slug) => listForSlug(slug, args.kind, humanOnly.isHumanOnly(slug))),
+      slugs.map((slug) => listForSlug(slug, { kind: args.kind, tag: args.tag }, humanOnly.isHumanOnly(slug))),
     );
     const notes = perSlug.flatMap((r) => r.notes);
+    const page = pageList(slugs.length > 1 ? notes.sort(newestFirst) : notes, {
+      limit: args.limit,
+      cursor: args.cursor,
+    });
     return {
-      notes: slugs.length > 1 ? notes.sort(newestFirst) : notes,
+      notes: page.items,
+      total: page.total,
+      truncated: page.truncated,
+      next_cursor: page.next_cursor,
       errors: perSlug.flatMap((r) => r.errors),
       human_only_known: humanOnly.known,
     };

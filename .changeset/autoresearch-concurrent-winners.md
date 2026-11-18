@@ -1,5 +1,0 @@
----
-"@titan-design/autoresearch": minor
----
-
-A round can keep more than one winner. The picked winner still fast-forwards the ratchet. Each later winner, in pick order, is merged onto the new head by the new optional `integrate` port (step `ar-integrate:<r>/<id>`), checked at L0 and run up the keep rung against the new B under its own scope (`<r>/re/<id>`). Only a winner that is still kept moves the ratchet, with `kind: "merge"` at `ar-ratchet:<r>.<n>`. A merge conflict, or a host without `integrate`, requeues the winner on its own lineage. Each decision is recorded as the seed `ar-reeval:<r>/<id>`. `RoundSummary` gains `moves` and `reevals`, both defaulting to `[]` so older runs still parse, and `ratchet` is now the net move. A settled outcome gains `reeval: {vs, decision, reason}`; a winner rejected on top of the new head settles as `rejected` with reason `reeval:<reason>`. `RatchetRequest.kind` is now `"ff" | "merge" | "sync"`, and `ideaId` is optional (for `sync`). Re-evaluation runs count in the run's model spend. `caseRungs` is exported from the ladder for re-use.

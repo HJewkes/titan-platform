@@ -12,7 +12,7 @@
       "count": 7
     }
   },
-  "packages/github/src/port.ts": {
+  "packages/github/src/github-port.ts": {
     "titan/max-function-lines": {
       "count": 1
     }

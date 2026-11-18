@@ -1,7 +1,9 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { CommandContext } from '../registry/types.js';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
-import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
+import { visibilityFor } from '../sessions/visibility.js';
+import { getActiveRoot } from '../utils/paths.js';
 import { readFrontmatter } from '../utils/gray-matter-io.js';
 
 export interface InitiativeBrief {
@@ -9,13 +11,6 @@ export interface InitiativeBrief {
   briefPath: string;
   frontmatter: BriefFrontmatter;
   body: string;
-}
-
-/**
- * Resolve the path to an initiative's `brief.md` for a given slug.
- */
-export function briefPathFor(slug: string): string {
-  return path.join(getInitiativeDir(slug), 'brief.md');
 }
 
 /**
@@ -59,4 +54,17 @@ export async function loadAllBriefs(): Promise<InitiativeBrief[]> {
  */
 export function sortSlugs(slugs: Iterable<string>): string[] {
   return [...new Set(slugs)].sort();
+}
+
+/**
+ * Renumbering moves every focused initiative, the caller's or not, so the moves are filtered
+ * through the caller's verdict, read from the root `loadAllBriefs` read, before they are named
+ * (TP-5556, TP-5746). The verdict counts what it withheld in the warnings, never by name.
+ */
+export async function movesForCaller<T extends { slug: string }>(
+  moves: readonly T[],
+  ctx: Pick<CommandContext, 'caller' | 'warnings'>,
+): Promise<T[]> {
+  const shown = await visibilityFor({ ...ctx, activeRoot: getActiveRoot() });
+  return moves.filter((move) => shown(move.slug));
 }

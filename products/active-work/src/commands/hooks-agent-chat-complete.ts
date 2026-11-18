@@ -42,7 +42,7 @@ function str(source: Record<string, unknown> | null, key: string): string | null
 }
 
 /** Injectable so tests never spawn a real `active-work wrap` subprocess. */
-export type WrapRunner = (args: string[]) => Promise<{ code: number | null; stderr: string }>;
+type WrapRunner = (args: string[]) => Promise<{ code: number | null; stderr: string }>;
 
 const defaultWrapRunner: WrapRunner = (args) =>
   new Promise((resolve, reject) => {
@@ -165,6 +165,7 @@ export async function handleOnComplete(
     '--no-loops',
     '--no-notes',
     '--no-tasks',
+    '--no-reports',
   ]);
   if (code !== 0) {
     throw new Error(`active-work wrap failed for agentId ${agentId} (exit ${code}): ${stderr}`);

@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/throughput",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Per-class throughput model: recency-weighted quantiles of agent-hours and cost over task actuals",
   "type": "module",
   "main": "./dist/index.js",

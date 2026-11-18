@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * A byte-compatible subset of the Vercel AI SDK `UIMessagePart` union, vendored
  * rather than imported: tier 0 carries no runtime dependency beyond zod as a
- * peer. `ai` is a devDependency only, and `ai-compat.test.ts` round-trips a real
+ * peer. `ai` is a devDependency only, and `ai-sdk.test.ts` round-trips a real
  * `UIMessage` through these schemas so the subset cannot drift silently.
  *
  * Verified against ai@7.0.102.

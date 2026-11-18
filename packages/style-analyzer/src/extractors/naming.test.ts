@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { NamingExtractor } from "./naming.js";
-import { parseFile } from "@titan-design/code-parser";
+import { parseFile, type GrammarLanguage } from "@titan-design/code-parser";
 import type { ParsedFile } from "./types.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-async function loadFixture(filename: string, language: string): Promise<ParsedFile> {
+async function loadFixture(filename: string, language: GrammarLanguage): Promise<ParsedFile> {
   const fixturePath = path.join(__dirname, "../../fixtures", filename);
   const content = fs.readFileSync(fixturePath, "utf-8");
   return parseFile(content, fixturePath, language);
@@ -214,7 +214,7 @@ describe("NamingExtractor", () => {
   });
 
   describe("single-word capitals", () => {
-    async function namesOf(source: string, file: string, language: string): Promise<string[]> {
+    async function namesOf(source: string, file: string, language: GrammarLanguage): Promise<string[]> {
       const parsed = await parseFile(source, file, language);
       return extractor
         .extract(parsed)

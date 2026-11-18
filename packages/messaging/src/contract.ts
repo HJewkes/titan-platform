@@ -108,6 +108,8 @@ export interface ChannelCapabilities {
   drafts: boolean;
   draftStreaming: boolean;
   threads: boolean;
+  /** Whether `sendVoice` and `sendPhoto` can deliver; false means both answer `unsupported`. */
+  media: boolean;
 }
 
 /**
@@ -131,6 +133,36 @@ export interface EditInput {
 }
 
 /**
+ * Bytes, not a URL or a path, so the same call runs in a Worker with no
+ * filesystem. `fileName` and `mimeType` label the upload; a channel picks a
+ * default when they are absent.
+ */
+export interface MediaFile {
+  bytes: Uint8Array;
+  fileName?: string;
+  mimeType?: string;
+}
+
+export interface VoiceInput {
+  handle: string;
+  audio: MediaFile;
+}
+
+export interface PhotoInput {
+  handle: string;
+  image: MediaFile;
+  caption?: string;
+}
+
+/**
+ * A media send fails with an `InteractionError` rather than a `SendError`,
+ * because a channel without media answers `unsupported` before it calls.
+ */
+export type MediaSendResult =
+  | { ok: true; ref?: MessageRef }
+  | { ok: false; error: InteractionError };
+
+/**
  * The acknowledgement half of a channel, kept apart from `MessageTransport` so
  * a consumer's own one-method fake still satisfies the send contract. No method
  * here ever throws.
@@ -145,6 +177,8 @@ export interface InteractiveTransport extends MessageTransport {
   }): Promise<InteractionResult>;
   edit(input: EditInput): Promise<InteractionResult>;
   answerAction(input: { actionId: string; toast?: string }): Promise<InteractionResult>;
+  sendVoice(input: VoiceInput): Promise<MediaSendResult>;
+  sendPhoto(input: PhotoInput): Promise<MediaSendResult>;
 }
 
 /** Injected time, so a keep-alive loop is testable without a real wait. */

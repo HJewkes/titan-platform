@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a reader re-adds its own deny-list helper",
+      "file": "products/active-work/src/commands/loop-board.ts",
+      "find": "import { visibilityFor, type Shown } from '../sessions/visibility.js';",
+      "replace": "import { visibilityFor, type Shown } from '../sessions/visibility.js';\nimport { isAgentVisible } from '@titan-design/pm';\nexport const hiddenSlugsForCaller = (slugs: string[]) => slugs.filter((slug) => !isAgentVisible({ slug, brief: null }));",
+      "kills": ["the visibility boundary in active-work builds the verdict only in the loader"]
+    },
+    {
+      "name": "a cross-initiative reader enumerates the root unfiltered",
+      "file": "products/active-work/src/plan/store.ts",
+      "find": "import { listSlugsForCaller } from '../sessions/visibility.js';",
+      "replace": "import { listInitiativeSlugsOrEmpty as listSlugsForCaller } from '../sessions/initiatives.js';",
+      "kills": ["the visibility boundary in active-work enumerates the root raw only where the reason is named"]
+    },
+    {
+      "name": "a reader forges the owner caller",
+      "file": "products/active-work/src/commands/search.ts",
+      "find": "    const visible = await visibilityFor({ ...ctx, activeRoot: getActiveRoot() });",
+      "replace": "    const visible = await visibilityFor({ ...ctx, caller: 'owner', activeRoot: getActiveRoot() });",
+      "kills": ["the visibility boundary in active-work sets the caller only on the surfaces"]
+    },
+    {
+      "name": "a reader filters on the caller itself",
+      "file": "products/active-work/src/commands/artifact-list.ts",
+      "find": "  const slugs = await listSlugsForCaller(root, ctx);",
+      "replace": "  const slugs = ctx.caller === 'agent' ? await listSlugsForCaller(root, ctx) : [];",
+      "kills": ["the visibility boundary in active-work reads the caller only for provenance and write gates"]
+    }
+  ]
+}

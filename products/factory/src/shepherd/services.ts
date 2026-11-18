@@ -1,6 +1,6 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 import type { Logger } from "@titan-design/daemon";
-import type { GitHubPort } from "@titan-design/github";
+import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
 import type { ReadTimer } from "./bounded.js";
 import type { FreezeStoreRef } from "./freeze.js";
@@ -20,6 +20,8 @@ export const SHEPHERD_WORKFLOW = "shepherd-pr";
 export interface ShepherdServices extends SnapshotServices {
   store: ShepherdStoreRef;
   port: GitHubPort;
+  /** The land loop's merge guard, which a merge outside land consults first; absent means such a merge never goes through (TP-5802). */
+  heldMerge?: (repo: RepoSlug, pr: number, sha?: string) => Promise<string | undefined>;
   /** Read on every register, so a seat or deny change applies without a restart; an unreadable seat book refuses. */
   seats: () => SeatBook;
   /** Absent means no row reports a run waiting for its repo's merge train. */
@@ -28,6 +30,8 @@ export interface ShepherdServices extends SnapshotServices {
   freeze?: FreezeStoreRef;
   /** Reads a registered head's changed files from Shepherd's git cache; absent means the serve process's cached reader. */
   prFiles?: PrFilesRead;
+  /** `shepherd.gateReset.lowTierPolicy`, read per registration (TP-5403); absent, or a read of none, means `shadow`. */
+  lowTierPolicy?: () => "off" | "shadow" | "on" | undefined;
   /** The clock `shepherd.prs` dates its merged window by; absent means the wall clock. */
   now?: () => number;
   /** Where `head-regression` lines go; absent means the daemon log. */

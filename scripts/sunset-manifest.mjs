@@ -149,7 +149,7 @@ function gitFiles(repoDir, path) {
 }
 
 /** `<repo>:<file>` for each file added, modified or renamed in between `base` and HEAD of a checkout; none when no base is given. */
-export function changedSince(repo, repoDir, base) {
+function changedSince(repo, repoDir, base) {
   if (!repoDir || !base) return [];
   const out = execFileSync("git", ["-C", repoDir, "diff", "--name-only", "--diff-filter=AMR", `${base}...HEAD`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   return out.split("\n").filter(Boolean).map((file) => `${repo}:${file}`);
@@ -162,7 +162,7 @@ export function listRoots(manifest, repoDirs) {
 }
 
 /** An agent-chat checkout whose every root lists nothing is an empty or moved clone; its mapped files would only warn as drift, so the check names it itself. */
-export function emptyCheckoutProblem(manifest, listings) {
+function emptyCheckoutProblem(manifest, listings) {
   const listed = manifest.roots.filter(({ repo, path }) => repo === "agent-chat" && listings[`${repo}:${path}`]);
   return listed.length > 0 && listed.every(({ repo, path }) => listings[`${repo}:${path}`].length === 0) ? "agent-chat: every root lists 0 files; the --agent-chat checkout is empty or moved" : undefined;
 }

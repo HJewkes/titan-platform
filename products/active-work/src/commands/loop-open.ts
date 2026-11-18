@@ -5,7 +5,7 @@ import { getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
 import { assertValidSlug } from '../utils/slug.js';
 import { defineCommand } from '../registry/index.js';
-import { slugifyLabel } from './source-add.js';
+import { slugifyLabel } from '../utils/slug.js';
 
 const DERIVED_ID_MAX_LENGTH = 48;
 

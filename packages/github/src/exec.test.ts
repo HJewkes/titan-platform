@@ -4,7 +4,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { execGh } from "./exec.js";
+import { GhError, execGh } from "./exec.js";
 
 // Per-run so a concurrent run of this suite on the same host cannot count or kill our sleepers via host-wide pgrep/pkill.
 const MARKER = `tp564-fake-gh-sleeper-${process.pid}-${randomBytes(4).toString("hex")}`;
@@ -46,6 +46,29 @@ function installHungGh(): void {
   installExecutable(script, `#!${process.execPath}\nprocess.on("SIGTERM", () => {});\nsetTimeout(() => undefined, 60000);\n`);
   process.env.PATH = `${dir}:${savedPath}`;
 }
+
+describe("execGh spawn failure", () => {
+  it("names ENOENT in stderr and in GhError when gh is not on PATH", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "exec-gh-empty-"));
+    dirs.push(dir);
+    process.env.PATH = dir;
+
+    const result = await execGh(["api", "rate_limit"]);
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("ENOENT");
+    expect(new GhError(["api", "rate_limit"], result).message).toContain("ENOENT");
+  });
+
+  it("keeps the numeric exit code and stderr of a gh that runs and fails", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "exec-gh-"));
+    dirs.push(dir);
+    installExecutable(join(dir, "gh"), `#!${process.execPath}\nprocess.stderr.write("boom");\nprocess.exit(4);\n`);
+    process.env.PATH = `${dir}:${savedPath}`;
+
+    expect(await execGh([])).toEqual({ code: 4, stdout: "", stderr: "boom" });
+  });
+});
 
 describe("execGh timeoutMs", () => {
   it("rejects and leaves no gh child alive when the timeout passes", async () => {

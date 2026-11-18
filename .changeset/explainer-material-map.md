@@ -1,5 +1,0 @@
----
-"@titan-design/explainer": minor
----
-
-Add the `audition` stage's first steps (TP-4008, PP-7): `explainer.audition` writes `material-map.json` from the facts pack (markdown table or JSON lines) and a type profile, with no model call. A cue lexicon marks claims, tensions, changes, quantities, time series, mechanisms, flows and parallel items; one deterministic rule per `vocabulary.yaml` signal says which hold and which facts carry them, and `elegant-idea` is listed as a gap. Every registered structure's fit predicate is scored on those signals and the profile's runtime, with its reasons; a predicate that turns on a gap is `undecided`, and the structures that fit and that the profile allows are the candidates. The stage key covers the facts sha, the profile's version and content hash, and the structure registry's hash. `audition` is an optional first stage: `explainer run --from audition --profile <type>` or `explainer stage audition --in facts=<sha> --profile <type>`; a run from `script` skips it.

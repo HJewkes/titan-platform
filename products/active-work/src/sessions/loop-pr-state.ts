@@ -30,7 +30,7 @@ const URL_REF =/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)/;
 const QUALIFIED_REF = /^([^/\s#]+\/[^/\s#]+)#(\d+)$/;
 const BARE_REF = /^#?(\d+)$/;
 
-export interface MergedPrLoops {
+interface MergedPrLoops {
   /** Refs of the loops whose PR GitHub reports merged. */
   merged: Set<string>;
   warnings: string[];
@@ -43,7 +43,7 @@ interface PrTarget {
   loopRefs: string[];
 }
 
-export interface MergedPrOptions {
+interface MergedPrOptions {
   /** Clock for the cache; tests replace it. */
   now?: () => number;
 }

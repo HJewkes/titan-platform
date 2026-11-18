@@ -9,6 +9,15 @@
       "kills": [
         "POST /owner/console-action plan-approval leaves the approval unclaimed when two live registrations name the task"
       ]
+    },
+    {
+      "name": "the route names the live run as a task approval's claim",
+      "file": "products/factory/src/console-action/plan-approval.ts",
+      "find": "action.gate !== \"task\" && live.length === 1",
+      "replace": "live.length === 1",
+      "kills": [
+        "POST /owner/console-action plan-approval records a console task approval unclaimed, even with one live run of the task, and the task reads it back"
+      ]
     }
   ]
 }

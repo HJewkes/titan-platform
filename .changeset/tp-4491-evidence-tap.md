@@ -1,5 +1,0 @@
----
-"@titan-design/factory": minor
----
-
-A console tap can now answer an owner-at-head merge gate (ci-policy-weakened, ci-policy-malformed, skill-path). A ready `gate.ownerEvidence` card carries a sha256 digest of its body, and the tap's record carries that digest as `evidenceDigest`, plus a `presence` statement: a `titan-factory.gate-presence` statement the owner's key signed over the gate and the answer `{decision, headSha, evidenceDigest}`. The factory reads the card again from the same stored evidence, verifies the statement against the root-owned owner key ring, spends its nonce once in the gate batch ledger, and resolves only when the digest matches and the gate and PR are still at the confirmed head. Any agent can read the digest, so it never stands in for the owner. A resolved outcome names the facts the tap covered. A tap with no digest or no presence statement is refused `class` with the terminal command, a changed or missing card is refused `evidence`, a statement the owner's ring does not verify for this answer is refused `resolver`, and a digest or statement on a gate that needs no evidence is refused `record`.

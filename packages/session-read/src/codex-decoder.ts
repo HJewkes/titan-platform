@@ -287,7 +287,7 @@ class CodexContext {
     });
   }
 
-  private metadata(scope: "source" | "conversation" | "turn", path: readonly (string | number)[]): void {
+  private metadata(scope: "conversation" | "turn", path: readonly (string | number)[]): void {
     if (!this.payload) return;
     const normalized = new Set(["id", "thread_id", "session_id", "parent_thread_id", "turn_id", "root_turn_id", "model", "cwd", "cli_version", "git_branch"]);
     const entries = Object.entries(this.payload).map(([name, value]) => ({ name, value, meaning: normalized.has(name) ? "normalized" as const : "native" as const }));
@@ -355,9 +355,5 @@ class CodexContext {
 
   private sequence(): number {
     return this.line.evidence.nativeOrdinal ?? this.line.evidence.byteOffset;
-  }
-
-  private modelForActiveTurn(): string | null {
-    return this.activeTurnId ? (this.turnModels.get(this.activeTurnId) ?? null) : null;
   }
 }

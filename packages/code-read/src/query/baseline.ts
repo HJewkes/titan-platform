@@ -1,6 +1,7 @@
 import type { ReadModel } from "./model.js";
 import { columnFor } from "./rollup.js";
-import type { SnapshotRef } from "./schemas.js";
+import type { z } from "zod";
+import type { BaselineFields, SnapshotRef } from "./schemas.js";
 import { modelFor } from "./snapshot-ref.js";
 import type { ReadSource } from "./source.js";
 import { treeFor, type Tree } from "./tree.js";
@@ -23,8 +24,10 @@ export function baselineValue(baseline: Baseline, id: string, name: string): num
   return node ? columnFor(baseline.model, baseline.tree, name).valueOf(node).value : null;
 }
 
+type BaselineFieldValues = z.infer<z.ZodObject<typeof BaselineFields>>;
+
 /** The result fields every baseline-aware command reports; `comparable` is false across index versions. */
-export function baselineFields(current: ReadModel, baseline: Baseline | undefined): { baselineSnapshotId?: number; comparable?: boolean } {
+export function baselineFields(current: ReadModel, baseline: Baseline | undefined): BaselineFieldValues {
   if (!baseline) return {};
   return {
     baselineSnapshotId: baseline.model.snapshot.id,

@@ -1,217 +1,49 @@
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { z } from "zod";
-import { silentLogger, type DaemonHandle } from "@titan-design/daemon";
+import { describe, expect, it } from "vitest";
+import type { DaemonHandle } from "@titan-design/daemon";
 import { depositItemId, type OwnerItem } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
-import { MANIFEST_SCHEMA_ID, SHIP_OPTIONS, type ManifestInput } from "@titan-design/review-schema";
 import { LINEAR_WORK_LIMIT, callMeter, linearWork } from "@titan-design/test-kit";
-import type { ConsoleConfig } from "./config.js";
-import { startConsoleDaemon } from "./daemon.js";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
-import { actionFor, DIVERGED_HOLD, inboxItems, type InboxView, type WatchRow } from "./inbox-view.js";
-import { closedPort, send, startFakeBroker, startFakeDaemon, type FakeBroker, type FakeDaemon, type RpcAnswer } from "./test-support.js";
-
-const REPO = "example/repo";
-const HEAD = "1234567890abcdef1234567890abcdef12345678";
-const ASKER = "test-asker";
-const RUN_PLAIN = "11111111-0000-4000-8000-000000000001";
-const RUN_OWNER = "22222222-0000-4000-8000-000000000002";
-const RUN_G10 = "33333333-0000-4000-8000-000000000003";
-const RUN_GONE = "44444444-0000-4000-8000-000000000004";
-
-const TOKEN = "synthetic-token";
-/** The asker the fixtures' deposit and chat ask wait on, live in the broker so they stay blocking. */
-const LIVE_ASKER = { name: ASKER, workingOn: "EX-2: waiting on the owner", cwd: "/synthetic/asker", status: "available", idleMs: 0, registeredAt: 1_000 };
-const MINUTE = 60_000;
+import { actionFor, DIVERGED_HOLD, inboxItems } from "./inbox-view.js";
+import { ASKER, byId, FACTORY_ITEMS, fixtureFactory, gate, HEAD, item, MINUTE, okEnvelope, REPO, ROWS, row, RUN_G10, RUN_GONE, RUN_OWNER, RUN_PLAIN, TOKEN, useInboxViewWorld, type World } from "./inbox-view.test-helpers.js";
+import { closedPort, send, startFakeBroker, type FakeBroker, type FakeDaemon, type RpcAnswer } from "./test-support.js";
 
 let dir: string;
 let factory: FakeDaemon | undefined;
 let broker: FakeBroker;
 let handle: DaemonHandle | undefined;
 
-beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "console-inbox-view-"));
-  await writeFile(path.join(dir, "ui.token"), TOKEN, { mode: 0o600 });
-  broker = await startFakeBroker({ token: TOKEN, sessions: [LIVE_ASKER], items: [] });
-});
-
-afterEach(async () => {
-  await handle?.close();
-  handle = undefined;
-  await factory?.close();
-  factory = undefined;
-  await broker.close();
-  await rm(dir, { recursive: true, force: true });
-});
-
-function item(id: string, overrides: Partial<OwnerItem> = {}): OwnerItem {
-  return {
-    id,
-    sources: [{ system: "agent-chat", ref: id }],
-    kind: "decide",
-    door: "two-way",
-    summary: `Settle ${id}?`,
-    context: "",
-    keys: [],
-    personal: false,
-    lens: "blocking-agent",
-    unblocks: [],
-    openedAt: "2026-10-01T00:00:00.000Z",
-    status: "open",
-    ...overrides,
-  };
-}
-
-function gate(runId: string, openedAt: string, step = "approve-merge"): OwnerItem {
-  const gateId = `${runId}/${step}`;
-  return item(`gate:${gateId}`, {
-    sources: [{ system: "hitl", ref: gateId }],
-    kind: "approve",
-    door: "one-way",
-    lens: "blocking-merge",
-    keys: [`gate:${gateId}`, `run:${runId}`],
-    command: `titan-factory gate resolve ${runId} ${step} --json '<payload>'`,
-    evidenceRef: `https://example.test/${REPO}/pull/${runId.slice(0, 1)}`,
-    openedAt,
-  });
-}
-
-function row(runId: string, pr: number, held: string | null = null): WatchRow {
-  return {
-    repo: REPO,
-    pr,
-    branch: `feat/${pr}`,
-    runId,
-    task: "EX-1",
-    phase: "awaiting-approval",
-    headSha: HEAD,
-    phaseSince: "2026-10-10T00:00:00.000Z",
-    nextAction: "owner: resolve approve-merge",
-    pendingGate: { gateId: `${runId}/approve-merge`, stepId: "approve-merge", since: "2026-10-10T00:00:00.000Z" },
-    held: held === null ? null : { reason: held },
-    stalled: null,
-  };
-}
-
-const chatAsk = item("chat:msg-7", { sources: [{ system: "agent-chat", ref: "msg-7" }], asker: ASKER, openedAt: "2026-10-10T02:00:00.000Z" });
-const morning = item("morning:m-1", { sources: [{ system: "morning", ref: "m-1" }], evidenceRef: "https://example.test/morning/m-1", openedAt: "2026-10-10T00:30:00.000Z" });
-const planningTask = item("task:EX-9", { sources: [{ system: "active-work", ref: "example/EX-9" }], lens: "planning", openedAt: "2026-10-11T00:00:00.000Z" });
-
-const FACTORY_ITEMS = [
-  gate(RUN_PLAIN, "2026-10-10T03:00:00.000Z"),
-  gate(RUN_OWNER, "2026-10-10T05:00:00.000Z"),
-  gate(RUN_G10, "2026-10-10T04:00:00.000Z"),
-  gate(RUN_GONE, "2026-10-09T00:00:00.000Z"),
-  chatAsk,
-  morning,
-  planningTask,
-];
-
-const ROWS = [row(RUN_PLAIN, 1), row(RUN_OWNER, 2, "owner-asked: wait for me"), row(RUN_G10, 3, "g10-review: opus review at head")];
-
-type Question = ManifestInput["questions"][number];
-
-async function writeShipRound(id: string, at: Date): Promise<void> {
-  const question: Question = { id: "ship", kind: "pick-one", prompt: "Ship?", options: [...SHIP_OPTIONS], required: true, page: `${REPO}#5`, signsOff: "change", merge: { repo: REPO, pr: 5, headSha: HEAD, ship: ["Ship"] } };
-  const parts = [{ id: "change", label: "The change", proposed: "ship()", lang: "ts" }];
-  const sections = [{ id: "all", title: "All", deciding: "Whether it ships", changed: "The ship path", context: "Nothing else", parts, questionIds: ["ship"] }];
-  const round: ManifestInput = { schema: MANIFEST_SCHEMA_ID, unit: id, round: 1, storybookUrl: "http://127.0.0.1:6006", widths: [1280], variants: [], sections, questions: [question] };
-  const roundDir = path.join(dir, "state", "rounds", id);
-  await mkdir(roundDir, { recursive: true });
-  await writeFile(path.join(roundDir, "round.json"), JSON.stringify(round));
-  await utimes(path.join(roundDir, "round.json"), at, at);
-}
-
-/** The owner command queue files a gate it saw as a deposit; the deposit carries the gate's key, which must win it nothing. */
-async function writeImpostorDeposit(): Promise<string> {
-  await writeDeposit(path.join(dir, "state", "inbox", "deposits"), {
-    depositId: "queue-1",
-    asker: ASKER,
-    kind: "do",
-    door: "two-way",
-    summary: "Resolve the plain gate",
-    context: "",
-    keys: [`gate:${RUN_PLAIN}/approve-merge`, `run:${RUN_PLAIN}`],
-    command: "titan-factory shepherd waiting",
-    unblocksNow: "the queue's next gate",
-  });
-  return depositItemId(ASKER, "queue-1");
-}
-
-function config(factoryPort: number): ConsoleConfig {
-  return {
-    port: 0,
-    stateDir: path.join(dir, "state"),
-    activeWorkPort: 1,
-    agentChatPort: broker.port,
-    factoryPort,
-    agentChatTokenPath: path.join(dir, "ui.token"),
-    agentChatEventsDbPath: path.join(dir, "events.db"),
-    seatPrefixes: [],
-    sessionGraphPath: path.join(dir, "graph.sqlite3"),
-    codewatchUrl: "http://codewatch.test:7433",
-    lanHost: null,
-    lanNames: [],
-    lanTls: null,
-    lanTokenPath: path.join(dir, "state", "lan.token"),
-    ownerWrites: false,
-    gateAnswers: false,
-    inboxDir: path.join(dir, "state", "inbox", "deposits"),
-    roundsDir: path.join(dir, "state", "rounds"),
-    decisionsFile: null,
-  };
-}
-
-const fixtureFactory: RpcAnswer = (command) => {
-  if (command === "needs.list") return { items: FACTORY_ITEMS, gaps: [] };
-  if (command === "shepherd.list") return ROWS;
-  throw new Error(`no fixture for ${command}`);
+const world: World = {
+  get dir() {
+    return dir;
+  },
+  set dir(value) {
+    dir = value;
+  },
+  get factory() {
+    return factory;
+  },
+  set factory(value) {
+    factory = value;
+  },
+  get broker() {
+    return broker;
+  },
+  set broker(value) {
+    broker = value;
+  },
+  get handle() {
+    return handle;
+  },
+  set handle(value) {
+    handle = value;
+  },
 };
 
-const okEnvelope = z.object({ ok: z.literal(true), data: z.custom<InboxView>() });
-
-async function listInbox(factoryPort: number, args: { planning?: boolean } = { planning: true }): Promise<InboxView> {
-  handle = await startConsoleDaemon({ config: config(factoryPort), logger: silentLogger });
-  const reply = await send("127.0.0.1", handle.port, "POST", "/rpc/inbox.list", { host: `127.0.0.1:${handle.port}`, "content-type": "application/json", "x-titan-client": "test" }, JSON.stringify(args));
-  return okEnvelope.parse(JSON.parse(reply.body)).data;
-}
-
-async function serveFactory(rpc: RpcAnswer): Promise<number> {
-  factory = await startFakeDaemon({ ok: true }, rpc);
-  return factory.port;
-}
-
-const byId = (list: InboxView, id: string): InboxView["items"][number] | undefined => list.items.find((each) => each.id === id);
+const { writeShipRound, writeImpostorDeposit, listInbox, serveFactory } = useInboxViewWorld(world);
 
 describe("inbox.list on a fixture factory", () => {
-  it("returns every source kind with its action, blocking first and newest first", async () => {
-    await writeShipRound("ship-r1", new Date("2026-10-10T01:00:00.000Z"));
-    const depositId = await writeImpostorDeposit();
-
-    const list = await listInbox(await serveFactory(fixtureFactory));
-
-    expect(list.gaps).toEqual([]);
-    expect(list.items.map((each) => [each.id, each.section, each.action.kind])).toEqual([
-      [depositId, "blocking", "terminal"],
-      [`gate:${RUN_OWNER}/approve-merge`, "blocking", "owner-release"],
-      [`gate:${RUN_G10}/approve-merge`, "blocking", "hold-release"],
-      [`gate:${RUN_PLAIN}/approve-merge`, "blocking", "resolve-gate"],
-      ["chat:msg-7", "blocking", "answer-chat"],
-      ["round:ship-r1/ship", "blocking", "open-round"],
-      ["task:EX-9", "planning", "open"],
-      ["morning:m-1", "planning", "open"],
-      [`gate:${RUN_GONE}/approve-merge`, "planning", "terminal"],
-    ]);
-    expect(byId(list, `gate:${RUN_G10}/approve-merge`)).toMatchObject({ hold: { class: "g10-review" }, action: { holdClass: "g10-review", pr: 3, headSha: HEAD }, then: { kind: "resolve-gate" } });
-    expect(byId(list, `gate:${RUN_PLAIN}/approve-merge`)?.action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, runId: RUN_PLAIN, stepId: "approve-merge", repo: REPO, pr: 1, headSha: HEAD, decision: "merge" });
-    expect(byId(list, `gate:${RUN_GONE}/approve-merge`)?.action).toMatchObject({ command: `titan-factory gate resolve ${RUN_GONE} approve-merge --json '<payload>'` });
-    expect(byId(list, "task:EX-9")).toMatchObject({ evidence: "#/tasks/EX-9", action: { route: "#/tasks/EX-9" } });
-    expect(byId(list, "round:ship-r1/ship")).toMatchObject({ evidence: "#/rounds/ship-r1", action: { roundId: "ship-r1" } });
-  });
-
   it("counts the planning items in the default view and lists only the blocking ones", async () => {
     await writeShipRound("ship-r1", new Date("2026-10-10T01:00:00.000Z"));
 
@@ -288,6 +120,18 @@ describe("inbox.list on a fixture factory", () => {
     expect(list.items.filter((each) => each.sources[0]!.system === "hitl").map((each) => each.action.kind)).toEqual(["terminal", "terminal", "terminal", "terminal"]);
   });
 
+  it("drops a deposit pinned to an old head of a PR Shepherd watches at a newer one", async () => {
+    const pinned = (depositId: string, sha: string) =>
+      writeDeposit(path.join(dir, "state", "inbox", "deposits"), { depositId, asker: ASKER, kind: "decide", door: "two-way", summary: `Deposit ${depositId}?`, context: "", keys: [`pr:${REPO}#1@${sha}`] });
+    await pinned("stale", "a".repeat(40));
+    await pinned("current", HEAD);
+
+    const list = await listInbox(await serveFactory(fixtureFactory));
+
+    expect(byId(list, depositItemId(ASKER, "stale"))).toBeUndefined();
+    expect(byId(list, depositItemId(ASKER, "current"))).toBeDefined();
+  });
+
   it("lists the console's own deposits and rounds with a gap line per dead leg when the factory is down", async () => {
     await writeShipRound("ship-r1", new Date("2026-10-10T01:00:00.000Z"));
     const depositId = await writeImpostorDeposit();
@@ -344,14 +188,6 @@ describe("inbox.list's machine-derived rows", () => {
 });
 
 describe("actionFor", () => {
-  it("gives a deposit carrying a live gate's key no write action", () => {
-    const impostor = item("deposit:impostor", { sources: [{ system: "deposit", ref: `${ASKER}/impostor` }], keys: [`gate:${RUN_PLAIN}/approve-merge`, `run:${RUN_PLAIN}`], command: "titan-factory shepherd waiting" });
-
-    const { action } = actionFor(impostor, row(RUN_PLAIN, 1));
-
-    expect(action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
-  });
-
   it.each([
     ["device-flash", "a device or hardware gate"],
     ["after-stages", "an after-stages gate"],
@@ -398,18 +234,18 @@ describe("actionFor", () => {
     expect(actionFor(approval, undefined).action).toEqual({ kind: "approve-chat", msgId: "msg-8" });
   });
 
-  it("holds a gate on a replay-diverged run to Morning while TP-3918 is open, and still taps a healthy one", () => {
+  it("holds a gate on a replay-diverged run to the terminal, and still taps a healthy one", () => {
     const diverged = { ...row(RUN_PLAIN, 1), stalled: { reason: "replay diverged: step sh-await-verdict:2 changed" } };
 
     const held = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), diverged).action;
     const healthy = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), row(RUN_PLAIN, 1)).action;
 
     expect(held).toEqual({ kind: "terminal", reason: DIVERGED_HOLD, command: `titan-factory gate resolve ${RUN_PLAIN} approve-merge --json '<payload>'` });
-    expect(DIVERGED_HOLD).toBe("resolve from Morning (TP-3918)");
+    expect(DIVERGED_HOLD).toBe("resolve from the terminal with the command shown");
     expect(healthy.kind).toBe("resolve-gate");
   });
 
-  it("holds every rowless gate to Morning, even a land run's whose prompt names its head, since the item cannot rule out a diverged run", () => {
+  it("holds every rowless gate to the terminal, even a land run's whose prompt names its head, since the item cannot rule out a diverged run", () => {
     const land = { ...gate(RUN_GONE, "2026-10-10T00:00:00.000Z"), context: `Merge PR #9 in ${REPO} at head ${HEAD}? CI is green. Policy land/default: owner gate` };
 
     expect(actionFor(land, undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
@@ -431,10 +267,6 @@ describe("a deposit's typed op", () => {
     expect(actionFor(deposited(closeOp), undefined).action).toEqual({ kind: "owner-op", op: closeOp });
   });
 
-  it("stays on the terminal with no op", () => {
-    expect(actionFor(deposited(undefined), undefined).action).toMatchObject({ kind: "terminal", command: "titan-factory shepherd waiting" });
-  });
-
   it("becomes an owner-op tap for a deploy-pause-clear", () => {
     const pauseOp = { kind: "deploy-pause-clear", pausedAt: "2026-10-18T12:00:00.000Z", target: "f".repeat(40) } as const;
 
@@ -447,7 +279,7 @@ describe("a deposit's typed op", () => {
     expect(action.kind === "terminal" && action.reason).toBe("a factory-config-set op has no console tap yet; run its command");
   });
 
-  it("holds a gate op with no live row to Morning, as a rowless hitl gate is", () => {
+  it("holds a gate op with no live row to the terminal, as a rowless hitl gate is", () => {
     const op = { kind: "resolve-gate", gateId: `${RUN_GONE}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
 
     expect(actionFor(deposited(op), undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });

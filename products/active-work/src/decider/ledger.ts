@@ -11,7 +11,7 @@ import {
   type SourceRead,
   type SourceWatermarks,
 } from '@titan-design/decider';
-import { listInitiativeSlugs } from '../lint/index.js';
+import { listInitiativeSlugs } from '../sessions/initiatives.js';
 
 /**
  * The decider ledger lives in one SQLite file inside the active root. The v1
@@ -20,9 +20,9 @@ import { listInitiativeSlugs } from '../lint/index.js';
  * their rows reach the ledger, and search reads them until they have.
  */
 
-export const PRECEDENT_FILE = 'precedents.jsonl';
-export const GLOBAL_PRECEDENT_FILE = '.precedents.jsonl';
-export const V1_SOURCE = 'precedents-jsonl';
+const PRECEDENT_FILE = 'precedents.jsonl';
+const GLOBAL_PRECEDENT_FILE = '.precedents.jsonl';
+const V1_SOURCE = 'precedents-jsonl';
 
 export function ledgerPath(activeRoot: string): string {
   return path.join(activeRoot, '.decider', 'decider.sqlite3');
@@ -34,7 +34,7 @@ export function openLedger(activeRoot: string): LedgerStore {
   return openLedgerStore(file);
 }
 
-export function precedentFileFor(activeRoot: string, initiative: string | null): string {
+function precedentFileFor(activeRoot: string, initiative: string | null): string {
   return initiative === null
     ? path.join(activeRoot, GLOBAL_PRECEDENT_FILE)
     : path.join(activeRoot, initiative, 'sources', PRECEDENT_FILE);
@@ -45,7 +45,7 @@ async function precedentFiles(activeRoot: string): Promise<string[]> {
   return [null, ...slugs].map((slug) => precedentFileFor(activeRoot, slug));
 }
 
-export interface V1Rows {
+interface V1Rows {
   rows: LedgerRowWire[];
   malformed: number;
 }
@@ -74,7 +74,7 @@ async function readBytes(file: string): Promise<Buffer | null> {
   return fs.readFile(file).catch(() => null);
 }
 
-export async function readV1Precedents(activeRoot: string): Promise<V1Rows> {
+async function readV1Precedents(activeRoot: string): Promise<V1Rows> {
   const all: V1Rows = { rows: [], malformed: 0 };
   for (const file of await precedentFiles(activeRoot)) {
     const bytes = await readBytes(file);

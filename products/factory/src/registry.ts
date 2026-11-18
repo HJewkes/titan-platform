@@ -8,7 +8,8 @@ import { AR_READ_COMMANDS, AR_WRITE_COMMANDS } from "./autoresearch/commands.js"
 import { buildSurfaceAbandonCommand } from "./build-surface/abandon.js";
 import { buildSurfaceStartCommand } from "./build-surface/start.js";
 import type { ArConfig } from "./autoresearch/config.js";
-import type { FactoryContext, GateSummary, NeedsSources } from "./context.js";
+import type { Caller } from "./caller.js";
+import type { FactoryContext, GateSummary } from "./context.js";
 import type { FactoryHost, FactoryRoutes } from "./host.js";
 import { evidenceSources } from "./coordinator-evidence-read.js";
 import { reviewGates, type ReviewGate } from "./gate-review-read.js";
@@ -144,15 +145,20 @@ const gatesReview = defineCommand<Record<string, never>, { gates: ReviewGate[]; 
   run: async (_args, ctx) => ({ aud: ctx.aud ?? hostname(), gates: await reviewGates(ctx.host, ctx.shepherd && evidenceSources(ctx.shepherd)) }),
 });
 
+type ContextExtras = Pick<FactoryContext, "aud" | "needsSources" | "needsAllowed">;
+
 /** The context every surface runs a command in; the shepherd commands read the services their routes carry. */
-export function factoryContext(host: FactoryHost, routes: FactoryRoutes, aud?: string, needsSources?: NeedsSources): FactoryContext {
+export function factoryContext(host: FactoryHost, routes: FactoryRoutes, caller: Caller, extras: ContextExtras = {}): FactoryContext {
+  const { aud, needsSources, needsAllowed } = extras;
   return {
     warnings: [],
     format: "json",
     host,
+    caller,
     ...(routes.shepherd && { shepherd: routes.shepherd }),
     ...(aud !== undefined && { aud }),
     ...(needsSources && { needsSources }),
+    ...(needsAllowed && { needsAllowed }),
     ...autoresearchContext(routes.autoresearch),
   };
 }

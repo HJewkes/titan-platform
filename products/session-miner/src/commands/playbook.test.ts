@@ -1,3 +1,4 @@
+import { HashEmbedder, type Embedder } from "@titan-design/embed";
 import { invokeCommand } from "@titan-design/registry";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -101,6 +102,51 @@ describe("playbook commands", () => {
     const recalled = await run<Record<string, unknown>, { bullets: BulletView[]; antiPatterns: BulletView[] }>(playbookRecall, { query: "force-push history" });
     expect(recalled.envelope.data!.bullets).toEqual([]);
     expect(recalled.envelope.data!.antiPatterns).toHaveLength(1);
+  });
+});
+
+describe("playbook.recall with an embedder", () => {
+  type Recalled = { bullets: BulletView[] };
+  const seed = async () => {
+    await run(playbookAdd, { content: "Pin the npm major in release jobs", tags: ["release"] });
+    await run(playbookAdd, { content: "Rerun the suite before blaming the test" });
+  };
+
+  it("embeds the playbook and returns bullets with no warnings", async () => {
+    const hash = new HashEmbedder();
+    const calls: string[][] = [];
+    const embedder: Embedder = { ...hash, model: hash.model, dimensions: hash.dimensions, embed: (texts) => (calls.push([...texts]), hash.embed(texts)) };
+    const withEmbedder = makeContext({ embedder });
+    try {
+      await seed();
+      const recalled = await run<Record<string, unknown>, Recalled>(playbookRecall, { query: "npm release" }, withEmbedder);
+      expect(recalled.envelope.data!.bullets.map((b) => b.content)).toContain("Pin the npm major in release jobs");
+      expect(calls.length).toBeGreaterThan(0);
+      expect(withEmbedder.warnings).toEqual([]);
+    } finally {
+      withEmbedder.close();
+    }
+  });
+
+  it("falls back to the keyword ranking and warns when the embedder rejects", async () => {
+    const hash = new HashEmbedder();
+    const failing: Embedder = { ...hash, model: hash.model, dimensions: hash.dimensions, embed: () => Promise.reject(new Error("embedder offline")) };
+    const withEmbedder = makeContext({ embedder: failing });
+    try {
+      await seed();
+      const recalled = await run<Record<string, unknown>, Recalled>(playbookRecall, { query: "npm release" }, withEmbedder);
+      expect(recalled.envelope.data!.bullets.map((b) => b.content)).toEqual(["Pin the npm major in release jobs"]);
+      expect(withEmbedder.warnings.join("\n")).toContain("memory-vector degraded");
+    } finally {
+      withEmbedder.close();
+    }
+  });
+
+  it("stays keyword-only with no embedder and no warnings", async () => {
+    await seed();
+    const recalled = await run<Record<string, unknown>, Recalled>(playbookRecall, { query: "npm release" });
+    expect(recalled.envelope.data!.bullets.map((b) => b.content)).toEqual(["Pin the npm major in release jobs"]);
+    expect(ctx.warnings).toEqual([]);
   });
 });
 
@@ -217,5 +263,29 @@ describe("CLI option clarity", () => {
 
   it("no longer offers a --dry-run flag on playbook reflect", async () => {
     expect((await cli(["playbook", "reflect", "s1", "--dry-run"])).code).toBe(64);
+  });
+});
+
+describe("playbook.status staleness", () => {
+  type Status = { stale: number; staleOldest: Array<BulletView & { lastEvidenceAt: string }> };
+  const DAY_MS = 86_400_000;
+
+  it("counts a bullet silent for 200 days and skips fresh and pinned ones", async () => {
+    const store = ctx.playbook();
+    const old = store.add({ content: "Rerun the suite before blaming the test" });
+    store.recordFeedback(old.id, "helpful", { at: new Date(Date.now() - 200 * DAY_MS).toISOString() });
+    store.add({ content: "Pin the npm major in release jobs" });
+    const pinned = store.add({ content: "Never edit generated files", pinned: true });
+    store.recordFeedback(pinned.id, "helpful", { at: new Date(Date.now() - 200 * DAY_MS).toISOString() });
+
+    const st = await run<Record<string, never>, Status>(playbookStatus, {});
+    expect(st.envelope.data!.stale).toBe(1);
+    expect(st.envelope.data!.staleOldest.map((b) => b.id)).toEqual([old.id]);
+    expect(st.envelope.data!.staleOldest[0]!.lastEvidenceAt).toBeTypeOf("string");
+  });
+
+  it("reports no stale rules for an empty playbook", async () => {
+    const st = await run<Record<string, never>, Status>(playbookStatus, {});
+    expect(st.envelope.data).toMatchObject({ stale: 0, staleOldest: [] });
   });
 });

@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "tier 1 drops the excerpt",
+      "file": "products/active-work/src/search/context-tiers.ts",
+      "find": "hit.excerpt === null ? line : `${line}\\n${hit.excerpt}`",
+      "replace": "line",
+      "kills": ["hitTiers tier 0 is the ref and quoted title, tier 1 adds the excerpt"]
+    },
+    {
+      "name": "span read ignores the offset",
+      "file": "products/active-work/src/search/context-tiers.ts",
+      "find": "buffer.length, byteOffset)",
+      "replace": "buffer.length, 0)",
+      "kills": ["hitTiers tier 2 reads exactly byteLength bytes at byteOffset"]
+    },
+    {
+      "name": "span text is not capped",
+      "file": "products/active-work/src/search/context-tiers.ts",
+      "find": ".slice(0, SPAN_TEXT_MAX_CHARS)",
+      "replace": "",
+      "kills": ["hitTiers span text is capped at 2,000 characters"]
+    }
+  ]
+}

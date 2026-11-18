@@ -51,7 +51,7 @@ function mergingReviewers(): { dispatch: ReviewerDispatch; reader: ReviewerReade
   const resume = async (name: string) => agents.forEach((agent, i) => agent.name === name && (agents[i] = { ...agent, presence: "live" }));
   const dispatch: ReviewerDispatch = { roster: async () => [...agents], spawn: async (name) => void agents.push({ ...row(name), spawnedBy: "human" }), resume };
   const reader: ReviewerReader = {
-    read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, `Read it all.\n\nProbes: an empty list -> refused\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`)),
+    read: async (input) => agents.filter((who) => who.agentId === input.reviewerAgentId).map((who) => said(who, `Read it all.\n\nProbes: an empty list -> refused\nAuthority: unchanged\nVerdict: MERGE\nPR: ${REPO}#1\nHead: ${input.head}\n`)),
   };
   return { dispatch, reader, roster: rosterOver(agents) };
 }
@@ -94,7 +94,7 @@ function sceneHost(fake: FakeGitHub, ref: ShepherdStoreRef, roles: ReviewerRoles
   const adversary = twoMerge && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: twoMerge };
   const { roster: up, ...reviewers } = shared;
   const roster: RosterReader = rosterDown ? { ...up, read: async () => ({ kind: "unknown", error: new Error("roster down") }) } : up;
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster, review: { ...reviewers, roles, ...adversary } });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster, review: { ...reviewers, roles, ...adversary }, ownerTier: "off" });
   const reviewed: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
   const review: ShepherdPhases["review"] = async (ctx, request) => {
     const verdict = await reviewed(ctx, request);

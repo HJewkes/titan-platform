@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "each read builds its own kept shepherd, so the primed merge times go unread",
+      "file": "apps/console/server/commands.ts",
+      "find": "  if (known !== undefined) return known;\n",
+      "replace": "",
+      "kills": [
+        "coord.cards' first read after a restart waits on no timeline or titles read once the primer read the cards"
+      ]
+    },
+    {
+      "name": "the primer skips the cards",
+      "file": "apps/console/server/keep-warm.ts",
+      "find": "inbox.shown(), cards?.()]",
+      "replace": "inbox.shown()]",
+      "kills": [
+        "coord.cards' first read after a restart is primed at serve start and on a factory reconnect, never on an active-work one"
+      ]
+    }
+  ]
+}

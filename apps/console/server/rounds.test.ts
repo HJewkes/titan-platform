@@ -126,6 +126,52 @@ describe("rounds.list", () => {
   });
 });
 
+describe("the round cap", () => {
+  const SMALL_CAP = 2;
+  let capped: string;
+
+  async function plant(id: string, from: string): Promise<void> {
+    await cp(path.join(FIXTURES, from), path.join(capped, id), { recursive: true });
+  }
+
+  beforeEach(async () => {
+    capped = path.join(root, "capped");
+    await mkdir(capped);
+    for (const id of ["a-sent-r1", "b-sent-r1", "c-sent-r1"]) await plant(id, "kiln-schedule-r1");
+    await plant("z-open-r1", "kiln-schedule-r2");
+  });
+
+  it("lists the open round that sorts last and reports truncated when sent rounds are cut", async () => {
+    const { rounds, truncated } = await listRounds({ dir: capped, maxRounds: SMALL_CAP });
+
+    expect(rounds.map((round) => round.id)).toContain("z-open-r1");
+    expect(rounds).toHaveLength(SMALL_CAP);
+    expect(truncated).toBe(true);
+  });
+
+  it("reads the open round that sorts last into the queue and names how many sent rounds went unread", async () => {
+    const { rounds, gaps } = await readQueueRounds({ dir: capped, maxRounds: SMALL_CAP });
+
+    expect(rounds.map((round) => round.id)).toContain("z-open-r1");
+    expect(gaps).toEqual([expect.stringMatching(/^2 sent or withdrawn rounds were not read/)]);
+  });
+
+  it("reads every open round even when they alone exceed the cap", async () => {
+    await plant("y-open-r1", "kiln-schedule-r2");
+    await plant("x-open-r1", "kiln-schedule-r2");
+
+    const { rounds } = await listRounds({ dir: capped, maxRounds: SMALL_CAP });
+
+    expect(rounds.map((round) => round.id).sort()).toEqual(["x-open-r1", "y-open-r1", "z-open-r1"]);
+  });
+
+  it("reports no gap when the dir is within the cap", async () => {
+    const { gaps } = await readQueueRounds({ dir: capped, maxRounds: 4 });
+
+    expect(gaps).toEqual([]);
+  });
+});
+
 describe("rounds.get", () => {
   it("strips every recommendation from an unsent after-answer round", async () => {
     const detail = validDetail(await getRound({ dir }, "kiln-schedule-r2"));

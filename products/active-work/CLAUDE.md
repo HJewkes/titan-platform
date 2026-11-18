@@ -30,7 +30,7 @@ changesets, the six gates) apply here too.
 | `src/discover/` | gh / git / projects / Claude session discovery sources |
 | `skill/` | SKILL.md + references; copied to `~/.claude/skills/active-work/` by postinstall |
 | `scripts/` | postinstall, preuninstall |
-| `__tests__/` | Vitest tests; fixtures under `__tests__/fixtures/` |
+| `src/**/*.test.ts` | Vitest tests, next to their source; shared helpers and fixtures under `src/test-support/` |
 
 ## Commands
 
@@ -58,7 +58,7 @@ leaves `~/.claude` alone.
 - **Atomic writes + flock per-initiative** — read-modify-write paths must use `withFileLock` from `src/utils/fs-atomic.ts`.
 - **The active root is per-platform, resolved via `env-paths`** — on macOS `~/Library/Application Support/active-work/`, **not** `$XDG_DATA_HOME`, which `env-paths` ignores entirely on darwin. Never hardcode it, and never assume the XDG variables apply.
 
-  ⚠️ **The only safe override is the `ACTIVE_ROOT` env var**, which is what `__tests__/setup/test-helpers.ts` uses. Setting `XDG_DATA_HOME` expecting redirection does nothing and leaves you pointed at the operator's live data — an agent did exactly that and created ten synthetic initiatives in the real root. Anything that writes during a test must go through those helpers, which now refuse to delete a directory that is not one of their own temp dirs.
+  ⚠️ **The only safe override is the `ACTIVE_ROOT` env var**, which is what `src/test-support/test-helpers.ts` uses. Setting `XDG_DATA_HOME` expecting redirection does nothing and leaves you pointed at the operator's live data — an agent did exactly that and created ten synthetic initiatives in the real root. Anything that writes during a test must go through those helpers, which now refuse to delete a directory that is not one of their own temp dirs.
 
 ## Reference
 
