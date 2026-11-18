@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "each read builds its own kept shepherd, so the primer's merge times are not the ones the command reads",
+      "file": "apps/console/server/commands.ts",
+      "find": "  if (known !== undefined) return known;\n",
+      "replace": "",
+      "kills": [
+        "coord.cards' first read after a restart waits on no timeline or titles read once the primer read the cards"
+      ]
+    }
+  ]
+}

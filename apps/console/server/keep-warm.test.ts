@@ -152,6 +152,18 @@ describe("keepWarm", () => {
     expect(sources.reads.map(([name]) => name)).toContain("inbox.shown");
   });
 
+  it("serve start and a reconnected factory read the coordinator cards, so their merge times and titles are kept", async () => {
+    const sources = recorded();
+    let cardReads = 0;
+    const warm = keepWarm({ activeWork: sources.activeWork, inbox: sources.inbox, shepherd: sources.shepherd, cards: async () => void (cardReads += 1), logger: { warn: () => undefined } });
+
+    await warm.prime();
+    await warm.reconnected("factory");
+    await warm.reconnected("active-work");
+
+    expect(cardReads).toBe(2);
+  });
+
   it("serve start reads the task page's git and GitHub evidence for every repo the artifacts name", async () => {
     const artifacts = { items: [{ artifacts: { branches: [{ repo: "/synthetic/alpha" }], worktrees: [{ repo: "/synthetic/beta" }] } }] };
     const sources = recorded([], (name) => (name === "artifact.list" ? Promise.resolve(artifacts) : undefined));

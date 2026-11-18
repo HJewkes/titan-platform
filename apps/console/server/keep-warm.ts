@@ -32,6 +32,8 @@ interface KeepWarmSources {
   shepherd: Pick<ShepherdSource, "list">;
   /** `work.tasks`' kept git and GitHub evidence for every repo the artifacts name (TP-6751); absent, none is primed. */
   evidence?: EvidenceReader;
+  /** Reads `coord.cards` once, so its merge times and titles are kept (TP-6756); absent, they are not primed. */
+  cards?: () => Promise<void>;
   logger: Pick<Logger, "warn">;
 }
 
@@ -47,7 +49,7 @@ interface KeepWarm {
  * read them until the owner did. The daemon primes them at serve start and on each reconnect, never inside the registry, so
  * a test that builds the registry reads no more than it did. A factory read also warms the factory's own kept leg.
  */
-export function keepWarm({ activeWork, inbox, shepherd, evidence, logger }: KeepWarmSources): KeepWarm {
+export function keepWarm({ activeWork, inbox, shepherd, evidence, cards, logger }: KeepWarmSources): KeepWarm {
   /** The portfolio reads every initiative's brief for its task prefix (TP-6746), so the primer reads each into the same kept answer. */
   const briefs = async (list: ReadResult<"list">): Promise<void> => {
     const slugs = list.sections.flatMap((section) => section.items.map((item) => item.slug));
@@ -61,7 +63,7 @@ export function keepWarm({ activeWork, inbox, shepherd, evidence, logger }: Keep
       const repos = evidence === undefined ? undefined : readEvidence(activeWork, evidence);
       return [list, list.then(briefs), ...WHOLE_TREE_READS.map(([command, args]): Promise<unknown> => activeWork.read(command, args)), repos];
     },
-    factory: () => [inbox.factory?.list(), inbox.finished.read(), strips(), inbox.shown()],
+    factory: () => [inbox.factory?.list(), inbox.finished.read(), strips(), inbox.shown(), cards?.()],
     "agent-chat": () => [],
   };
   const warm = async (sources: readonly RelaySource[]): Promise<void> => {
