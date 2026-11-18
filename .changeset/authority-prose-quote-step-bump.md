@@ -2,4 +2,4 @@
 "@titan-design/factory": patch
 ---
 
-Bump the `sh-await-verdict` step version, because its `authority_missing` refusal now carries `quotes` naming the prose line that starts with Authority, and refresh the closure lock; the `ci-wait` closure change is attested, since it reaches review-panel through a type import only (TP-6608).
+Bump the `sh-await-verdict` step version, because its `authority_missing` refusal now carries `quotes` naming the prose line that starts with Authority, and bump the `ci-wait` step version, because its import closure moved through review-panel and no review attested its behaviour unchanged; refresh the closure lock (TP-6608).
