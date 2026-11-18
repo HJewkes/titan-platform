@@ -23,8 +23,8 @@
     {
       "name": "only a rest starting with a widening word is a reading",
       "file": "packages/review-panel/src/briefs/adversary.ts",
-      "find": "  if (rest === undefined) return undefined;\n",
-      "replace": "  if (rest === undefined || (raw.trim() !== \"Authority: unchanged\" && !rest.startsWith(\"wide\"))) return undefined;\n",
+      "find": "  if (!foldLabelledLine(raw).startsWith(AUTHORITY_LABEL)) return undefined;\n",
+      "replace": "  if (!foldLabelledLine(raw).startsWith(AUTHORITY_LABEL) || (raw.trim() !== \"Authority: unchanged\" && !(labelledLineRest(raw, AUTHORITY_HEADING, WIDENED) ?? \"\").startsWith(\"wide\"))) return undefined;\n",
       "kills": [
         "authorityLine prose that states a widening beside Authority: unchanged Authority grows: bot merges never reads unchanged",
         "authorityLine prose that states a widening beside Authority: unchanged Authority gate: widens never reads unchanged"
