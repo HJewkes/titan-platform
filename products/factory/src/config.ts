@@ -255,8 +255,7 @@ export const FactoryConfigSchema = z.object({
         .strictObject({
           twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
           lowTierPolicy: z.enum(["off", "shadow", "on"]).optional(), ownerTier: z.enum(["off", "shadow", "on"]).optional(), ownerValidate: z.enum(["off", "shadow", "on"]).optional(),
-          heldRepair: z.enum(["off", "on"]).optional(),
-          noReproProceed: z.enum(["off", "on"]).optional(),
+          heldRepair: z.enum(["off", "on"]).optional(), noReproProceed: z.enum(["off", "on"]).optional(),
           nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
         })
         .optional(),
@@ -269,8 +268,7 @@ export const FactoryConfigSchema = z.object({
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       checkCandidates: z.enum(["off", "record", "propose"]).optional(), // Reviewers' check candidates (TP-6482): absent means record; propose only records until B5.
       visualGate: VisualGateSchema.optional(),
-      /** The release App's `<app-slug>[bot]` login: only a head it pushed keeps the owner's release answer (TP-5606); absent, none does. */
-      releaseAppLogin: z.string().regex(/^[^\s[\]]+\[bot\]$/, "must be an App's <app-slug>[bot] login").optional(),
+      releaseAppLogin: z.string().regex(/^[^\s[\]]+\[bot\]$/, "must be an App's <app-slug>[bot] login").optional(), // The release App's login: only a head it pushed keeps the owner's release answer (TP-5606); absent, none does.
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
