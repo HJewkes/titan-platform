@@ -26,7 +26,7 @@ import { warmShownRows } from "./inbox-view.js";
 import { keepWarm } from "./keep-warm.js";
 import { linkHost } from "./lan-cert.js";
 import { APP_VERSION } from "./paths.js";
-import type { ConsoleSources } from "./commands.js";
+import { warmCards, type ConsoleSources } from "./commands.js";
 import type { ClassedCommand, ConsoleContext } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
 import { mountRoundMedia } from "./round-clip.js";
@@ -102,7 +102,8 @@ function withKeptInbox(sources: ConsoleSources): KeptSources {
  */
 function relayEvents(hub: DaemonHandle["hub"], sources: KeptSources, config: ConsoleConfig, logger: Logger): EventsRelay {
   const inbox = { ...sources.inboxCache, shown: () => warmShownRows(sources, sources.inboxCache) };
-  const warm = keepWarm({ activeWork: sources.activeWork, inbox, shepherd: sources.shepherd, ...(sources.evidence !== undefined && { evidence: sources.evidence }), logger });
+  const evidence = sources.evidence === undefined ? {} : { evidence: sources.evidence };
+  const warm = keepWarm({ activeWork: sources.activeWork, inbox, shepherd: sources.shepherd, ...evidence, cards: () => warmCards(sources), logger });
   void warm.prime();
   sources.invalidation?.onRefreshed("active-work", () => announceRefreshed(hub, "active-work"));
   return startEventsRelay({

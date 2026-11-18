@@ -12,6 +12,7 @@ import { coordinatorSurfaces, type CoordinatorRoots } from "./config-surfaces/co
 import { configDriftCommands } from "./config-surfaces/drift.js";
 import { hostSurfaces as hostSurfaceReaders, type HostSurfaceRoots } from "./config-surfaces/host.js";
 import { hostReportsCommands, type HostReportsSource } from "./config-surfaces/host-reports.js";
+import { readCards } from "./coord-cards.js";
 import { coordinatorCommands, type CoordinatorSource } from "./coordinator.js";
 import type { RoundDecisionLog } from "./decision-log.js";
 import { graphCommands } from "./graph.js";
@@ -192,9 +193,29 @@ function roundReads(rounds: RoundsSource) {
   };
 }
 
+/** One per inbox cache: the merge-time cache is keyed on this object, so the primer must fill the one the commands read (TP-6756). */
+const keptShepherds = new WeakMap<InboxReadCache, ShepherdSource>();
+
 /** Serves `list("finished")` from the inbox's kept read, so coord.cards and coord.shipped share its one 2.9 MB upstream read and its frame-driven staleness. */
 function keptFinished(shepherd: ShepherdSource, cache: InboxReadCache): ShepherdSource {
-  return { ...shepherd, list: (state) => (state === "finished" ? cache.finished.read() : shepherd.list(state)) };
+  const known = keptShepherds.get(cache);
+  if (known !== undefined) return known;
+  const kept: ShepherdSource = { ...shepherd, list: (state) => (state === "finished" ? cache.finished.read() : shepherd.list(state)) };
+  keptShepherds.set(cache, kept);
+  return kept;
+}
+
+type CardsWarmSources = Pick<ConsoleSources, "coordinator" | "shepherd"> & Required<Pick<ConsoleSources, "inboxCache">>;
+
+/**
+ * TP-6756: after a restart, coord.cards' first read waited on a timeline per merged run and then on its titles read. The
+ * primer reads the cards once, so the merge times and the titles' kept answer are there before the owner's first read.
+ */
+export async function warmCards({ coordinator, shepherd, inboxCache }: CardsWarmSources): Promise<void> {
+  const cards = coordinator?.cards;
+  if (coordinator === undefined || cards === undefined) return;
+  const now = coordinator.now ?? Date.now;
+  await readCards({ ...cards, shepherd: keptFinished(shepherd, inboxCache) }, { roots: coordinator.roots, dayStart: coordinator.dayStart, now: now() });
 }
 
 /** The coordinator view's reads, each served only when its source is wired. */
