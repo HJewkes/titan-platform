@@ -72,7 +72,7 @@ describe("coord.cards' first read after a restart", () => {
     await warmCards(sources);
     world.state.hang = true;
 
-    const { envelope } = await invokeCommand(consoleCommands(sources)["coord.cards"], {}, LOOPBACK);
+    const { envelope } = await invokeCommand(consoleCommands(sources)["coord.cards"]!, {}, LOOPBACK);
 
     expect(envelope).toMatchObject({ ok: true, data: { cards: [{ coordinator: "coord-a", tasks: [{ id: "EX-1", title: "Title EX-1" }, { id: "EX-2", title: "Title EX-2" }] }] } });
     expect(world.state).toMatchObject({ timelines: 2, titleReads: 1 });
