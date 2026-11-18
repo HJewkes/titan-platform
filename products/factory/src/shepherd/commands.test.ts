@@ -713,6 +713,25 @@ describe("shepherd.register after a stopped run", () => {
     expect(store.authorsOf(stoppedRunId)).toEqual([]);
   });
 
+  it("a draft pull request ends the run stopped draft, not not-mergeable", async () => {
+    const w = world();
+    w.fake.addPr({ headSha: H1, headRef: BRANCH, draft: true, mergeableState: "draft" });
+    const { runId } = await registered(w, pr1);
+
+    await w.host.runtime.wait(runId);
+
+    expect(w.host.runtime.status(runId)?.stepResults["sh-stopped:0"]?.data).toMatchObject({ result: { kind: "stopped", reason: "draft", headSha: H1 } });
+  });
+
+  it("a run stopped draft gets a new run once registered again", async () => {
+    const w = world({ frozen: true });
+    const stoppedRunId = await endedAs(w, stoppedStep("draft"));
+
+    const again = await registered(w, pr1);
+
+    expect(again).toMatchObject({ created: true, previousRunId: stoppedRunId, previousStop: "draft" });
+  });
+
   it("a run stopped on a conflict gets a new run", async () => {
     const w = world({ frozen: true });
     const stoppedRunId = await endedAs(w, stoppedStep("conflict"));
