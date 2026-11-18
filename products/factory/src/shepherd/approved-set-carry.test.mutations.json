@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a head that is no descendant of the red head no longer refuses",
+      "file": "products/factory/src/shepherd/approved-set-carry.ts",
+      "find": "if (!(await isAncestor(git, dir, fromHead, head, signal))) return refuse(mode, `${fromHead} is not an ancestor of ${head}`);",
+      "replace": "",
+      "kills": [
+        "a later head that commits exactly the accepted set asks the owner for a head that is no descendant of the red head",
+        "a later head that commits exactly the accepted set refuses with the not-an-ancestor reason and no merge decision when the red head is no ancestor of the head"
+      ]
+    }
+  ]
+}

@@ -7,18 +7,18 @@ import type { LayerPacket } from "./layer-packet.js";
 import type { BuiltLayer } from "./layer-tree.js";
 
 /** qa's own finding kinds the build check holds a layer to at every reveal, on one sample. */
-export const QA_TEXT_RULES = ["small-text", "under-chrome"] as const;
+const QA_TEXT_RULES = ["small-text", "under-chrome"] as const;
 /** Every kind qa's gate can hold, which the build check holds over qa's own samples (`LAYER_HELD_KINDS`). */
-export type LayerHeldRule = (typeof ERROR_KINDS)[number];
+type LayerHeldRule = (typeof ERROR_KINDS)[number];
 /** qa's narration rules on a layer's text: narration-facts on its settled numbers and names, G10 on every text. */
-export type LayerNarrationRule = "unspoken-fact" | "narration-echo";
+type LayerNarrationRule = "unspoken-fact" | "narration-echo";
 /** qa's frame-wide gates on a layer: content-fill on its settled frame, words-per-frame on every probed frame. */
-export type LayerFrameRule = "content-fill" | "words-per-frame";
+type LayerFrameRule = "content-fill" | "words-per-frame";
 /** A cue word whose frames do not change the picture, which Q-D22 counted as a change (TP-4596). */
-export type LayerCueRule = "still-cue";
+type LayerCueRule = "still-cue";
 /** qa's beat-local timing gates a layer can fail, which the build check runs over the layer's own frames. */
 export type LayerTimingRule = "picture-change" | "static-window" | "reading-hold" | "G9";
-export type LayerTextRule = LayerHeldRule | "bad-text" | LayerNarrationRule | LayerFrameRule | LayerCueRule | LayerTimingRule;
+type LayerTextRule = LayerHeldRule | "bad-text" | LayerNarrationRule | LayerFrameRule | LayerCueRule | LayerTimingRule;
 
 /** One element of one layer that breaks a rule, first seen `atS` seconds into the beat. */
 export interface LayerTextRow {
@@ -33,7 +33,7 @@ export interface LayerTextRow {
   contrast?: LayerContrast;
 }
 
-export interface LayerContrast {
+interface LayerContrast {
   ratio: number;
   need: number;
   colour: string;

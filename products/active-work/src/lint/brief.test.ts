@@ -43,7 +43,7 @@ describe('lintBrief', () => {
         slug: 'sample-initiative',
         file: 'brief.md',
       });
-      expect(findings[0].message).toMatch(/body is \d+ lines \(> 10\)/);
+      expect(findings.at(0)?.message).toMatch(/body is \d+ lines \(> 10\)/);
     });
   });
 
@@ -59,7 +59,7 @@ describe('lintBrief', () => {
         openLoopMaxAgeDays: 30,
       });
       expect(findings).toHaveLength(1);
-      expect(findings[0].message).toContain('body is 8 lines (> 5)');
+      expect(findings.at(0)?.message).toContain('body is 8 lines (> 5)');
     });
   });
 });

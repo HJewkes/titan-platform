@@ -45,7 +45,7 @@ function getTask(tasks: Task[], slug: string): Task {
   return task;
 }
 
-export const commands = {
+const commands = {
   "task.list": defineCommand<z.infer<typeof TaskListArgs>, { slugs: string[] }>({
     name: "task.list",
     description: "List task slugs, optionally by status",

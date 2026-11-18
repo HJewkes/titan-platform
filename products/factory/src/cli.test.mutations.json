@@ -4,7 +4,7 @@
     {
       "name": "register records no registrant",
       "file": "products/factory/src/cli-shepherd.ts",
-      "find": "  const registrant = io.env.AGENT_CHAT_NAME || undefined;",
+      "find": "  const registrant = io.env.AGENT_CHAT_NAME || OWNER_REGISTRANT;",
       "replace": "  const registrant = undefined;",
       "kills": [
         "shepherd register with only a target records the agent-chat session that ran it as the run's registrant, so the run's notices follow that session"

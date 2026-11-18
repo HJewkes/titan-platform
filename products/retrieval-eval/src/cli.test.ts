@@ -1,7 +1,12 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { PathOptions } from "@titan-design/app-paths";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import { buildCli, runCli } from "./cli.js";
+import { formatPairs, type EvalPair } from "./pairs.js";
+import { freezeSet } from "./set.js";
 
 describe("buildCli path defaults", () => {
   const home = "/fixture-home";
@@ -30,6 +35,84 @@ describe("buildCli path defaults", () => {
   });
 });
 
+describe("run over a frozen set", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "retrieval-cli-"));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const pairs: EvalPair[] = [{ arm: "spawn", id: "a", query: "alpha", labels: [{ absolute: "/x/a.md" }], provenance: {} }];
+  const snap = {
+    takenAt: "2026-01-01T00:00:00.000Z",
+    transcripts: 0,
+    transcriptRange: {},
+    graph: { path: "/g", bytes: 0, modified: "2026-01-01T00:00:00.000Z" },
+    activeWorkVersion: "unavailable",
+  };
+
+  async function runJson(target: string): Promise<Array<Record<string, unknown>>> {
+    const out = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const argv = ["run", target, "--candidates", "date-order-notes", "--variants", "heading-lead", "--json", "--active-root", root];
+    expect(await runCli(argv)).toBe(0);
+    return z.array(z.record(z.string(), z.unknown())).parse(JSON.parse(String(out.mock.calls[0]?.[0])));
+  }
+
+  it("stamps every json row with the set id and pair count", async () => {
+    const dir = path.join(root, "set");
+    const manifest = freezeSet(formatPairs(pairs), dir, snap);
+    const rows = await runJson(dir);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.set).toEqual({ id: manifest.id, pairs: 1 });
+  });
+
+  it("adds no set field when given a plain pair file", async () => {
+    const file = path.join(root, "pairs.jsonl");
+    writeFileSync(file, formatPairs(pairs));
+    const rows = await runJson(file);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row).not.toHaveProperty("set");
+  });
+
+  async function runTable(extra: string[]): Promise<string> {
+    const file = path.join(root, "pairs.jsonl");
+    writeFileSync(file, formatPairs(pairs));
+    const out = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const argv = ["run", file, "--candidates", "date-order-notes", "--variants", "heading-lead", "--active-root", root, ...extra];
+    expect(await runCli(argv)).toBe(0);
+    return String(out.mock.calls[0]?.[0]);
+  }
+
+  it("prints the same table for --mutations none as for the default run", async () => {
+    const plain = await runTable([]);
+    vi.restoreAllMocks();
+    expect(await runTable(["--mutations", "none"])).toBe(plain);
+    expect(plain).not.toContain("mutation");
+  });
+
+  it("adds a mutation column when a mutation is requested", async () => {
+    const table = await runTable(["--mutations", "none,drop-letter"]);
+    const lines = table.split("\n");
+    expect(lines[0]).toContain("mutation");
+    expect(lines.filter((line) => line.includes("\tdrop-letter\t")).length).toBeGreaterThan(0);
+  });
+
+  it("exits 1 when the frozen pairs were edited", async () => {
+    const dir = path.join(root, "set");
+    freezeSet(formatPairs(pairs), dir, snap);
+    const file = path.join(dir, "pairs.jsonl");
+    writeFileSync(file, readFileSync(file, "utf8").replace("alpha", "alphb"));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await runCli(["run", dir, "--candidates", "date-order-notes"])).toBe(1);
+    expect(String(errors.mock.calls[0]?.[0])).toContain("does not match manifest");
+  });
+});
+
 describe("runCli enum options", () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -51,9 +134,85 @@ describe("runCli enum options", () => {
     expect(message).toContain("heading-lead, top-df");
   });
 
+  it("rejects an unknown run --mutations and names the allowed mutations", async () => {
+    const { code, message } = await failure(["run", "pairs.jsonl", "--mutations", "bogus"]);
+    expect(code).toBe(1);
+    expect(message).toContain("none, drop-letter, swap-pair, substring");
+  });
+
+  it("lists the weekly verb", () => {
+    expect(buildCli().commands.map((c) => c.name())).toContain("weekly");
+  });
+
+  it("rejects a malformed weekly --week", async () => {
+    const { code, message } = await failure(["weekly", "--week", "2026-46"]);
+    expect(code).toBe(1);
+    expect(message).toContain("--week must look like YYYY-Www");
+  });
+
   it("rejects an unknown run --candidates and names the allowed candidates", async () => {
     const { code, message } = await failure(["run", "pairs.jsonl", "--candidates", "bogus"]);
     expect(code).toBe(1);
-    expect(message).toContain("date-order-notes, active-work-search, notes-fts, hybrid-fts-vector");
+    expect(message).toContain("date-order-notes, active-work-search, notes-fts, hybrid-fts-vector, hybrid-bge-small");
+  });
+
+  it("rejects an unknown run --embedder and names the allowed backends", async () => {
+    const { code, message } = await failure(["run", "pairs.jsonl", "--candidates", "hybrid-fts-vector", "--embedder", "bogus"]);
+    expect(code).toBe(1);
+    expect(message).toContain("--embedder must be one of hash, ollama, local, got bogus");
+  });
+});
+
+describe("claims verb", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), "retrieval-claims-"));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  function fixtures(): { corpus: string; questions: string } {
+    const corpus = path.join(root, "corpus.jsonl");
+    const questions = path.join(root, "questions.jsonl");
+    writeFileSync(corpus, `${JSON.stringify({ id: "c1", text: "The zephyr gateway retries failed deliveries three times." })}\n`);
+    const question = { id: "q1", question: "zephyr gateway deliveries", claims: [{ id: "retry", quote: "retries failed deliveries three times" }] };
+    writeFileSync(questions, `${JSON.stringify(question)}\n`);
+    return { corpus, questions };
+  }
+
+  it("prints one json row per named arm at the given budget", async () => {
+    const { corpus, questions } = fixtures();
+    const out = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    const code = await runCli(["claims", corpus, questions, "--arms", "fts,fts+hash", "--budget", "100", "--json"]);
+
+    expect(code).toBe(0);
+    const rows = z.array(z.record(z.string(), z.unknown())).parse(JSON.parse(String(out.mock.calls[0]?.[0])));
+    expect(rows).toEqual([
+      { arm: "fts", meanRecall: 1, usedTokens: 15, maxUsedTokens: 15, questionsScored: 1, claimsExcluded: 0 },
+      { arm: "fts+hash", meanRecall: 1, usedTokens: 15, maxUsedTokens: 15, questionsScored: 1, claimsExcluded: 0 },
+    ]);
+  });
+
+  it("rejects an unknown --arms entry and names the allowed arms", async () => {
+    const { corpus, questions } = fixtures();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const code = await runCli(["claims", corpus, questions, "--arms", "fts+bogus", "--budget", "100"]);
+
+    expect(code).toBe(1);
+    expect(String(errors.mock.calls[0]?.[0])).toContain("--arms must be one of fts, fts+hash, fts+ollama, got fts+bogus");
+  });
+
+  it("rejects a --budget that is not a positive integer", async () => {
+    const { corpus, questions } = fixtures();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const code = await runCli(["claims", corpus, questions, "--budget", "lots"]);
+
+    expect(code).toBe(1);
+    expect(String(errors.mock.calls[0]?.[0])).toContain("--budget must be a positive integer, got lots");
   });
 });

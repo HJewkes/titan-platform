@@ -34,7 +34,7 @@ function toDiagnostic(file: string, m: RegExpExecArray): CheckDiagnostic {
 }
 
 /** pydoclint prints each file's path unindented, then its violations indented beneath it, all on stderr. */
-export function parsePydoclintOutput({ stdout, stderr }: ToolOutput): ParsedOutput {
+function parsePydoclintOutput({ stdout, stderr }: ToolOutput): ParsedOutput {
   const parsed: ParsedOutput = { diagnostics: [], failures: [] };
   let file: string | undefined;
   for (const line of `${stdout}\n${stderr}`.split("\n").filter((l) => l.trim())) {

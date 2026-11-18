@@ -65,7 +65,7 @@ export function resolverRefusal(gate: GateRecord, resolver: GateResolver, payloa
 }
 
 /** Either the refusal text or the way the store admitted the resolver; `authorize` sees the latter. */
-export type ResolverVerdict = { refusal: string } | { admittedBy: GateAdmittedBy };
+type ResolverVerdict = { refusal: string } | { admittedBy: GateAdmittedBy };
 
 /** The first widening that applies, in the order the store checks them: allowance, evidence policy, delegate. */
 function widenedBy(gate: GateRecord, resolver: GateResolver, payload: unknown, admission: Admission): GateAdmittedBy | undefined {

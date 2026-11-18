@@ -16,7 +16,7 @@ function stepFamily(stepId: string): string {
 const OWNER_CLASSES: ReadonlySet<string> = new Set(["owner-terminal", "owner-remote"]);
 
 /** The earliest spawn that dispatched the task, ties broken by spawner so the pick is stable. */
-export function firstDispatch(spawns: readonly ScorecardSpawn[]): ScorecardSpawn | null {
+export function firstDispatch<S extends ScorecardSpawn>(spawns: readonly S[]): S | null {
   const eligible = spawns.filter((s) => s.launchedBy !== SHEPHERD_LAUNCHER);
   const sorted = [...eligible].sort((a, b) => Date.parse(a.ts) - Date.parse(b.ts) || compare(a.actor, b.actor));
   return sorted[0] ?? null;

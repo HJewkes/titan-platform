@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { accessSync, constants, readFileSync } from "node:fs";
+import { accessSync, constants } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
@@ -69,8 +69,7 @@ async function run(opts, spawn) {
   if (!spawn.agentChat) throw new Error("agent-chat is not on PATH; pass --agent-chat <absolute path>");
   await dispatchToAgentChat({ agentChatBinPath: spawn.agentChat, peerName: spawn.name, profile: spawn.profile, brief: spawn.brief, cwd: spawn.cwd }, SPAWN_TIMEOUT_MS, PROFILES);
   const row = await awaitExit(spawn.agentChat, spawn.name, spawn.timeoutMs);
-  const lines = readFileSync(row.transcriptPath, "utf8").split("\n").filter(Boolean);
-  const report = checkReviewerTranscript(lines, { repo: opts.repo, pr: opts.pr, head: opts.head });
+  const report = await checkReviewerTranscript(row.transcriptPath, { repo: opts.repo, pr: opts.pr, head: opts.head });
   return { reviewer: spawn.name, profile: spawn.profile, model: row.model ?? null, sessionId: row.sessionId, transcript: row.transcriptPath, ...report };
 }
 

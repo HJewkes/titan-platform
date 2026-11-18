@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { indexTranscript } from '@titan-design/session-graph';
 import type { WorkspaceGraph } from '../session-index/graph.js';
 import { searchWorkspace } from './index.js';
+import { ownerShown } from '../test-support/visibility.js';
 import { SEARCH_CLASSES, capFor, classOf } from './classes.js';
 import { refreshInto, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
 import { FIXTURE_LINES, SESSION, renderTranscript } from '../test-support/session-index/fixture.js';
@@ -34,8 +35,8 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const search = (query: string, options = {}) =>
-  searchWorkspace(query, { graph, activeRoot: root, ...options });
+const search = async (query: string, options = {}) =>
+  searchWorkspace(query, { graph, activeRoot: root, visible: await ownerShown(root), ...options });
 
 describe('search', () => {
   it('reaches every initiative without being asked to', async () => {
@@ -134,6 +135,7 @@ describe('search', () => {
     // its absence. A search that throws would make the index load-bearing.
     const result = await searchWorkspace('lesson', {
       dbPath: path.join(dir, 'absent.sqlite3'),
+      visible: await ownerShown(root),
       activeRoot: root,
     });
 

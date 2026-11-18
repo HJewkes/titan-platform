@@ -8,7 +8,7 @@ export const FILE_LIMIT_MS = 15 * 60_000;
 const CHECK_MS = 30_000;
 
 /** The files that started at least `limitMs` before `now` and have not ended. */
-export function overdueFiles(started, now, limitMs) {
+function overdueFiles(started, now, limitMs) {
   return [...started].filter(([, at]) => now - at >= limitMs).map(([file]) => file);
 }
 

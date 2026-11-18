@@ -150,6 +150,10 @@
         "link": "/reference/rpc-client"
       },
       {
+        "text": "service-supervisor",
+        "link": "/reference/service-supervisor"
+      },
+      {
         "text": "speech-g2p",
         "link": "/reference/speech-g2p"
       },
@@ -164,6 +168,10 @@
       {
         "text": "test-timing",
         "link": "/reference/test-timing"
+      },
+      {
+        "text": "text-ingest",
+        "link": "/reference/text-ingest"
       },
       {
         "text": "worktree",

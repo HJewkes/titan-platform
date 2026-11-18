@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isAgentVisible } from "@titan-design/pm";
+import { agentAccess } from "@titan-design/pm";
 import YAML from "yaml";
+import { z } from "zod";
 
 /** Layer 1: cases come only from these repos (bare names; `owner/` is ignored). */
 const ENGINEERING_REPOS = ["titan-platform", "agent-chat", "relay", "codewatch", "active-work", "titan-design"] as const;
@@ -44,23 +45,36 @@ export function engineeringInitiativeOf(taskId: string): string | undefined {
   return ENGINEERING_TASK_PREFIXES[taskId.split("-")[0] ?? ""];
 }
 
-/** The brief's front matter; none reads as empty, and YAML that will not parse reads as null (owner-only). */
-function briefFrontmatter(file: string): unknown {
-  const text = readFileSync(file, "utf8");
-  const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
-  if (block === null) return {};
+/** The front matter of a markdown file: the first YAML document after a leading `---`. Null when unreadable or unparsable, which reads as withheld. */
+function frontmatterOf(file: string): unknown {
   try {
-    return YAML.parse(block[1] ?? "") ?? {};
+    const text = readFileSync(file, "utf8");
+    if (!text.startsWith("---")) return null;
+    const [first] = YAML.parseAllDocuments(text);
+    return first === undefined || first.errors.length > 0 ? null : (first.toJS() as unknown);
   } catch {
     return null;
   }
 }
 
-/** Layer 1: the initiatives `isAgentVisible` serves, the same test active-work's readers apply (TP-5453 P6). */
+const CharterSchema = z.object({ human_only_initiatives: z.array(z.string().min(1)) });
+
+/** The charter's human-only list, or "unknown" when the charter cannot be read, so every initiative is withheld. */
+function readHumanOnly(activeWorkRoot: string): ReadonlySet<string> | "unknown" {
+  const parsed = CharterSchema.safeParse(frontmatterOf(join(activeWorkRoot, "claude-channels", "sources", "autonomy", "charter.md")));
+  return parsed.success ? new Set(parsed.data.human_only_initiatives) : "unknown";
+}
+
+/** Layer 1: the initiatives pm's `agentAccess` shows, the verdict active-work serves (brief and charter, failing closed). */
 function readAgentVisibleInitiatives(activeWorkRoot: string): string[] {
+  const humanOnly = readHumanOnly(activeWorkRoot);
   return readdirSync(activeWorkRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && existsSync(join(activeWorkRoot, entry.name, "brief.md")))
-    .filter((entry) => isAgentVisible({ slug: entry.name, brief: briefFrontmatter(join(activeWorkRoot, entry.name, "brief.md")) }))
+    .filter((entry) => {
+      const brief = frontmatterOf(join(activeWorkRoot, entry.name, "brief.md"));
+      const listed = humanOnly === "unknown" ? "unknown" : humanOnly.has(entry.name);
+      return agentAccess({ slug: entry.name, brief, humanOnly: listed }) === "shown";
+    })
     .map((entry) => entry.name)
     .sort();
 }

@@ -1,55 +1,91 @@
-import { parseRateLimitMarker } from "@titan-design/github";
-import type { WorkflowFn } from "@titan-design/workflow";
+import { StepFailedError, type StepRunOutcome, type WorkflowFn } from "@titan-design/workflow";
+import { redactForEvidence } from "../redact.js";
 import { isOneOf } from "../narrow.js";
+import { legacyFailureClassOf } from "./failure-class-legacy.js";
+import { FAILURE_CLASSES, type FailureClass } from "./failure-class-names.js";
+import { ghFailureClass } from "./gh-failure-class.js";
 
-export const FAILURE_CLASSES = ["ci-timeout", "gh-api-5xx", "gh-rate-limit", "land-rules", "update-branch", "other"] as const;
-/** The closed set a failed Shepherd run's `error` is filed under, as its `[<class>] ` prefix. */
-export type FailureClass = (typeof FAILURE_CLASSES)[number];
+export { FAILURE_CLASSES, type FailureClass } from "./failure-class-names.js";
 
-const PREFIX = new RegExp(`^\\[(${FAILURE_CLASSES.join("|")})\\] `);
-const CI_TIMEOUT = /\bci-wait timed out\b/;
-const LAND_RULES = /\bstep land-rules[: ]/;
-const UPDATE_BRANCH = /\bstep update-branch[: ]/;
-/** GitHub's side gave out: a 5xx, no connection, or an empty or cut-off body. A 4xx is the request's own fault. */
-const GH_API_FAILED = /\bgh api\b.* failed \(\d+\): ?(.*)$/s;
-const GH_SERVER_SIDE = /HTTP 5\d\d|error connecting|unexpected end of JSON input|^\s*$/;
+/** Thrown where a failure has a class of its own; every reader takes `errorClass`, never the message. */
+export class ShepherdFailure extends Error {
+  constructor(
+    readonly errorClass: FailureClass,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ShepherdFailure";
+  }
+}
+
+const isFailureClass = (value: unknown): value is FailureClass => typeof value === "string" && isOneOf(FAILURE_CLASSES, value);
+
+/** A recorded class; a code step that recorded none, or one this build does not know, is `other`. */
+export function recordedFailureClass(recorded: string | undefined): FailureClass {
+  return isFailureClass(recorded) ? recorded : "other";
+}
+
+/** A failed run's class: the one recorded where it failed. Only a row with no `error_class` at all, written before it existed, reads its text. */
+export function failureClassOf(error: string, recorded: string | null | undefined): FailureClass {
+  if (recorded === null || recorded === undefined) return legacyFailureClassOf(error);
+  return recordedFailureClass(recorded);
+}
+
+/** The class a step's own id gives it, for a failed step that recorded none: its route is the failure site. */
+function stepIdClass(stepId: string): FailureClass {
+  const route = stepId.split(":")[0];
+  return route === "land-rules" || route === "update-branch" ? route : "other";
+}
+
+function ownClass(error: unknown): FailureClass | undefined {
+  for (let at: unknown = error, depth = 0; at instanceof Error && depth < 8; at = at.cause, depth++) {
+    if (at instanceof ShepherdFailure) return at.errorClass;
+  }
+  return undefined;
+}
+
 /**
- * A read GitHub never answered by the transport's deadline. The Octokit deadline names the method first, so a timed-out
- * write, which may have landed, never matches and is never sent again.
+ * The class a failed code step records, set by the route it failed in. The order is the one the classes were always
+ * ranked by: a thrown `ShepherdFailure`, a GitHub rate limit, `land-rules`, a GitHub server-side failure, `update-branch`.
  */
-const GH_READ_TIMEOUT = /^(GET|HEAD) \S+ timed out after \d+ ms/;
-
-/** The class of an error text, read from its prefix when present; unprefixed legacy text is classified the same way the prefix was chosen. */
-export function failureClassOf(error: string): FailureClass {
-  const prefixed = PREFIX.exec(error)?.[1];
-  if (prefixed !== undefined && isOneOf(FAILURE_CLASSES, prefixed)) return prefixed;
-  if (CI_TIMEOUT.test(error)) return "ci-timeout";
-  // Only the transport writes the marker, on an answer `classifyGitHubFailure` called a limit, so it outranks the step's name.
-  if (parseRateLimitMarker(error)) return "gh-rate-limit";
-  if (LAND_RULES.test(error)) return "land-rules";
-  const ghTail = GH_API_FAILED.exec(error)?.[1];
-  if (ghTail !== undefined && (GH_SERVER_SIDE.test(ghTail) || GH_READ_TIMEOUT.test(ghTail))) return "gh-api-5xx";
-  if (UPDATE_BRANCH.test(error)) return "update-branch";
-  return "other";
+export function stepFailureClass(route: string, error: unknown): FailureClass {
+  const own = ownClass(error);
+  if (own) return own;
+  const gh = ghFailureClass(error);
+  if (gh === "gh-rate-limit" || (gh === "gh-api-5xx" && route !== "land-rules")) return gh;
+  return stepIdClass(route);
 }
 
-/** `[<class>] <text>`, unchanged when the text already carries a prefix. */
-export function withFailureClass(error: string): string {
-  return PREFIX.test(error) ? error : `[${failureClassOf(error)}] ${error}`;
+/** A route's own failed outcome, for a wrapper that fails before its code step runs: redacted text, and the class set here. */
+export function failedStep(route: string, error: unknown): StepRunOutcome {
+  return { ok: false, error: redactForEvidence(error instanceof Error ? error.message : String(error)), retryable: false, errorClass: stepFailureClass(route, error) };
+}
+
+/** A rejected run's class: what its failed step recorded, else the step's id, else a thrown `ShepherdFailure`, else `other`. */
+function runFailureClass(error: unknown): FailureClass {
+  if (error instanceof StepFailedError) return isFailureClass(error.errorClass) ? error.errorClass : stepIdClass(error.stepId);
+  return ownClass(error) ?? "other";
+}
+
+/** `[<class>] <text>`, unchanged when the text already carries that prefix; the prefix is for people, the field for readers. */
+function withFailureClass(error: string, failureClass: FailureClass): string {
+  const prefix = `[${failureClass}] `;
+  return error.startsWith(prefix) ? error : `${prefix}${error}`;
 }
 
 /**
- * The workflow package writes a rejected run's message into `workflow_run.error` verbatim, so the
- * prefix goes on at the Shepherd boundary; the error object is kept so the runtime's instanceof checks still hold.
+ * The workflow runtime stores a rejected run's `errorClass` field in `workflow_run.error_class`, so the class goes on at
+ * the Shepherd boundary; the error object is kept so the runtime's instanceof checks still hold.
  */
 export function classifyingFailures(run: WorkflowFn): WorkflowFn {
   return async (ctx) => {
     try {
       await run(ctx);
     } catch (error) {
-      if (!(error instanceof Error)) throw new Error(withFailureClass(String(error)));
-      error.message = withFailureClass(error.message);
-      throw error;
+      const errorClass = runFailureClass(error);
+      if (!(error instanceof Error)) throw Object.assign(new Error(withFailureClass(String(error), errorClass)), { errorClass });
+      error.message = withFailureClass(error.message, errorClass);
+      throw Object.assign(error, { errorClass });
     }
   };
 }

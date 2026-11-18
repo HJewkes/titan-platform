@@ -220,6 +220,10 @@ type SessionEvent = (EventBase & {
     number: number | null;
     repo: string | null;
     url: string | null;
+    /** The head branch the command half names; null on the result half. */
+    headRef: string | null;
+    /** The `--base` the command half names; null on the result half. */
+    base: string | null;
 }) | (EventBase & {
     kind: "review_verdict";
     toolUseId: string;
@@ -514,6 +518,12 @@ declare const RELATIONS: {
     readonly PRODUCED: "produced";
     /** session --edited_by_human--> file: an `edited_text_file` attachment. */
     readonly EDITED_BY_HUMAN: "edited_by_human";
+    /**
+     * pr --built_on--> branch: the head branch a `gh pr create` opened the PR from,
+     * re-derived (TP-80) by joining the command's `--head`/`-H` (or the checked-out
+     * branch) to the result's PR number on the tool-use id; `attrs.base` holds `--base`.
+     */
+    readonly BUILT_ON: "built_on";
 };
 type Relation = (typeof RELATIONS)[keyof typeof RELATIONS];
 /** Refs derive from transcript content alone, never from a database id, so they are stable across rebuilds. */
@@ -649,6 +659,8 @@ declare function ciPolicyLabelledLines(text: string): CiPolicyLabelledLine[];
  */
 declare function refusedLines(text: string, refusal: VerdictBlockRefusal | "ci_policy_malformed"): string[];
 
+/** Folds rather than matching a list of decorations, so a decoration no one listed still reads as labelled: NFKC, lower case, every non-alphanumeric and any leading list number gone. */
+declare function foldLabelledLine(raw: string): string;
 /**
  * The folded text after `label` when `raw` is a line labelled `label` through any decoration (a bullet, bold, a quote
  * marker, any case, a full-width colon), or undefined for an unlabelled line. A label glued to an identifier character
@@ -848,6 +860,12 @@ declare function toAbsolutePath(displayPath: string): string;
  */
 declare function discoverTranscripts(root?: string): Promise<DiscoveredTranscript[]>;
 /**
+ * Rebuild the record `discoverTranscripts` would have produced for one file,
+ * without walking the tree. Returns null for a path discovery would not list:
+ * outside every root, not `.jsonl`, or deeper than `<project>/<session>/subagents`.
+ */
+declare function transcriptFromPath(absolutePath: string, roots: readonly TranscriptRoot[], home?: string): DiscoveredTranscript | null;
+/**
  * ~/.claude plus every ~/.claude-profiles/<name> that has a projects dir; CLAUDE_CONFIG_DIRS overrides.
  * Mirrored accounts from `CLAUDE_TRANSCRIPT_MIRRORS` follow either way.
  */
@@ -1042,6 +1060,12 @@ interface RecoveredMessage {
     text: string;
     at: string | null;
 }
+interface RecoveredCompactions {
+    /** Every compaction in the transcript, whether or not it carried summary text. */
+    count: number;
+    /** At most the last three summaries, oldest first; a compaction with no summary text is counted but not listed. */
+    lastSummaries: string[];
+}
 interface SessionRecovery {
     conversation: ConversationIdentity;
     startedAt: string | null;
@@ -1055,6 +1079,7 @@ interface SessionRecovery {
     /** In call order; the cap keeps the most recent. */
     chatSends: CappedList<RecoveredMessageTarget>;
     agentSpawns: CappedList<RecoveredMessageTarget>;
+    compactions: RecoveredCompactions;
     /** The last owner-typed messages, oldest first; tool results and injected blocks are excluded. */
     ownerMessages: RecoveredMessage[];
     lastAssistantMessage: RecoveredMessage | null;
@@ -1075,9 +1100,13 @@ declare class RecoveryFacts {
     private readonly git;
     private readonly chatSends;
     private readonly agentSpawns;
+    private compactionCount;
+    private boundaryAwaitingSummary;
+    private readonly compactionSummaries;
     constructor(root: string);
     add(observation: NormalizedSessionObservation): void;
-    result(): Pick<SessionRecovery, "agentName" | "filesWritten" | "activeWorkCalls" | "gitCommands" | "chatSends" | "agentSpawns">;
+    result(): Pick<SessionRecovery, "agentName" | "filesWritten" | "activeWorkCalls" | "gitCommands" | "chatSends" | "agentSpawns" | "compactions">;
+    private addCompaction;
     private addFile;
     private addCommand;
     private addChat;
@@ -1347,4 +1376,4 @@ interface FirstRequest {
  */
 declare function readFirstRequest(path: string): Promise<FirstRequest | null>;
 
-export { type Assignment, type AssignmentInput, type AssignmentSource, type AuditEvent, type AuditEventBase, type AuditEventKind, type AuditSignal, type BranchRow, CI_POLICY_KEYS, CLAUDE_CHECKPOINT_VERSION, CLAUDE_DECODER_ID, CLAUDE_TRANSCRIPT_FORMAT, CODEX_CHECKPOINT_VERSION, CODEX_DECODER_ID, CODEX_ROLLOUT_FORMAT, type CacheBreakpoint, type CappedList, type ChannelTag, type CiPolicy, type CiPolicyKey, type CiPolicyLabelledLine, type ClaudeToolCallLine, type ClaudeToolLine, type ClaudeToolResultLine, ClaudeTranscriptDecoder, type CodexReadResult, CodexRolloutDecoder, CodexSourceCollisionError, type ContextSource, DEFAULT_EMIT_POLICY, type DiscoverCodexSourcesOptions, type DiscoveredTranscript, EXTRACT_VERSION, type EchoState, type Emit, type EmitPolicy, type EventBase, EventFolder, type EventOf, type ExtractOptions, type ExtractResult, type FindClaudeSessionSourceInput, type FirstRequest, type FirstRequestUsage, type GitIntent, HASH_PREFIX_CHARS, IGNORED_PATH, INJECTED_MARKERS, type Inbound, type InboundDelivery, type InjectedMarker, type InjectedMarkerName, type LineContext, LineReader, type LineSpan, MARKER_SCAN_CHARS, MIN_ATTACHMENT_CHARS, ORIENTATION_HEADER, type QueueOperation, RECOVERY_FIRST_LINE_CHARS, RECOVERY_LIST_CAP, RECOVERY_MESSAGE_CHARS, RECOVERY_OWNER_MESSAGES, RECOVERY_TAIL_BYTES, RELATIONS, type ReadClaudeTextOptions, type ReadCodexOptions, type ReadCodexTextOptions, type ReadOptions, type ReadRecentSessionTurnsOptions, type ReadResult, type ReadSessionEventTextOptions, type RecentObservedValue, type RecentSessionReadError, type RecentSessionTurn, type RecentSessionTurns, type RecentSessionUnknown, type RecentTurnKind, type RecentTurnProjection, type RecentTurnRepresentation, type RecentTurnRole, type RecentUnknownReason, type RecoverSessionOptions, type RecoveredCommand, type RecoveredMessage, type RecoveredMessageTarget, RecoveryFacts, type Relation, type RepoIdentity, type RepoRelativePath, type RequestBlock, type RequestSection, type ReviewVerdictMatch, SPAN_TEXT_CAP, type SessionEvent, type SessionEventKind, type SessionEventRef, SessionIdentityError, type SessionIdentityErrorCode, type SessionPatch, type SessionRecovery, type SessionRow, type SessionSourceLookup, type SessionSummary, SessionSummaryAccumulator, type SessionTextRequest, type SessionToolSummary, SessionUsageAccumulator, type SessionUsageSummary, type ShellWord, type SignalKind, type SpanField, TASK_ID, TRANSCRIPT_MIRRORS_ENV, type TaskIntent, type ToolFamily, type ToolFamilyResult, type TranscriptDelta, TranscriptParseError, type TranscriptRequest, type TranscriptRoot, type Verdict, type VerdictBlockRefusal, type VerdictBlockResult, type VerdictBlockVerdict, type WakeCause, agentRef, artifactRef, assertClaudeSessionSource, assignedTaskIds, bashSignals, branchRef, ciPolicyLabelledLines, classifyInbound, claudeProjectSlug, claudeSourceFromPath, claudeSourceId, claudeTranscriptRoots, clearRepoCache, codexHome, codexSourceId, commandCwd, commandHeads, contentHash, decodeClaudeToolLines, discoverAllTranscripts, discoverCodexSources, discoverTranscripts, distinctRequests, expandHome, extractTranscript, fileRef, findClaudeSessionSource, findInjectedMarker, foldEvents, hasMarker, labelledLineRest, legacyClaudeSessionRef, normalizedSearchText, orientationEnd, parseChannelTag, parseFileRef, parseGitIntent, parseOriginUrl, parsePrCreateTitle, parseReviewVerdicts, parseTaskId, parseTaskIntent, parseTaskIntents, parseVerdictBlock, prRef, readClaudeObservations, readClaudeText, readCodexObservations, readCodexText, readFirstRequest, readRecentSessionTurns, readRecentSessionTurnsSync, readSessionEventText, readSessionObservations, readSessionSourceText, readSessionText, readTranscriptEvents, realCommand, recoverSession, refusedLines, repoForCwd, repoNameFromRemoteUrl, resolveRepo, scopedConversationItemRef, searchText, sessionRef, simpleCommandHead, sourceForCause, splitCommands, splitPipelines, summarizeSession, taskRef, thinkingTokens, toAbsolutePath, toRepoRelative, toolFamily, toolUseSignals, transcriptsRoot, visibleLines };
+export { type Assignment, type AssignmentInput, type AssignmentSource, type AuditEvent, type AuditEventBase, type AuditEventKind, type AuditSignal, type BranchRow, CI_POLICY_KEYS, CLAUDE_CHECKPOINT_VERSION, CLAUDE_DECODER_ID, CLAUDE_TRANSCRIPT_FORMAT, CODEX_CHECKPOINT_VERSION, CODEX_DECODER_ID, CODEX_ROLLOUT_FORMAT, type CacheBreakpoint, type CappedList, type ChannelTag, type CiPolicy, type CiPolicyKey, type CiPolicyLabelledLine, type ClaudeToolCallLine, type ClaudeToolLine, type ClaudeToolResultLine, ClaudeTranscriptDecoder, type CodexReadResult, CodexRolloutDecoder, CodexSourceCollisionError, type ContextSource, DEFAULT_EMIT_POLICY, type DiscoverCodexSourcesOptions, type DiscoveredTranscript, EXTRACT_VERSION, type EchoState, type Emit, type EmitPolicy, type EventBase, EventFolder, type EventOf, type ExtractOptions, type ExtractResult, type FindClaudeSessionSourceInput, type FirstRequest, type FirstRequestUsage, type GitIntent, HASH_PREFIX_CHARS, IGNORED_PATH, INJECTED_MARKERS, type Inbound, type InboundDelivery, type InjectedMarker, type InjectedMarkerName, type LineContext, LineReader, type LineSpan, MARKER_SCAN_CHARS, MIN_ATTACHMENT_CHARS, ORIENTATION_HEADER, type QueueOperation, RECOVERY_FIRST_LINE_CHARS, RECOVERY_LIST_CAP, RECOVERY_MESSAGE_CHARS, RECOVERY_OWNER_MESSAGES, RECOVERY_TAIL_BYTES, RELATIONS, type ReadClaudeTextOptions, type ReadCodexOptions, type ReadCodexTextOptions, type ReadOptions, type ReadRecentSessionTurnsOptions, type ReadResult, type ReadSessionEventTextOptions, type RecentObservedValue, type RecentSessionReadError, type RecentSessionTurn, type RecentSessionTurns, type RecentSessionUnknown, type RecentTurnKind, type RecentTurnProjection, type RecentTurnRepresentation, type RecentTurnRole, type RecentUnknownReason, type RecoverSessionOptions, type RecoveredCommand, type RecoveredMessage, type RecoveredMessageTarget, RecoveryFacts, type Relation, type RepoIdentity, type RepoRelativePath, type RequestBlock, type RequestSection, type ReviewVerdictMatch, SPAN_TEXT_CAP, type SessionEvent, type SessionEventKind, type SessionEventRef, SessionIdentityError, type SessionIdentityErrorCode, type SessionPatch, type SessionRecovery, type SessionRow, type SessionSourceLookup, type SessionSummary, SessionSummaryAccumulator, type SessionTextRequest, type SessionToolSummary, SessionUsageAccumulator, type SessionUsageSummary, type ShellWord, type SignalKind, type SpanField, TASK_ID, TRANSCRIPT_MIRRORS_ENV, type TaskIntent, type ToolFamily, type ToolFamilyResult, type TranscriptDelta, TranscriptParseError, type TranscriptRequest, type TranscriptRoot, type Verdict, type VerdictBlockRefusal, type VerdictBlockResult, type VerdictBlockVerdict, type WakeCause, agentRef, artifactRef, assertClaudeSessionSource, assignedTaskIds, bashSignals, branchRef, ciPolicyLabelledLines, classifyInbound, claudeProjectSlug, claudeSourceFromPath, claudeSourceId, claudeTranscriptRoots, clearRepoCache, codexHome, codexSourceId, commandCwd, commandHeads, contentHash, decodeClaudeToolLines, discoverAllTranscripts, discoverCodexSources, discoverTranscripts, distinctRequests, expandHome, extractTranscript, fileRef, findClaudeSessionSource, findInjectedMarker, foldEvents, foldLabelledLine, hasMarker, labelledLineRest, legacyClaudeSessionRef, normalizedSearchText, orientationEnd, parseChannelTag, parseFileRef, parseGitIntent, parseOriginUrl, parsePrCreateTitle, parseReviewVerdicts, parseTaskId, parseTaskIntent, parseTaskIntents, parseVerdictBlock, prRef, readClaudeObservations, readClaudeText, readCodexObservations, readCodexText, readFirstRequest, readRecentSessionTurns, readRecentSessionTurnsSync, readSessionEventText, readSessionObservations, readSessionSourceText, readSessionText, readTranscriptEvents, realCommand, recoverSession, refusedLines, repoForCwd, repoNameFromRemoteUrl, resolveRepo, scopedConversationItemRef, searchText, sessionRef, simpleCommandHead, sourceForCause, splitCommands, splitPipelines, summarizeSession, taskRef, thinkingTokens, toAbsolutePath, toRepoRelative, toolFamily, toolUseSignals, transcriptFromPath, transcriptsRoot, visibleLines };

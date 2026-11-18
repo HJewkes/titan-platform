@@ -69,8 +69,17 @@ describe("sheets stage spec", () => {
 
     expect(spec.inputs).toEqual({ mp4: "a".repeat(64), script: "c".repeat(64), qa: "d".repeat(64) });
     expect(spec.config.video).toEqual({ id: "vid", runIds: ["r1", "r2"] });
-    expect(spec.config.sheets).toMatchObject({ take: "v1", status: "review", stem: "demo" });
+    expect(spec.config.sheets).toMatchObject({ status: "review", stem: "demo" });
+    expect(spec.config.sheets).not.toHaveProperty("take");
     expect(sheetsSpec({ take: "v2", status: "draft" }).config.sheets).toMatchObject({ take: "v2", status: "draft" });
+  });
+
+  it("carries the gather day, so a run of another day re-keys sheets", () => {
+    const gather = { adapter: "gatherArticle" as const, type: "daily-overview", day: "2026-11-13", article: "a.md", articleSha: "a".repeat(64), claims: "c.json", claimsSha: "b".repeat(64), label: "x" };
+    const specOn = (day: string) => stageSpec({ stage: "sheets", artifacts: { mp4: "a".repeat(64), script: "c".repeat(64) }, settings: { ...SETTINGS, gather: { ...gather, day } }, sample: 0, remainingUsd: 1, bridge: BRIDGE });
+
+    expect(specOn("2026-11-13").config.sheets).toMatchObject({ day: "2026-11-13" });
+    expect(specOn("2026-11-14").key).not.toBe(specOn("2026-11-13").key);
   });
 
   it("refuses a sheets variant param other than take and status", () => {

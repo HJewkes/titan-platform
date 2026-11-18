@@ -1,5 +1,85 @@
 # @titan-design/active-work
 
+## 0.31.1
+
+### Patch Changes
+
+- 58034f4: Remove two exports only their own tests used: the explainer beat worker registry and active-work's forgetPreserved (TP-5794).
+- 1a76364: Delete the unused rewriteOccurrences and isActiveWorkError helpers.
+
+## 0.31.0
+
+### Minor Changes
+
+- d025aac: Decide initiative visibility once (TP-5556). `sessions/visibility.ts` is the only loader: `visibilityFor` hands readers a branded `Shown` allow list, so the charter's human-only list now narrows agent reads too, and an unreadable charter or root shows agents nothing. `inventory` rows gain `withheld_from_agents`, `migrate` refuses every caller but the owner, and the owner is now served every initiative by context graph, plan lists and precedent search.
+
+### Patch Changes
+
+- 2226cfb: `miner cost` and `miner outcomes` fold every initiative withheld from agents into one `owner-only` bucket for a non-owner caller, with rates recomputed over the folded sums, and collapse an `other:<dir>` key to `other` unless the dir is a shown initiative. `active-work new` refuses the slugs `unknown`, `other` and `owner-only`, which the miner uses as report keys (TP-5556, TP-5748, TP-5749, TP-5750).
+- 44c3988: `doctor`, `focus` and `unfocus` name no initiative withheld from an agent caller. Doctor's checks
+  run over the caller's verdict, a lease sweep failure under a withheld initiative is reported as a
+  count without its path, and renumbering moves are filtered through the same verdict (TP-5556 S2b).
+- Updated dependencies [d025aac]
+- Updated dependencies [ce68429]
+  - @titan-design/pm@0.11.0
+
+## 0.30.0
+
+### Minor Changes
+
+- ea59230: Withhold owner-only initiatives from every caller but the owner in the cross-initiative list verbs (TP-5453 P6b). The command context's `caller` is now `'owner' | 'agent'`, and only `'owner'` is served every initiative; a context no surface marked is restricted. The CLI names the owner when neither `AGENT_CHAT_NAME` nor `CLAUDECODE` is set, MCP names an agent, and the daemon's HTTP `/rpc` names the owner for the console and the factory. Commands enumerate initiatives only through `listSlugsForCaller`, which a structure test enforces: `task list`, `note list`, `source list` and `artifact list` with `--all-initiatives`, `inventory`, `list`, `audit`, `facet list`, `loop board`, the `open` picker and `open`/`prompt` slug-prefix errors drop every initiative `isAgentVisible` withholds and warn with a count only. `search` drops hits with no initiative and `precedent search` ignores `--include-unclaimed` for a non-owner. `inventory` rows gain `agent_visible`. `precedent extract` keeps an owner-only initiative's answers out of the decider ledger.
+
+## 0.29.1
+
+### Patch Changes
+
+- Updated dependencies [a24b050]
+  - @titan-design/session-analytics@0.19.0
+
+## 0.29.0
+
+### Minor Changes
+
+- 62fd90f: Add `active-work task backfill-fields --from <labels.jsonl> (--dry-run | --apply)`, a one-off migration that fills empty class, serves, source, done_reason and blocked_on from an inferred-labels file, each marked `field_origin: inferred:<heuristic id>`. It never overwrites a recorded field and skips owner-only initiatives.
+
+## 0.28.0
+
+### Minor Changes
+
+- 239d96b: One canonical task key, `<initiative>/<TASK-ID>` (TP-5453 P5). `pm` exports `resolveTaskKey`, which turns a bare id, a prefixed key or a repo-qualified key into the canonical key, or refuses it as malformed, not found, ambiguous or wrong-initiative; an id two initiatives hold goes to the one whose `task_prefix` issued it. active-work's new `task.keys` command lists each initiative's `task_prefix`, `agent_visible` and the ids of its task files, open and archived, read from file names (MCP tool `active__task__keys`). `titan-factory shepherd register` stores the canonical key and exits 65 on a key that resolves to no one task. On an active-work daemon older than `task.keys` it resolves through `task.list` plus the archive file names; when no complete index can be read it refuses only a malformed key, stores the rest as given with a warning, and marks the run `taskVerified=false` in its params; build-surface resolves its spec's tasks before any agent is spawned under them. `titan-factory shepherd task-key-report` lists the registrations whose key is not canonical, with a proposed mapping or no match, through a read-only store connection.
+
+### Patch Changes
+
+- Updated dependencies [239d96b]
+  - @titan-design/pm@0.10.0
+
+## 0.27.0
+
+### Minor Changes
+
+- e2a51ca: `task add` and `task edit` take the task provenance fields: `--class`, `--serves` (checked against the plan's outcomes), `--source` with `--source-ref` or `--from-pr` and `--from-task`, and `--blocked-on`; each value given is marked `filed` in `field_origin`. `task add` records `filed_by` from `AGENT_CHAT_NAME` (or `owner` from a plain terminal), never from an argument, and refuses a task that leaves out a field the brief's `task_require` lists. Once a task has started or a spawn names it, `task edit` refuses changes to class, source and serves. `task done --reason` records `done_reason`. New read verb `task rank show <slug>` lists ranked tasks; no verb sets a rank (TP-5446 S8).
+- 5346139: Add the owner's planning ops (TP-5453 P3b): `plan-bet-select`, `plan-outcome-edit` and `plan-freeze-set` join the owner-queue op schema. The console offers each as an owner-op tap. Its read-back comes from the factory's `owner-op.preview`: each bet's outcome, prediction and tasks, an outcome's before and after, and what a freeze stops and when it ends. The factory gates the ops to owner-remote under HV-OR and applies them through pm's plan store under the initiative's plan lock. pm's `FreezeSchema` gains an optional `ended_on`. active-work's `plan freeze add` now records `set_by: decider` and refuses `--set-by owner`. No CLI, RPC or MCP verb selects a bet, edits an outcome or ends a freeze.
+
+### Patch Changes
+
+- 4caefe3: A task filed over the daemon's /rpc or MCP surface records `filed_by: unknown`. Before this, it took the daemon's own `AGENT_CHAT_NAME`, or `owner` when the daemon had none (TP-5446 S8 follow-up).
+- Updated dependencies [5346139]
+  - @titan-design/pm@0.9.0
+
+## 0.26.0
+
+### Minor Changes
+
+- 5bb6512: Add `active-work plan` verbs over one validated file per record under `<initiative>/plan/`: `outcome`, `bet`, `freeze` and `out-of-scope`, each with `add`, `show` and `list`, also served over RPC and MCP. `plan bet add` writes a proposed bet; `plan outcome add` writes a draft once and refuses an existing outcome. No verb selects a bet or edits an outcome: those are owner actions. Lists across initiatives skip owner-only ones. `task add` and `task edit` take `--bet`, `--fold` and `--owner-step`, and a task's bet is now checked against the plan store (TP-5453 P3a).
+
+### Patch Changes
+
+- fc303a7: Add the optional task fields `bet`, `fold` and `owner_steps` to `TaskSchema`, with `BetLookup` and `betProblem` for the write-time check that a task's bet exists. active-work's `task add` and `task edit` refuse a task naming a bet the lookup does not know (TP-5453 P2).
+- d497596: Add a `./node` subpath to pm holding the planning-record file store (read, validated atomic write, the `<initiative>/plan/.lock`), so every plan writer shares one layout and one lock; the root entry stays pure. active-work's plan store is now a thin adapter over it, with no change in behaviour.
+- Updated dependencies [fc303a7]
+- Updated dependencies [d497596]
+  - @titan-design/pm@0.8.0
+
 ## 0.25.2
 
 ### Patch Changes

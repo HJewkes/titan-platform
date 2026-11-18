@@ -63,7 +63,7 @@ function unparsedFiles(entries: PyrightDiagnostic[]): ToolFailure[] {
   return [...byFile].map(([file, messages]) => ({ tool: "pyright", kind: "file-not-checked", file, message: messages.join("; ") }));
 }
 
-export function parsePyrightOutput({ stdout }: ToolOutput): ParsedOutput {
+function parsePyrightOutput({ stdout }: ToolOutput): ParsedOutput {
   const entries = PyrightOutputSchema.parse(JSON.parse(stdout)).generalDiagnostics;
   const audited = entries.filter((d): d is PyrightDiagnostic & { rule: string } => AUDIT_PYRIGHT_RULES.includes(d.rule ?? ""));
   return { diagnostics: audited.map(toDiagnostic), failures: unparsedFiles(entries) };

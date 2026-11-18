@@ -56,6 +56,9 @@ describe("factoryOwnerAction", () => {
     [200, { outcome: "already", name: "item-42" }, { status: "already", name: "item-42" }],
     [200, { outcome: "pr-closed", closedHead: HEAD }, { status: "pr-closed", closedHead: HEAD }],
     [200, { outcome: "already", closedHead: HEAD }, { status: "already", closedHead: HEAD }],
+    [200, { outcome: "plan-applied", op: "plan-bet-select", ids: ["alpha/B1"] }, { status: "plan-applied", op: "plan-bet-select", ids: ["alpha/B1"] }],
+    [200, { outcome: "already", ids: ["alpha/F1"] }, { status: "already", ids: ["alpha/F1"] }],
+    [409, { outcome: "refused", reason: "plan-busy", detail: "lock held" }, { status: "refused", reason: "plan-busy", detail: "lock held" }],
     [409, { outcome: "moved", currentHead: HEAD }, { status: "moved", currentHead: HEAD }],
     [409, { outcome: "moved", currentAgentId: "77aa0011" }, { status: "moved", currentHead: null, currentAgentId: "77aa0011" }],
     [410, { outcome: "gone", reason: "no gate" }, { status: "gone", reason: "no gate" }],
@@ -98,6 +101,7 @@ describe("factoryOwnerAction", () => {
     ["a retired with no caveats list", 200, { outcome: "retired", name: "item-42" }],
     ["a 503 the factory could not reach agent-chat", 503, { outcome: "refused", reason: "agent-chat-unavailable", detail: "broker down" }],
     ["a pr-closed with no closed head", 200, { outcome: "pr-closed" }],
+    ["a plan-applied with no record ids", 200, { outcome: "plan-applied", op: "plan-bet-select" }],
     ["a pause-cleared with no still-held answer", 200, { outcome: "pause-cleared", clearedPause: PAUSED_AT }],
     ["a redirect", 302, {}],
   ])("reads %s as unreachable, so a retry may land", async (_, status, body) => {

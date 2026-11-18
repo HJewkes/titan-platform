@@ -5,7 +5,7 @@
     "version": "1.0.0"
   },
   "id": "explainer-video-checks",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "cases": [
     "b11dd88d0ce2d26fe87375379786658fede6c95395dd720980d6807d67405a6d",
     "b71ecccc4a3de051423667278fb4184fa436e02c52b6f9c125fb2a0c3a987d3b"
@@ -199,7 +199,7 @@
       }
     },
     {
-      "id": "render-render-gate",
+      "id": "render-duration-agreement",
       "family": "deterministic",
       "role": "required",
       "scope": "render/",
@@ -213,12 +213,12 @@
           "{runId}",
           "--json"
         ],
-        "verdict": "rows[stage=render].checkRows[name=render-gate]",
+        "verdict": "rows[stage=render].checkRows[name=duration-agreement]",
         "gate": true
       }
     },
     {
-      "id": "qa-qa",
+      "id": "qa-held-errors",
       "family": "deterministic",
       "role": "required",
       "scope": "qa/",
@@ -232,7 +232,7 @@
           "{runId}",
           "--json"
         ],
-        "verdict": "rows[stage=qa].checkRows[name=qa]",
+        "verdict": "rows[stage=qa].checkRows[name=held-errors]",
         "gate": true
       }
     },

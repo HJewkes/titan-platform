@@ -41,7 +41,7 @@ export interface CostReport {
   cliGapExceeds1Pct: boolean;
 }
 
-export interface FoldOptions {
+interface FoldOptions {
   /** Timestamp the price table is read at. */
   asOf: string;
   baselineUsd?: number;

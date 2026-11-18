@@ -51,7 +51,7 @@ export interface DeployOptions {
 }
 
 /** A refusal is printed, never recorded, so it cannot overwrite a rolled-back hold. */
-export type DeployOutcome = "deployed" | "skipped" | "rolled-back" | "held";
+type DeployOutcome = "deployed" | "skipped" | "rolled-back" | "held";
 
 /** What `/health` shows as `lastDeploy`. */
 export interface DeployRecord {

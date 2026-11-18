@@ -44,6 +44,8 @@ interface ConsoleActionDeps {
   agentChat?: AgentChatRetirePort;
   /** The deployer's state directory and its lock and pause-file ports, which a deploy-pause-clear reads and writes. */
   deploy: { stateDir: string; ports: PauseClearPorts };
+  /** active-work's data root, which the planning ops write through pm's plan store. */
+  activeRoot: string;
   /** Reads the reviewer's verdict text an owner-at-head gate's evidence locates; absent, the session readers. Tests inject it. */
   readVerdictText?: ReadVerdictText;
   now: () => number;
@@ -87,10 +89,13 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps,
 type Mounted = ConsoleActionDeps & { port: GitHubPort; store: ShepherdStoreRef };
 
 async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: StandingAnswers): Promise<Outcome> {
-  const { host, port, store, freeze, deploy, now, agentChat, stateDir, readVerdictText } = deps;
+  const { host, port, store, freeze, deploy, now, agentChat, stateDir, readVerdictText, activeRoot } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
-  if ("op" in read) return actOnOp(actionId, read, ops, { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, done: (id) => doneResults(stateDir, id) });
+  if ("op" in read) {
+    const context = { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, activeRoot, done: (id: string) => doneResults(stateDir, id) };
+    return actOnOp(actionId, read, ops, context);
+  }
   const { action, confirmEvent } = read;
   if (action.kind === "plan-approval") return recordPlanApproval({ action, confirmEvent }, store.get(), host);
   return action.kind === "owner-release" ? releaseHold({ action, confirmEvent }, port, store.get(), host.batches) : resolveGate({ action, confirmEvent }, port, host, readVerdictText);

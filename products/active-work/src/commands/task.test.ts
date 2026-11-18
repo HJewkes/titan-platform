@@ -16,7 +16,7 @@ import { getLockPath } from '../utils/paths.js';
 import { asTask } from '../test-support/as-task.js';
 
 function ctx(activeRoot: string): CommandContext {
-  return { activeRoot, warnings: [], format: 'json' };
+  return { activeRoot, warnings: [], format: 'json', caller: 'owner' };
 }
 
 const SLUG = 'sample-initiative';
@@ -484,14 +484,14 @@ describe('task.edit', () => {
 describe('task.reorder', () => {
   it('shifts other tasks down when moving a task up', async () => {
     await withTempActiveRoot(async (root) => {
-      // Add SI-3 with priority 3 so we have priorities 1, 2, 3.
+      // Fixture: SI-1 (open, 1) and SI-2 (done, 2). Add open SI-3 at priority 3.
       await taskAdd.run({ slug: SLUG, title: 'third' }, ctx(root));
-      // Move SI-3 (priority 3) to priority 1; SI-1 and SI-2 should shift +1.
+      // Move SI-3 (priority 3) to priority 1; only open SI-1 shifts +1.
       const res = await taskReorder.run({ slug: SLUG, id: 'SI-3', new_priority: 1 }, ctx(root));
       expect(res.from).toBe(3);
       expect(res.to).toBe(1);
       const shiftedIds = res.shifted.map((s) => s.id).sort();
-      expect(shiftedIds).toEqual(['SI-1', 'SI-2']);
+      expect(shiftedIds).toEqual(['SI-1']);
       for (const s of res.shifted) {
         expect(s.to).toBe(s.from + 1);
       }
@@ -501,7 +501,59 @@ describe('task.reorder', () => {
       const byId = new Map(tasks.map((t) => [t.id, t.priority]));
       expect(byId.get('SI-3')).toBe(1);
       expect(byId.get('SI-1')).toBe(2);
-      expect(byId.get('SI-2')).toBe(3);
+      expect(byId.get('SI-2')).toBe(2);
+    });
+  });
+
+  it('does not rewrite a done task sitting at the target priority', async () => {
+    await withTempActiveRoot(async (root) => {
+      await taskAdd.run({ slug: SLUG, title: 'third' }, ctx(root));
+      // SI-2 is done in the fixture and holds priority 2.
+      const before = (await taskList.run({ slug: SLUG, status: 'all' }, ctx(root))).tasks;
+      const doneBefore = before.find((t) => t.id === 'SI-2');
+
+      const res = await taskReorder.run({ slug: SLUG, id: 'SI-3', new_priority: 2 }, ctx(root));
+
+      expect(res.shifted).toEqual([]);
+      const after = (await taskList.run({ slug: SLUG, status: 'all' }, ctx(root))).tasks;
+      expect(after.find((t) => t.id === 'SI-2')).toEqual(doneBefore);
+    });
+  });
+
+  it('stops the shift chain at the first free priority', async () => {
+    await withTempActiveRoot(async (root) => {
+      // Open priorities: SI-1 at 1, SI-3 at 2, SI-4 at 5, SI-5 at 10; SI-2 (done) holds 2 too.
+      await taskAdd.run({ slug: SLUG, title: 'third', priority: 2 }, ctx(root));
+      await taskAdd.run({ slug: SLUG, title: 'fourth', priority: 5 }, ctx(root));
+      await taskAdd.run({ slug: SLUG, title: 'fifth', priority: 10 }, ctx(root));
+
+      const res = await taskReorder.run({ slug: SLUG, id: 'SI-5', new_priority: 1 }, ctx(root));
+
+      expect(res.shifted.map((s) => s.id).sort()).toEqual(['SI-1', 'SI-3']);
+      const { tasks } = await taskList.run({ slug: SLUG, status: 'all' }, ctx(root));
+      const byId = new Map(tasks.map((t) => [t.id, t.priority]));
+      expect(byId.get('SI-1')).toBe(2);
+      expect(byId.get('SI-3')).toBe(3);
+      expect(byId.get('SI-4')).toBe(5);
+    });
+  });
+
+  it('keeps the updated date of tasks it does not shift', async () => {
+    await withTempActiveRoot(async (root) => {
+      await taskAdd.run({ slug: SLUG, title: 'third', priority: 5 }, ctx(root));
+      await taskAdd.run({ slug: SLUG, title: 'fourth', priority: 10 }, ctx(root));
+      const read = async (id: string) =>
+        (await taskList.run({ slug: SLUG, status: 'all' }, ctx(root))).tasks.find((t) => t.id === id);
+      const untouchedBefore = await read('SI-3');
+      expect(untouchedBefore).toBeDefined();
+      const staleDate = '2020-01-01';
+      const file = path.join(root, SLUG, 'tasks', 'SI-3.yml');
+      const raw = await fs.readFile(file, 'utf8');
+      await fs.writeFile(file, raw.replace(/^updated: .*$/m, `updated: ${staleDate}`));
+
+      await taskReorder.run({ slug: SLUG, id: 'SI-4', new_priority: 1 }, ctx(root));
+
+      expect((await read('SI-3'))?.updated).toBe(staleDate);
     });
   });
 

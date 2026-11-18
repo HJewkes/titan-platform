@@ -42,12 +42,12 @@ export function parseArgs(argv, env = process.env) {
 }
 
 /** The finished runs of one workflow, newest first; an unfinished run is picked up by a later pass. */
-export function listRuns(gh, { repo, workflow, limit }) {
+function listRuns(gh, { repo, workflow, limit }) {
   const args = ["run", "list", "--repo", repo, "--workflow", workflow, "--status", "completed", "--limit", String(limit), "--json", META_FIELDS];
   return JSON.parse(gh(args)).map((run) => ({ ...run, repo }));
 }
 
-export function viewRun(gh, repo, id) {
+function viewRun(gh, repo, id) {
   return { ...JSON.parse(gh(["run", "view", String(id), "--repo", repo, "--json", META_FIELDS])), repo };
 }
 
@@ -58,7 +58,7 @@ export function readArtifacts(dir) {
     .map((entry) => [entry.name, JSON.parse(readFileSync(join(dir, entry.name, ARTIFACT_FILE), "utf8"))]);
 }
 
-export function ingestDir(timing, db, home, dir, meta, legacyScope) {
+function ingestDir(timing, db, home, dir, meta, legacyScope) {
   const artifacts = readArtifacts(dir).filter(([name]) => timing.parseArtifactName(name));
   const results = artifacts.map(([name, record]) => timing.ingestGhArtifact(db, home, name, record, meta, legacyScope));
   return { artifacts: artifacts.length, inserted: results.filter((result) => result.inserted).length };

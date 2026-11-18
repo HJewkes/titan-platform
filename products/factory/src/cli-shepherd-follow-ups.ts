@@ -1,3 +1,4 @@
+import { activeWorkRoot } from "@titan-design/app-paths";
 import { readFile } from "node:fs/promises";
 import { text } from "node:stream/consumers";
 import { parseFollowUps } from "@titan-design/review-panel";
@@ -6,9 +7,11 @@ import type { Verbs } from "./cli-types.js";
 import { EXIT } from "./exit-codes.js";
 import { errorMessage } from "./narrow.js";
 import { parsePrRef } from "./registry.js";
-import { activeWorkFollowUpTasks, activeWorkOrigin } from "./shepherd/cleanup-ports.js";
+import { liveStoppedPrs } from "./eligibility/intake-signals.js";
+import { activeWorkOrigin } from "./shepherd/active-work-origin.js";
 import { FixTaskRefused } from "./shepherd/main-red.js";
 import { fileFollowUps } from "./shepherd/follow-ups-file.js";
+import { liveFollowUpSinks } from "./shepherd/follow-up-sinks.js";
 import { HEAD } from "./shepherd/await-verdict.js";
 import { qualifyTask } from "./shepherd/task-ref.js";
 
@@ -27,10 +30,18 @@ function targetOf(ref: string, opts: FollowUpsArgs): { repo: string; pr: number 
 }
 
 async function qualified(task: string, verbs: Verbs): Promise<{ initiative: string; parent: string }> {
-  const full = await qualifyTask(task, { origin: activeWorkOrigin(verbs.io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
+  const checked = await qualifyTask(task, { origin: activeWorkOrigin(verbs.io.env), activeRoot: activeWorkRoot({ env: verbs.io.env }), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
+  if (!checked.verified) verbs.io.stderr(`warning: ${checked.warning}\n`);
+  const full = checked.key;
   const at = full.indexOf("/");
   if (at <= 0 || at === full.length - 1) throw new UsageError("--task must be <initiative>/<ID>");
   return { initiative: full.slice(0, at), parent: full.slice(at + 1) };
+}
+
+/** Nothing is filed from a PR whose Shepherd run stopped (TP-6714); a Shepherd that cannot be read throws, so nothing is filed then either. */
+async function prStopped(where: { repo: string; pr: number }, verbs: Verbs): Promise<boolean> {
+  const ref = `${where.repo}#${where.pr}`;
+  return (await (verbs.deps.stoppedPrs ?? liveStoppedPrs(verbs))(new Set([ref]))).has(ref);
 }
 
 /** Files a reviewer's Follow-ups block from a verdict the seat chose; the seat is the reader, so the verb does not check the block names this PR and head. */
@@ -45,9 +56,9 @@ async function run(ref: string, opts: FollowUpsArgs, verbs: Verbs): Promise<numb
   }
   const { items, warning } = parseFollowUps(opts.verdictFile === undefined ? await text(process.stdin) : await readFile(opts.verdictFile, "utf8"));
   try {
-    const tasks = activeWorkFollowUpTasks({ origin: activeWorkOrigin(io.env), ...(verbs.deps.fetch && { fetch: verbs.deps.fetch }) });
-    const { filed } = await fileFollowUps(tasks, { ...where, head: opts.head, reviewer: opts.reviewer ?? "seat" }, items);
-    io.stdout(`${JSON.stringify({ filed, ...(warning && { warning }) })}\n`);
+    const at = { ...where, head: opts.head, reviewer: opts.reviewer ?? "seat" };
+    const result = (await prStopped(where, verbs)) ? { filed: [], digested: [], skipped: "stopped" } : await fileFollowUps(liveFollowUpSinks(io.env, verbs.deps.fetch), at, items);
+    io.stdout(`${JSON.stringify({ ...result, ...(warning && { warning }) })}\n`);
     return EXIT.OK;
   } catch (error) {
     io.stderr(`error: ${errorMessage(error)}\n`);

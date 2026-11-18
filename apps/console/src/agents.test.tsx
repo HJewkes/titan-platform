@@ -159,8 +159,36 @@ describe("an agent's detail", () => {
 
   it("opens a run's session", async () => {
     renderConsole("#/agents/harbor-impl", healthy(), { inApp: true });
-    fireEvent.click(within(await screen.findByTestId("run-row-run-1")).getByRole("link"));
+    fireEvent.click(within(await screen.findByTestId("run-row-run-1")).getByRole("link", { name: /2031/ }));
     await waitFor(() => expect(window.location.hash).toBe("#/sessions/run-1"));
+  });
+
+  it("opens a run's task page from its task id", async () => {
+    renderConsole("#/agents/harbor-impl", healthy(), { inApp: true });
+    fireEvent.click(within(await screen.findByTestId("run-row-run-1")).getByRole("link", { name: "HB-7" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/tasks/HB-7"));
+  });
+
+  it("shows a placeholder for a run with no task", async () => {
+    const recorded = healthy();
+    recorded.calls[runsKey("harbor-impl")] = successEnvelope({ sessions: [{ ...session("run-1", "Dock index build"), taskIds: [] }], nextBefore: null, degraded: null });
+    renderConsole("#/agents/harbor-impl", recorded);
+    const row = await screen.findByTestId("run-row-run-1");
+    expect(within(row).getByText("none")).toBeTruthy();
+  });
+
+  it("offers all runs when the list has more than one page", async () => {
+    const recorded = healthy();
+    recorded.calls[runsKey("harbor-impl")] = successEnvelope({ sessions: [session("run-1", "Dock index build")], nextBefore: "cursor-1", degraded: null });
+    renderConsole("#/agents/harbor-impl", recorded, { inApp: true });
+    fireEvent.click(await screen.findByRole("link", { name: "All runs" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/sessions?agent=harbor-impl"));
+  });
+
+  it("offers no all-runs link when every run fits one page", async () => {
+    renderConsole("#/agents/harbor-impl", healthy());
+    await screen.findByTestId("run-row-run-1");
+    expect(screen.queryByRole("link", { name: "All runs" })).toBeNull();
   });
 
   it("lists only its own messages under the Messages tab", async () => {

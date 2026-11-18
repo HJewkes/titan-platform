@@ -20,7 +20,7 @@ export function matchExpression(query: string): string {
   return [...new Set(terms(query))].map((term) => `"${term}"`).join(" OR ");
 }
 
-export interface NotesFtsOptions {
+interface NotesFtsOptions {
   graphPath: string;
   activeRoot: string;
 }

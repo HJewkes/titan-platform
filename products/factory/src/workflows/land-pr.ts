@@ -6,7 +6,7 @@ import { ciFailedDecision } from "../gate-brief.js";
 import { gateEverything } from "../gate-policy.js";
 import { requireBaseRequiredChecks } from "../required-checks.js";
 import { askAtHead } from "../shepherd/stale-gates.js";
-import { localMergeTree } from "../shepherd/tree-carry.js";
+import { cacheMergeUpTree, localMergeTree } from "../shepherd/tree-carry.js";
 import type { GitCachePorts } from "../shepherd/carry-cache-ports.js";
 import { AWAIT_HEAD_STEPS, AwaitHeadResult, awaitNewHeadRoute, type AwaitHeadTiming } from "./await-head.js";
 import { deadline } from "./deadline.js";
@@ -130,7 +130,11 @@ export function landPrRoutes(deps: LandPrDeps): StepRoute[] {
   const { now } = deps;
   const timing = { now, sleep: deps.sleep ?? sleep, pollMs: deps.pollMs ?? 30_000, timeoutMs: deps.rerunSettleMs ?? 5 * 60_000, queueMs: deps.rerunQueueMs ?? 20 * 60_000 };
   return [
-    ...landRoutes({ mergeTree: (input, signal) => localMergeTree(input, { signal, ports: deps.gitCache }), ...deps }),
+    ...landRoutes({
+      mergeTree: (input, signal) => localMergeTree(input, { signal, ports: deps.gitCache }),
+      mergeUpTree: (repo, signal) => cacheMergeUpTree(repo, { signal, ports: deps.gitCache }),
+      ...deps,
+    }),
     awaitNewHeadRoute({ port: deps.port, now, sleep: deps.sleep, pushes: deps.pushes, snapshot: deps.snapshot, inheritedRed: deps.inheritedRed }),
     codeRoute("snapshot", now, (input: LandPrParams) => snapshot(deps.port, input)),
     codeRoute("rerun", now, (input: RerunInput, signal) => afterWrite(deps, input, rerunFailed(deps.port, input, timing, signal))),

@@ -9,7 +9,7 @@ export const BEHIND_MAIN_TIMEOUT_MS = 10_000;
 /** GitHub's compare lists at most this many files, so a list this long may hide one the build reads. */
 export const COMPARE_FILE_CAP = 300;
 
-export interface BehindMainOptions {
+interface BehindMainOptions {
   sha: string;
   /** `owner/name` to compare against; defaults to `FACTORY_REPO`, and an undefined repo reports `unknown`. */
   repo?: string | undefined;

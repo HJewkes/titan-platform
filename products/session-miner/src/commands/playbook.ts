@@ -1,4 +1,15 @@
-import { curate, recall, reflectSession, scorePlaybook, type PlaybookDelta, type PlaybookStore, type ScoredBullet } from "@titan-design/memory";
+import {
+  curate,
+  MemoryVectors,
+  recall,
+  reflectSession,
+  scorePlaybook,
+  staleBullets,
+  type PlaybookDelta,
+  type PlaybookStore,
+  type ScoredBullet,
+  type SemanticOptions,
+} from "@titan-design/memory";
 import { defineCommand, EXIT } from "@titan-design/registry";
 import { sessionRef } from "@titan-design/session-read";
 import { z } from "zod";
@@ -59,7 +70,9 @@ export const playbookRecall = defineCommand<z.infer<typeof RecallArgs>, { bullet
   result: z.custom<{ bullets: BulletView[]; antiPatterns: BulletView[]; deprecatedWarnings: BulletView[] }>(),
   cli: { positional: ["query"], options: { limit: { long: "--limit", short: "-n", description: "max bullets" } } },
   async run(args, ctx) {
-    const result = await recall(playbookFor(ctx, "playbook.recall"), args.query, { limit: args.limit });
+    const store = playbookFor(ctx, "playbook.recall");
+    const semantic = await semanticFor(ctx, store);
+    const result = await recall(store, args.query, { limit: args.limit, semantic });
     for (const d of result.degraded) ctx.warnings.push(`${d.retriever} degraded: ${d.message}`);
     return {
       bullets: result.bullets.map(toView),
@@ -110,18 +123,37 @@ export const playbookReflect = defineCommand<z.infer<typeof ReflectArgs>, Reflec
   },
 });
 
-export const playbookStatus = defineCommand<Record<string, never>, { total: number; byMaturity: Record<string, number>; blocked: number; top: BulletView[] }, MinerContext>({
+interface StaleBulletView extends BulletView {
+  lastEvidenceAt: string;
+}
+
+interface StatusResponse {
+  total: number;
+  byMaturity: Record<string, number>;
+  blocked: number;
+  top: BulletView[];
+  stale: number;
+  staleOldest: StaleBulletView[];
+}
+
+export const playbookStatus = defineCommand<Record<string, never>, StatusResponse, MinerContext>({
   name: "playbook.status",
-  description: "How many rules the playbook holds, by maturity, with the highest-confidence few",
+  description: "How many rules the playbook holds, by maturity, with the highest-confidence few and the quietest stale ones",
   args: z.object({}),
-  result: z.custom<{ total: number; byMaturity: Record<string, number>; blocked: number; top: BulletView[] }>(),
+  result: z.custom<StatusResponse>(),
   async run(_args, ctx) {
     const store = playbookFor(ctx, "playbook.status");
-    const scored = scorePlaybook(store, new Date());
+    const now = new Date();
+    const scored = scorePlaybook(store, now);
+    const stale = staleBullets(store, now);
+    const staleOldest = [...stale]
+      .sort((a, b) => a.lastEvidenceAt.localeCompare(b.lastEvidenceAt) || a.id.localeCompare(b.id))
+      .slice(0, 5)
+      .map((b) => ({ ...toView(b), lastEvidenceAt: b.lastEvidenceAt }));
     const byMaturity: Record<string, number> = {};
     for (const b of scored) byMaturity[b.maturity] = (byMaturity[b.maturity] ?? 0) + 1;
     const top = [...scored].sort((a, b) => b.effectiveScore - a.effectiveScore || a.id.localeCompare(b.id)).slice(0, 5);
-    return { total: scored.length, byMaturity, blocked: store.blockedPatterns().length, top: top.map(toView) };
+    return { total: scored.length, byMaturity, blocked: store.blockedPatterns().length, top: top.map(toView), stale: stale.length, staleOldest };
   },
 });
 
@@ -130,6 +162,19 @@ function provenanceFor(ctx: MinerContext, sessionId: string | undefined): { sess
   requireMinerTables(ctx, "playbook.add --session", DIARY_TABLES);
   const diary = buildDiary(ctx.graph(), sessionId);
   return diary ? { sessionRef: diary.sessionRef, byteOffset: diary.byteOffset } : { sessionRef: sessionRef(sessionId) };
+}
+
+/** Building the index embeds new bullets, so an embedder failure surfaces here and must degrade to keywords like a failed query would. */
+async function semanticFor(ctx: MinerContext, store: PlaybookStore): Promise<SemanticOptions | undefined> {
+  const embedder = ctx.embedder;
+  if (!embedder) return undefined;
+  try {
+    const index = await new MemoryVectors(ctx.graph().db, embedder).index(store.list());
+    return { embedder, index };
+  } catch (err) {
+    ctx.warnings.push(`memory-vector degraded: ${err instanceof Error ? err.message : String(err)}`);
+    return undefined;
+  }
 }
 
 function playbookFor(ctx: MinerContext, command: string): PlaybookStore {

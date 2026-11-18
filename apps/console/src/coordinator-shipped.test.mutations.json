@@ -29,6 +29,15 @@
       ]
     },
     {
+      "name": "a PR link also opens the URL from its press, so one tap opens two tabs",
+      "file": "apps/console/src/pages/CoordinatorShipped.tsx",
+      "find": "className={`${PHONE_TAP_LINK} break-all`}",
+      "replace": "className={`${PHONE_TAP_LINK} break-all`} onPress={() => window.open(pr.url, \"_blank\", \"noopener\")}",
+      "kills": [
+        "what shipped on the coordinator page shows each theme with its summary and PR links, and the PRs left out of a theme"
+      ]
+    },
+    {
       "name": "an empty day shows the unbuilt note instead",
       "file": "apps/console/src/pages/CoordinatorShipped.tsx",
       "find": "groups.length === 0 && result.merged.length === 0",

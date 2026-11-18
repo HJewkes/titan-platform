@@ -275,6 +275,26 @@ describe("build-surface on a toy two-slice spec with every agent step stubbed", 
     expect(fake.agentCalls).toEqual([]);
   });
 
+  it("spawns and registers every slice under the canonical key a bare spec task resolves to", async () => {
+    const fake = fakeBuild({ spec: demoSpec({ task: "DM-1" }), taskKey: async (task) => (task === "DM-1" ? "demo/DM-1" : Promise.reject(new Error(`unexpected ${task}`))) });
+    const { host, runId } = start(fake);
+
+    const run = await drive(host, runId);
+
+    expect(run.status).toBe("completed");
+    expect(fake.registered.map((entry) => entry.task)).toEqual(["demo/DM-1", "demo/DM-1"]);
+  });
+
+  it("fails at plan when a spec task resolves to no one task, before any agent is spawned", async () => {
+    const fake = fakeBuild({ spec: demoSpec({ task: "other/DM-1" }), taskKey: async () => Promise.reject(new Error("task key \"other/DM-1\" refused (wrong-initiative)")) });
+    const { host, runId } = start(fake);
+
+    const run = await host.runtime.wait(runId);
+
+    expect(run.error).toMatch(/refused \(wrong-initiative\)/);
+    expect(fake.agentCalls).toEqual([]);
+  });
+
   it.each([
     [10, "proceeds, since a fresh extraction already runs", "completed"],
     [20, "stops the slice", "failed"],

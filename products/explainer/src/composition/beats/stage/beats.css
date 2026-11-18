@@ -39,6 +39,14 @@
   color: var(--color-text-primary);
   font-family: var(--font-family-body);
 }
+/* A plate beat shows what is composited behind the frames: its frame, the chrome-band spread and, while it is shown, the page root paint nothing. */
+.beat-frame[data-plate], .xp-stage .beat-frame[data-plate] {
+  background: transparent;
+  box-shadow: none;
+}
+:root:has(.beat-frame[data-plate][style*="visibility: visible"]), body:has(.beat-frame[data-plate][style*="visibility: visible"]) {
+  background: transparent;
+}
 /* The shared grid: one centred content box that every top-level block stretches to. */
 .beat-frame > * {
   box-sizing: border-box;
@@ -119,6 +127,36 @@
 }
 .beat-stat-delta[data-state='problem'] { background: var(--color-status-error-vivid-subtle); color: var(--color-status-error-vivid); }
 .beat-stat-delta[data-state='neutral'] { background: var(--color-surface-raised); color: var(--color-text-secondary); }
+.beat-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 var(--beat-gap-sm);
+  font-size: var(--beat-body);
+}
+.beat-table-row > * {
+  padding: var(--beat-inset);
+  background: var(--color-surface-raised);
+  text-align: left;
+}
+.beat-table-row > :first-child {
+  border-radius: var(--beat-radius) 0 0 var(--beat-radius);
+}
+.beat-table-row > :last-child {
+  border-radius: 0 var(--beat-radius) var(--beat-radius) 0;
+}
+.beat-table-label {
+  color: var(--color-text-secondary);
+  font-weight: normal;
+}
+.beat-table-today,
+.beat-table-call {
+  font-family: var(--font-family-heading);
+  font-variant-numeric: tabular-nums;
+}
+.beat-table-target,
+.beat-table-reason {
+  color: var(--color-text-secondary);
+}
 .beat-checklist {
   display: flex;
   flex-direction: column;
@@ -126,6 +164,19 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+.beat-proof {
+  display: flex;
+  flex-direction: column;
+  gap: var(--beat-gap);
+}
+.beat-proof-command {
+  font-family: var(--font-family-mono);
+  font-size: var(--beat-body);
+  color: var(--color-text-secondary);
+}
+.beat-proof-name {
+  flex: 1;
 }
 .beat-check-item {
   display: flex;

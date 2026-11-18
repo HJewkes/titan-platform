@@ -42,7 +42,7 @@ export interface DigestSources {
   flow?: FlowPorts;
 }
 
-export interface CollectOptions {
+interface CollectOptions {
   sources: DigestSources;
   now: Date;
   windowMinutes: number;

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Alert, Collapse, CollapseButton, CollapseContent, DateTime, EmptyState, HStack, Link, Pill, Section, SectionContent, SectionHeader, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { LoadError } from "../shell/LoadError.js";
 import { Spinner } from "../shell/Loading.js";
 import type { RoundSummary } from "../../server/rounds.js";
 import { useQuery } from "../data/rpc.js";
@@ -20,11 +21,11 @@ const SECTIONS: Record<RoundStatus, { title: string; subtitle: string; empty: st
   withdrawn: { title: "Withdrawn rounds", subtitle: "Superseded or closed before an answer; nothing to answer", empty: "No withdrawn rounds" },
 };
 
-/** Every round in the rounds dir, or one set of them under `?set=`: the open ones waiting for answers first, then the sent ones, the withdrawn ones, and last, folded, the ones that do not parse. */
+/** Every round in the rounds dir, or one set of them under `?set=`: the open ones waiting for answers first, then, folded behind a count outside a set view, the sent ones and the withdrawn ones, and last, folded, the ones that do not parse. */
 export function RoundsPage({ query }: { query?: string }): ReactNode {
   const list = useQuery("rounds.list");
   if (list.status === "loading") return <Spinner size="sm" label="Loading rounds" />;
-  if (list.data === undefined) return <Alert status="error" message={`Could not load rounds: ${list.error.message}`} />;
+  if (list.data === undefined) return <LoadError message={`Could not load rounds: ${list.error.message}`} onRetry={list.refetch} />;
   const { truncated, dir } = list.data;
   if (list.data.rounds.length === 0 && !truncated) return <NoRounds dir={dir} />;
   const set = setFromQuery(query);
@@ -34,7 +35,7 @@ export function RoundsPage({ query }: { query?: string }): ReactNode {
       {truncated ? <Alert status="warning" message={`Showing the first ${list.data.rounds.length} rounds; the rounds dir holds more.`} /> : null}
       {set === null ? null : <SetFilter set={set} count={rounds.length} />}
       {STATUS_ORDER.map((status) => (
-        <RoundsSection key={status} status={status} rounds={rounds.filter((round) => round.valid && round.status === status)} />
+        <RoundsSection key={status} status={status} folded={set === null && status !== "open"} rounds={rounds.filter((round) => round.valid && round.status === status)} />
       ))}
       <InvalidSection rounds={rounds.filter((round) => !round.valid)} />
     </VStack>
@@ -58,12 +59,26 @@ function SetFilter({ set, count }: { set: string; count: number }): ReactNode {
   );
 }
 
-function RoundsSection({ status, rounds }: { status: RoundStatus; rounds: readonly RoundSummary[] }): ReactNode {
+/** Open rounds are what waits on the owner and stay expanded; sent and withdrawn ones fold behind a count, unless a set view asks to read the whole set. */
+function RoundsSection({ status, rounds, folded }: { status: RoundStatus; rounds: readonly RoundSummary[]; folded: boolean }): ReactNode {
   const { title, subtitle, empty } = SECTIONS[status];
+  const body = rounds.length === 0 ? <EmptyLine text={empty} /> : <RoundsResponsive rounds={rounds} />;
+  if (folded) {
+    return (
+      <Section testID={`rounds-${status}`}>
+        <Collapse>
+          <CollapseButton>
+            <Typography variant="subtitle1">{`${title} (${rounds.length})`}</Typography>
+          </CollapseButton>
+          <CollapseContent>{body}</CollapseContent>
+        </Collapse>
+      </Section>
+    );
+  }
   return (
     <Section testID={`rounds-${status}`}>
       <SectionHeader title={title} subtitle={subtitle} />
-      <SectionContent>{rounds.length === 0 ? <EmptyLine text={empty} /> : <RoundsResponsive rounds={rounds} />}</SectionContent>
+      <SectionContent>{body}</SectionContent>
     </Section>
   );
 }

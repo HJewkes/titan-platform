@@ -93,7 +93,7 @@ export function relatedTestArgs(changed) {
  * types through dist. Inside a member only type inputs count; a path outside every member goes to testScope as is,
  * so one it does not know asks for a full run.
  */
-export function lintTypesScope(changed, workspace) {
+function lintTypesScope(changed, workspace) {
   if (changed.some((path) => LINT_TYPES_INPUTS.includes(path))) return { mode: "full" };
   const inMember = (path) => workspace.some((member) => path.startsWith(member.dir));
   const inputs = changed.filter((path) => !inMember(path) || SOURCE_EXT.test(path) || TYPE_INPUT.test(path));
@@ -135,7 +135,7 @@ const FLAKE_LABEL = "flake repeat";
 const NO_FLAKE_CLASSES = { repeats: 1, classes: [] };
 
 /** The repeat-guard step, or null when no changed file is in a flake class (TP-4657). */
-export function flakeRepeatStep(changed, flakeClasses, hasTimeout) {
+function flakeRepeatStep(changed, flakeClasses, hasTimeout) {
   const targets = flakeTargets(changed, flakeClasses.classes);
   if (targets.length === 0) return null;
   const vitest = ["pnpm", "exec", "vitest", "run"];
@@ -202,6 +202,7 @@ export const CI_COVERAGE = [
   { job: "validate", run: "pnpm egress:scan range", disposition: "covered-by", reason: "the pre-push hook that prepare installs scans the pushed range" },
   { job: "validate", run: "pnpm merge:lint", disposition: "local", label: "merge:lint" },
   { job: "validate", run: "pnpm sidecar:finds", disposition: "local", label: "sidecar:finds" },
+  { job: "validate", run: "pnpm sidecar:kills", disposition: "local", label: "sidecar:kills" },
   { job: "validate", run: "pnpm typecheck", disposition: "local", label: "typecheck" },
   { job: "validate", run: "pnpm lint", disposition: "local", label: "lint" },
   { job: ["validate", "test-shard"], run: /apt-get install|dpkg -i|ImageVersion|playwright-core/, disposition: "setup", reason: "test-runner tooling, not a check" },
@@ -236,6 +237,7 @@ export function planCommands({ base, changed, workspace, hasTimeout, spool, flak
     { label: LOC_LABEL, inProcess: true },
     pnpmRun("merge:lint"),
     pnpmRun("sidecar:finds"),
+    { label: "sidecar:kills", cmd: "pnpm", args: ["run", "sidecar:kills", "--base", base] },
     pnpmRun("typecheck"),
     pnpmRun("lint"),
     vitestCommand(changed, workspace, hasTimeout, spool),

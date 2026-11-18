@@ -107,6 +107,35 @@ describe('task add with edges', () => {
   });
 });
 
+async function archive(root: string, slug: string, id: string): Promise<void> {
+  const dir = path.join(root, slug, 'tasks', 'archive');
+  await fs.mkdir(dir, { recursive: true });
+  // Malformed on purpose: only the file name is read, so the content must not block a write.
+  await fs.writeFile(path.join(dir, `${id}.yml`), 'id: [unclosed\n');
+}
+
+describe('archived ids', () => {
+  it('task add writes a dep on an id archived in another initiative', async () => {
+    await inSeededRoot(async (root) => {
+      await archive(root, 'gamma', 'G-77');
+
+      await add(root, { dep: ['G-77'] });
+
+      expect((await readTask(root, 'alpha', 'H-7')).dep).toEqual(['G-77']);
+    });
+  });
+
+  it('task edit refuses a dep found in no live or archived file', async () => {
+    await inSeededRoot(async (root) => {
+      await archive(root, 'gamma', 'G-77');
+
+      await expect(edit(root, 'H-1', { dep: ['G-78'] })).rejects.toThrow(
+        'dep G-78 is not a known task id (no live or archived task file in any initiative)',
+      );
+    });
+  });
+});
+
 describe('task edit with edges', () => {
   it('refuses a dep that closes a cycle across initiatives and leaves the file alone', async () => {
     await inSeededRoot(async (root) => {
@@ -253,7 +282,17 @@ describe('edgeWriteErrors', () => {
 
   it('names a stale dep the write adds', () => {
     expect(edgeWriteErrors(index, { slug: 'alpha', id: 'H-2', dep: ['H-404'] })).toEqual([
-      'dep H-404 is not a known task id',
+      'dep H-404 is not a known task id (no live or archived task file in any initiative)',
     ]);
+  });
+
+  it('accepts a dep or parent on an archived id in the index', () => {
+    const withArchive = buildEdgeIndex(
+      new Map([['alpha', [fullTask({ id: 'H-2' })]]]),
+      new Set(['H-90']),
+    );
+
+    expect(edgeWriteErrors(withArchive, { slug: 'alpha', id: 'H-2', dep: ['H-90'] })).toEqual([]);
+    expect(edgeWriteErrors(withArchive, { slug: 'alpha', id: 'H-2', parent: 'H-90' })).toEqual([]);
   });
 });

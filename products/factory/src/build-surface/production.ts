@@ -8,11 +8,13 @@ import { writeDeposit } from "@titan-design/owner-queue/spool";
 import type { JsonEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import { agentChatImplementerRunner, type ImplementerRunner } from "../agent-chat-implementer.js";
-import { ownerInboxDir } from "../deploy-watch-ports.js";
+import { consoleInboxDir } from "@titan-design/app-paths";
 import { agentChatAgents } from "../shepherd/agents.js";
-import { activeWorkFixTasks, activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
+import { activeWorkFixTasks } from "../shepherd/cleanup-ports.js";
 import { postRpc } from "../cli-shepherd-rpc.js";
 import { FACTORY_PORT } from "../serve.js";
+import { qualifyTask } from "../shepherd/task-ref.js";
 import { sleep } from "../workflows/deadline.js";
 import type { BuildSurfacePorts, CommandRequest, CommandRun, ShepherdPort } from "./ports.js";
 import type { LandState } from "./schemas.js";
@@ -113,7 +115,21 @@ function systemBuildPorts(given: ProductionBuildPorts): BuildSurfacePorts {
     extract: claudePrintExtract,
     shepherd: rpcShepherd(given.rpc, given.github),
     tasks: activeWorkFixTasks({ origin: activeWorkOrigin(process.env) }),
+    taskKey: (task) => qualifiedTaskKey(task, { env: process.env, warn: (line) => void process.stderr.write(`${line}\n`) }),
   };
+}
+
+interface TaskKeyOptions {
+  env: NodeJS.ProcessEnv;
+  warn: (line: string) => void;
+  fetch?: typeof globalThis.fetch;
+}
+
+/** The canonical key, or the key as given with a warning when no complete task index answered. */
+export async function qualifiedTaskKey(task: string, { env, warn, fetch }: TaskKeyOptions): Promise<string> {
+  const checked = await qualifyTask(task, { origin: activeWorkOrigin(env), ...(fetch && { fetch }) });
+  if (!checked.verified) warn(`warning: ${checked.warning}`);
+  return checked.key;
 }
 
 interface FactoryAgentWiring {
@@ -128,7 +144,7 @@ interface FactoryAgentWiring {
 export function factoryBuildPorts(wiring: FactoryAgentWiring): BuildSurfacePorts {
   const { agentChatBin, agentChatConfigDir, roster, spawnGate } = wiring;
   const agents = agentChatAgents(agentChatBin, { roster, gate: spawnGate, ...(agentChatConfigDir !== undefined && { configDir: agentChatConfigDir }) });
-  const inbox = ownerInboxDir(process.env);
+  const inbox = consoleInboxDir({ env: process.env });
   const implementer = agentChatImplementerRunner({ agents, tellOwner: async (deposit) => void (await writeDeposit(inbox, deposit)) });
   return systemBuildPorts({ github: wiring.port, implementer, rpc: loopbackRpc });
 }

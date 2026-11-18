@@ -24,16 +24,8 @@ import type { WorkflowAuthorityOptions } from "./runtime-options.js";
 import { WorkflowRuntime } from "./runtime.js";
 import { parseSignal } from "./signals.js";
 import { workflowMigration, workflowOwnershipMigration } from "./store.js";
-import {
-  AuthorityDeniedError,
-  AuthorityRefusedError,
-  type AuthorizeOptions,
-  type AuthorizeRequest,
-  type AuthorizeResult,
-  type WorkflowEvent,
-  type WorkflowFn,
-  type WorkflowRun,
-} from "./types.js";
+import { type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, type WorkflowEvent, type WorkflowFn, type WorkflowRun } from "./types.js";
+import { AuthorityDeniedError, AuthorityRefusedError } from "./step-errors.js";
 
 const SUBJECT = { repo: "example/widgets", pr: "7", headSha: "a1b2c3" };
 const MERGE: AuthorizeRequest = { action: "merge", subject: SUBJECT };

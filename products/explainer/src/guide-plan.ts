@@ -65,6 +65,7 @@ export function guidePlan(stage: GuideStage, deps: GuideDeps = {}): string {
   const { prompt } = sliceForStage(registry, qRules, { stage, structure: structure.id });
   const rules = prompt.length > 0 ? prompt.map(renderRule).join("\n") : "- (none)";
   const parts = [readGuide(guidesDir, "planner-v0.md"), `## Rules for the ${stage} stage\n\n${rules}`, `## Spine template\n\n${renderSpine(structure)}`];
+  if (stage === "script") parts.push(readGuide(guidesDir, "long-line-script.md"), readGuide(guidesDir, "style-rules.md"));
   if (spine) parts.push(renderSpineActs(spine));
   return parts.join("\n\n") + "\n";
 }

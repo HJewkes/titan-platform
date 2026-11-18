@@ -24,6 +24,7 @@ const needsProcess = [
 // active-work's sandbox-home setup redirects os.homedir() to a temp dir per file, so a test that forgets to stub home
 // cannot touch the operator's files. Its own projects keep that setup off every other product's tests.
 const activeWorkTests = ["products/active-work/{src,scripts}/**/*.test.ts"];
+const consoleSetup = ["apps/console/server/vitest-setup.test-helpers.ts"];
 const activeWorkSetup = ["products/active-work/src/test-support/sandbox-home.ts"];
 // These assign process.env.HOME or spy on os.homedir() in-process.
 const activeWorkNeedsProcess = [
@@ -52,11 +53,12 @@ const sharedGraphNeedsIsolation = [
   "apps/console/server/owner-guard.test.ts",
   "apps/console/server/round-frames.test.ts",
   "apps/console/server/rounds.test.ts",
-  "products/explainer/src/collect/history.test.ts",
   "products/explainer/src/yaml-dir.test.ts",
   "products/factory/src/bot-identity.test.ts",
   "products/factory/src/bot-token-path.test.ts",
   "products/factory/src/deploy-cli-link.test.ts",
+  "products/factory/src/eligibility/shadow/fence.test.ts",
+  "products/factory/src/eligibility/stop-signals.test.ts",
   "products/factory/src/host.ownership-lost.test.ts",
   "products/factory/src/remote-factory.test.ts",
   "products/factory/src/serve-loop-delay.test.ts",
@@ -166,7 +168,15 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: "console", pool: "forks", execArgv: forksHeap, isolate: false, include: consoleTests, exclude: notShared },
+        test: {
+          name: "console",
+          pool: "forks",
+          execArgv: forksHeap,
+          isolate: false,
+          include: consoleTests,
+          exclude: notShared,
+          setupFiles: consoleSetup,
+        },
       },
       {
         extends: true,

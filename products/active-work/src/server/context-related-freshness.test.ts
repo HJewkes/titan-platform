@@ -9,6 +9,7 @@ import { openGraph } from '../session-index/graph.js';
 import { withRefreshLock } from '../session-index/refresh-lock.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { startSessionIndexWatch } from './session-index-watch.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 /**
  * The daemon as `context related` meets it on a busy host: transcript work is
@@ -78,6 +79,7 @@ beforeEach(async () => {
   vi.stubEnv('ACTIVE_ROOT', path.join(dir, 'daemon-root'));
   vi.stubEnv('CLAUDE_CONFIG_DIRS', path.join(home, '.claude'));
   vi.stubEnv('AW_INDEX_WATCH', '1');
+  writeCharter(root);
   await indexFixture();
 });
 

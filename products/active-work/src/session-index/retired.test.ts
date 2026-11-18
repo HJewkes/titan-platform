@@ -2,6 +2,8 @@ import Database from 'better-sqlite3';
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { refreshCorpus } from '@titan-design/session-graph';
+import { discoverTranscripts } from '@titan-design/session-read';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { openGraph, type WorkspaceGraph } from './graph.js';
@@ -76,6 +78,12 @@ const pass = (): Promise<RefreshSummary> =>
 
 const rowFor = (sessionId: string) =>
   graph.transcripts.list().find((row) => row.sourceKey.endsWith(`${sessionId}.jsonl`));
+
+const missingKeys = (): string[] =>
+  graph.transcripts
+    .list()
+    .filter((row) => row.status === 'missing')
+    .map((row) => row.sourceKey);
 
 describe('sealed transcripts of retired agents', () => {
   it('skips a retired session once the index has read it to the end', async () => {
@@ -242,6 +250,37 @@ describe('sealed transcripts under a home-relative path (TP-878)', () => {
     expect(sealed).toMatchObject({ scanned: 1, reconciledMissing: 0 });
     expect(rowFor(SESSION)?.status).toBe('ok');
     expect(rowFor(OTHER)?.status).toBe('ok');
+  });
+
+  it('never reads a sealed row missing mid-pass, even when its ~/ key no longer resolves (TP-1019)', async () => {
+    vi.stubEnv('HOME', dir);
+    writeFileSync(transcriptOf(SESSION), line(SESSION, 'final words'), 'utf8');
+    writeFileSync(transcriptOf(OTHER), line(OTHER, 'still working'), 'utf8');
+    retire(SESSION);
+    await pass();
+    const discovered = await discoverTranscripts(root);
+    vi.stubEnv('HOME', path.join(dir, 'elsewhere'));
+    const missingMidPass: string[] = [];
+
+    const sealed = await runRefresh({
+      graph,
+      transcripts: discovered,
+      skipPrOutcomes: true,
+      skipWorkspace: true,
+      taskRoot: dir,
+      steps: {
+        refreshCorpus: async (...args: Parameters<typeof refreshCorpus>) => {
+          const summary = await refreshCorpus(...args);
+          missingMidPass.push(...missingKeys());
+          return summary;
+        },
+      },
+    });
+
+    expect(rowFor(SESSION)?.sourceKey.startsWith('~/')).toBe(true);
+    expect(sealed).toMatchObject({ scanned: 1, reconciledMissing: 0 });
+    expect(missingMidPass).toEqual([]);
+    expect(rowFor(SESSION)?.status).toBe('ok');
   });
 
   it('brings back a sealed row an earlier pass wrongly marked missing', async () => {

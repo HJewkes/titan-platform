@@ -16,6 +16,7 @@ export const ContextBudgetSchema = z.strictObject({
   defaultQuota: z.number().nonnegative().optional(),
   defaultTiers: z.record(z.string(), z.number().int().nonnegative()).optional(),
   maxTier: z.number().int().nonnegative().optional(),
+  order: z.enum(["score", "edges"]).optional(),
 });
 
 /** One request shape for both modes, discriminated on `mode`. */
@@ -71,7 +72,7 @@ export interface ContextResponse {
 
 export type RetrievalResponse = ListResponse | ContextResponse;
 
-export interface LoadedCandidates {
+interface LoadedCandidates {
   candidates: ContextCandidate[];
   dropped: RetrievalDropped[];
   degradation?: Degradation;

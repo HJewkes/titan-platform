@@ -1,5 +1,53 @@
 # @titan-design/evals
 
+## 0.6.8
+
+### Patch Changes
+
+- Updated dependencies [d025aac]
+- Updated dependencies [ce68429]
+  - @titan-design/pm@0.11.0
+
+## 0.6.7
+
+### Patch Changes
+
+- Updated dependencies [a24b050]
+  - @titan-design/session-analytics@0.19.0
+
+## 0.6.6
+
+### Patch Changes
+
+- Updated dependencies [f0c6bea]
+- Updated dependencies [8485c89]
+  - @titan-design/authority@0.7.0
+  - @titan-design/workflow@0.15.0
+  - @titan-design/hitl@0.10.1
+  - @titan-design/review-workflow@0.1.1
+
+## 0.6.5
+
+### Patch Changes
+
+- Updated dependencies [239d96b]
+  - @titan-design/pm@0.10.0
+
+## 0.6.4
+
+### Patch Changes
+
+- Updated dependencies [5346139]
+  - @titan-design/pm@0.9.0
+
+## 0.6.3
+
+### Patch Changes
+
+- Updated dependencies [fc303a7]
+- Updated dependencies [d497596]
+  - @titan-design/pm@0.8.0
+
 ## 0.6.2
 
 ### Patch Changes

@@ -142,7 +142,7 @@ export async function toolGapsReport(db: Db, report: CostReportOptions, top: num
 
 const cell = (value: string | number) => String(value).replaceAll("|", "\\|");
 
-export function renderToolGapsText(data: ToolGapsReport): string {
+function renderToolGapsText(data: ToolGapsReport): string {
   const { totals, window } = data;
   const header = [
     `Tool gaps: post-filters piped after our CLIs, ${window.since ?? "beginning"} to ${window.until ?? "now"}`,

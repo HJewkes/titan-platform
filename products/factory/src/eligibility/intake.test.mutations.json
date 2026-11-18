@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the minimum severity itself is refused",
+      "file": "products/factory/src/eligibility/intake.ts",
+      "find": "SEVERITIES.indexOf(task.severity) >= floor",
+      "replace": "SEVERITIES.indexOf(task.severity) > floor",
+      "kills": [
+        "selection policy refusals an agent-filed task at exactly the minimum severity passes"
+      ]
+    },
+    {
+      "name": "incidents are intake like agent work",
+      "file": "products/factory/src/eligibility/intake.ts",
+      "find": "const AGENT_SOURCES: ReadonlySet<string> = new Set([\"follow-up\", \"review\", \"sweep\", \"audit\", \"coordinator\"]);",
+      "replace": "const AGENT_SOURCES: ReadonlySet<string> = new Set([\"follow-up\", \"review\", \"sweep\", \"audit\", \"coordinator\", \"incident\"]);",
+      "kills": [
+        "selection policy refusals an incident is never refused by intake, whatever its severity, age or origin"
+      ]
+    },
+    {
+      "name": "an unread Shepherd admits a task citing a PR",
+      "file": "products/factory/src/eligibility/intake.ts",
+      "find": "if (policy.stoppedPrs === \"unread\") return [{ code: \"signal-unreadable\", detail: `whether ${pr} stopped could not be read` }];",
+      "replace": "if (policy.stoppedPrs === \"unread\") return [];",
+      "kills": [
+        "selection policy refusals an unread Shepherd fails closed for a task citing a PR, as signal-unreadable"
+      ]
+    },
+    {
+      "name": "intake expires on the last day",
+      "file": "products/factory/src/eligibility/intake.ts",
+      "find": "return age > policy.intake.expireDays ?",
+      "replace": "return age >= policy.intake.expireDays ?",
+      "kills": [
+        "selection policy refusals an agent-filed task promoted into no bet expires past expireDays, and not on the last day"
+      ]
+    }
+  ]
+}

@@ -18,6 +18,7 @@ import minerOutcomes from './miner-outcomes.js';
 import type { CommandContext } from '../registry/types.js';
 import { defaultGraphPath, openGraph } from '../session-index/graph.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 /**
  * `miner outcomes` over a hand-built graph holding one spawned worker named
@@ -101,17 +102,17 @@ async function seedGraph(root: string): Promise<void> {
   graph.db.close();
 }
 
-function seedLogs(root: string): string {
+function seedLogs(root: string, initiative?: string, seat = 'seat-a'): string {
   const logs = path.join(root, 'logs');
-  mkdirSync(path.join(logs, 'seat-a'), { recursive: true });
+  mkdirSync(path.join(logs, seat), { recursive: true });
   const row = (ts: string, outcome: string) =>
-    JSON.stringify({ ts, agent: 'impl-1', task: 'T-1', kind: 'feature', outcome });
+    JSON.stringify({ ts, agent: 'impl-1', task: 'T-1', kind: 'feature', outcome, ...(initiative && { initiative }) });
   const lines = [
     row('2026-09-01T07:00:00Z', 'dispatched'),
     '{not json',
     row('2026-09-01T08:00:00Z', 'merged'),
   ];
-  writeFileSync(path.join(logs, 'seat-a', 'dispatch.jsonl'), lines.join('\n') + '\n', 'utf8');
+  writeFileSync(path.join(logs, seat, 'dispatch.jsonl'), lines.join('\n') + '\n', 'utf8');
   return logs;
 }
 
@@ -159,7 +160,7 @@ describe('miner outcomes', () => {
       expect(() => costPerOutcomeSchema.parse(result)).not.toThrow();
       expect(result.bySeat).toHaveLength(1);
       expect(result.bySeat[0]).toMatchObject({ key: 'seat-a', assignments: 1, merged: 1 });
-      expect(result.bySeat[0].costUsd).toBeGreaterThan(0);
+      expect(result.bySeat.at(0)?.costUsd).toBeGreaterThan(0);
       expect(result.joinSource.agentName).toBe(1);
       expect(result.skipped).toEqual({ badLines: 1, noAgent: 0 });
       expect(process.stderr.write).not.toHaveBeenCalled();
@@ -202,6 +203,48 @@ describe('miner outcomes', () => {
       });
 
       chmodSync(defaultGraphPath(), 0o644);
+    });
+  });
+});
+
+const OWNER_ONLY_SLUG = 'private-notes';
+
+/** A readable charter, and a brief for the slug that declares nothing, so it is owner-only. */
+function seedOwnerOnlyInitiative(root: string): void {
+  writeCharter(root);
+  mkdirSync(path.join(root, OWNER_ONLY_SLUG), { recursive: true });
+  writeFileSync(path.join(root, OWNER_ONLY_SLUG, 'brief.md'), '---\ntitle: Notes\n---\n', 'utf8');
+}
+
+describe('miner outcomes for a non-owner (TP-5556 S2a)', () => {
+  it('serves an owner-only initiative as owner-only to an agent and by name to the owner', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGraph(root);
+      seedOwnerOnlyInitiative(root);
+      const logs = seedLogs(root, OWNER_ONLY_SLUG);
+
+      const agent = await minerOutcomes.run({ logs }, { ...ctx(), activeRoot: root, caller: 'agent' });
+      const owner = await minerOutcomes.run({ logs }, { ...ctx(), activeRoot: root, caller: 'owner' });
+
+      expect(JSON.stringify(agent)).not.toContain(OWNER_ONLY_SLUG);
+      expect(agent.byInitiative.map((bucket) => bucket.key)).toEqual(['owner-only']);
+      expect(owner.byInitiative.map((bucket) => bucket.key)).toEqual([OWNER_ONLY_SLUG]);
+    });
+  });
+
+  it('serves a seat named after an owner-only slug as owner-only everywhere to an agent', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGraph(root);
+      seedOwnerOnlyInitiative(root);
+      const logs = seedLogs(root, undefined, `${OWNER_ONLY_SLUG}-coord`);
+
+      const agent = await minerOutcomes.run({ logs }, { ...ctx('human'), activeRoot: root, caller: 'agent' });
+      const owner = await minerOutcomes.run({ logs }, { ...ctx(), activeRoot: root, caller: 'owner' });
+
+      expect(JSON.stringify(agent)).not.toContain(OWNER_ONLY_SLUG);
+      expect(stderrText()).not.toContain(OWNER_ONLY_SLUG);
+      expect(agent.bySeat.map((bucket) => bucket.key)).toEqual(['owner-only']);
+      expect(owner.bySeat.map((bucket) => bucket.key)).toEqual([`${OWNER_ONLY_SLUG}-coord`]);
     });
   });
 });

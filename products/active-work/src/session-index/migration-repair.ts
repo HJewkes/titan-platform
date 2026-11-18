@@ -49,13 +49,14 @@ function renumber(db: Database.Database, name: string, version: number): boolean
       'SELECT applied_at FROM _migration WHERE name = ? AND version < ? ORDER BY version',
     )
     .all(name, BAND_FLOOR);
-  if (legacy.length === 0) return false;
+  const earliest = legacy.at(0);
+  if (earliest === undefined) return false;
 
   db.prepare('DELETE FROM _migration WHERE name = ? AND version < ?').run(name, BAND_FLOOR);
   db.prepare('INSERT OR IGNORE INTO _migration (version, name, applied_at) VALUES (?, ?, ?)').run(
     version,
     name,
-    legacy[0].applied_at,
+    earliest.applied_at,
   );
   return true;
 }

@@ -3,6 +3,8 @@ import type { Task } from '../schemas/task.js';
 import { UsageError } from '../errors.js';
 import { DueArg } from './_categories.js';
 import { QuietArg } from './_task-quiet.js';
+import { parseOwnerSteps, TaskPlanArgsShape } from './_task-plan-fields.js';
+import { PROVENANCE_ARG_KEYS, provenanceArgs, TaskProvenanceArgsShape, type ProvenanceField } from './_task-provenance.js';
 
 const EDITABLE_FIELDS = [
   'title',
@@ -17,7 +19,12 @@ const EDITABLE_FIELDS = [
 
 export type EditableField = (typeof EDITABLE_FIELDS)[number];
 
+const CLEAR_FIELDS = ['due', 'kind', 'cos', 'area', 'parent', 'bet'] as const;
+
+export type ClearField = (typeof CLEAR_FIELDS)[number];
+
 export const ArgsSchema = z.object({
+  clear: z.array(z.enum(CLEAR_FIELDS)).optional(),
   slug: z.string().min(1),
   id: z.string().min(1),
   field: z.string().min(1).optional(),
@@ -33,6 +40,8 @@ export const ArgsSchema = z.object({
   cos: z.string().min(1).optional(),
   area: z.string().min(1).optional(),
   due: DueArg,
+  ...TaskPlanArgsShape,
+  ...TaskProvenanceArgsShape,
   force: z.boolean().optional(),
   quiet: QuietArg,
 });
@@ -63,7 +72,7 @@ export function coerceValue(field: EditableField, value: unknown): unknown {
   return value;
 }
 
-export const PATCH_FIELDS = ['kind', 'cos', 'area', 'due'] as const;
+export const PATCH_FIELDS = ['kind', 'cos', 'area', 'due', 'bet', 'fold'] as const;
 
 export type PatchField = (typeof PATCH_FIELDS)[number];
 
@@ -74,9 +83,12 @@ export interface PatchEdit {
   addTag?: string;
   removeTag?: string;
   parent?: string;
+  clear?: ClearField[];
   addDeps?: string[];
   removeDeps?: string[];
   addDeliverables?: string[];
+  addOwnerSteps?: Task['owner_steps'];
+  provenance?: Partial<Pick<Task, ProvenanceField>>;
 }
 
 export type Edit = { kind: 'field'; field: EditableField; value: unknown } | PatchEdit;
@@ -122,8 +134,13 @@ function patchEdit(args: Args): Edit {
   if (overlap.length > 0) {
     throw new UsageError(`--dep and --remove-dep name the same id: ${overlap.join(', ')}`);
   }
+  const clash = (args.clear ?? []).filter((key) => args[key] !== undefined);
+  if (clash.length > 0) {
+    throw new UsageError(`--clear and --${clash.join(', --')} name the same field`);
+  }
   return {
     kind: 'patch',
+    clear: args.clear,
     append,
     addTag,
     removeTag,
@@ -131,7 +148,9 @@ function patchEdit(args: Args): Edit {
     addDeps: args.dep,
     removeDeps: args.remove_dep,
     addDeliverables: args.deliverable,
+    addOwnerSteps: parseOwnerSteps(args.owner_step),
     fields: patchFields(args),
+    provenance: provenanceArgs(args),
   };
 }
 
@@ -141,6 +160,7 @@ function patchFields(args: Args): PatchEdit['fields'] {
 }
 
 const PATCH_KEYS = [
+  'clear',
   'append',
   'add_tag',
   'remove_tag',
@@ -148,7 +168,9 @@ const PATCH_KEYS = [
   'dep',
   'remove_dep',
   'deliverable',
+  'owner_step',
   ...PATCH_FIELDS,
+  ...PROVENANCE_ARG_KEYS,
 ] as const;
 
 export function parseEdit(args: Args): Edit {
@@ -157,14 +179,15 @@ export function parseEdit(args: Args): Edit {
   if (fieldForm && flagForm) {
     throw new UsageError(
       'Pass either <field> <value> or --append/--add-tag/--remove-tag/--parent/--dep/--remove-dep/' +
-        '--deliverable/--kind/--cos/--area/--due, not both',
+        '--deliverable/--kind/--cos/--area/--due/--bet/--fold/--owner-step or a provenance flag, not both',
     );
   }
   if (fieldForm) return fieldEdit(args);
   if (flagForm) return patchEdit(args);
   throw new UsageError(
     'Nothing to edit: pass <field> <value>, --append <text>, --add-tag <tag>, --remove-tag <tag>, ' +
-      '--parent <id>, --dep <id>, --remove-dep <id>, --deliverable <id>, --kind, --cos, --area ' +
-      'or --due',
+      '--parent <id>, --dep <id>, --remove-dep <id>, --deliverable <id>, --kind, --cos, --area, ' +
+      '--due, --bet, --fold, --owner-step, --class, --serves, --source, --source-ref, --from-pr, --from-task ' +
+      'or --blocked-on',
   );
 }

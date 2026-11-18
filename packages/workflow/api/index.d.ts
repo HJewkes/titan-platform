@@ -103,6 +103,8 @@ interface WorkflowRun {
     startedAt: string;
     completedAt: string | null;
     error: string | null;
+    /** A failed run's class, from the `errorClass` its rejection carried; absent on runs that recorded none. */
+    errorClass?: string;
 }
 interface SeedResult {
     /** Merged into the run's params so later prompts can use it. */
@@ -203,6 +205,7 @@ type DurableStepOutcome = {
     retryable: boolean;
     code?: "schema_invalid";
     usage?: StepUsage;
+    errorClass?: string;
 } | {
     kind: "cancelled";
     reason: string;
@@ -256,6 +259,7 @@ type StepRunOutcome = {
     retryable: boolean;
     code?: "schema_invalid";
     usage?: StepUsage;
+    errorClass?: string;
 };
 /** Where dispatched steps actually execute: an in-process agent, a queue, a subprocess. */
 interface LegacyStepRunner {
@@ -324,40 +328,6 @@ type WorkflowEvent = {
     runId: string;
     reason: string;
 });
-interface StepFailureDetail {
-    /** The last attempt's failure could clear on a fresh call; `false` means repeating it would fail the same way. */
-    retryable?: boolean;
-    /** Cost of every failed attempt, when the runner reported it. */
-    usage?: StepUsage;
-}
-declare class StepFailedError extends Error {
-    readonly stepId: string;
-    readonly iteration: number;
-    readonly reason: string;
-    readonly retryable: boolean;
-    readonly usage: StepUsage | undefined;
-    constructor(stepId: string, iteration: number, reason: string, detail?: StepFailureDetail);
-}
-type StepOutputFailureKind = "not_json" | "schema" | "too_large";
-/** A dispatch whose output failed its schema. Never retryable: the same prompt would produce the same kind of payload. */
-declare class StepOutputInvalidError extends StepFailedError {
-    readonly kind: StepOutputFailureKind;
-    readonly issues: string[];
-    constructor(stepId: string, iteration: number, kind: StepOutputFailureKind, issues: string[], usage?: StepUsage);
-}
-/** The authority table denied the action; no gate was opened, and repeating the request is denied the same way. */
-declare class AuthorityDeniedError extends StepFailedError {
-    readonly ruleId: string | null;
-    readonly denial: string;
-    constructor(stepId: string, iteration: number, ruleId: string | null, denial: string);
-}
-/** The rule's gate settled without a valid approval: the owner refused, or the answer's resolver fails the rule. */
-declare class AuthorityRefusedError extends StepFailedError {
-    readonly ruleId: string;
-    readonly gateId: string;
-    readonly refusal: string;
-    constructor(stepId: string, iteration: number, ruleId: string, gateId: string, refusal: string);
-}
 declare class WorkflowCancelledError extends Error {
     readonly runId: string;
     readonly reason: string;
@@ -389,6 +359,44 @@ declare class WorkflowSchemaDriftError extends Error {
     readonly callIndex: number;
     readonly issues: string[];
     constructor(runId: string, stepId: string, callIndex: number, issues: string[]);
+}
+
+interface StepFailureDetail {
+    /** The last attempt's failure could clear on a fresh call; `false` means repeating it would fail the same way. */
+    retryable?: boolean;
+    /** Cost of every failed attempt, when the runner reported it. */
+    usage?: StepUsage;
+    /** The host's class for this failure, set where it failed, so no reader has to classify the text. */
+    errorClass?: string;
+}
+declare class StepFailedError extends Error {
+    readonly stepId: string;
+    readonly iteration: number;
+    readonly reason: string;
+    readonly retryable: boolean;
+    readonly usage: StepUsage | undefined;
+    readonly errorClass: string | undefined;
+    constructor(stepId: string, iteration: number, reason: string, detail?: StepFailureDetail);
+}
+type StepOutputFailureKind = "not_json" | "schema" | "too_large";
+/** A dispatch whose output failed its schema. Never retryable: the same prompt would produce the same kind of payload. */
+declare class StepOutputInvalidError extends StepFailedError {
+    readonly kind: StepOutputFailureKind;
+    readonly issues: string[];
+    constructor(stepId: string, iteration: number, kind: StepOutputFailureKind, issues: string[], usage?: StepUsage);
+}
+/** The authority table denied the action; no gate was opened, and repeating the request is denied the same way. */
+declare class AuthorityDeniedError extends StepFailedError {
+    readonly ruleId: string | null;
+    readonly denial: string;
+    constructor(stepId: string, iteration: number, ruleId: string | null, denial: string);
+}
+/** The rule's gate settled without a valid approval: the owner refused, or the answer's resolver fails the rule. */
+declare class AuthorityRefusedError extends StepFailedError {
+    readonly ruleId: string;
+    readonly gateId: string;
+    readonly refusal: string;
+    constructor(stepId: string, iteration: number, ruleId: string, gateId: string, refusal: string);
 }
 
 type SignalMatcher = (output: string) => boolean;
@@ -449,6 +457,8 @@ declare function workflowMigration(version: number, name?: string): Migration;
 declare function workflowOwnershipMigration(version: number, name?: string): Migration;
 /** Adds the run's pinned definition version when an earlier workflowMigration already created the table. */
 declare function workflowDefinitionVersionMigration(version: number, name?: string): Migration;
+/** Adds a failed run's structured class when an earlier workflowMigration already created the table. */
+declare function workflowErrorClassMigration(version: number, name?: string): Migration;
 /** A pinned run cannot be stored in a table that would silently drop its pin. */
 declare class WorkflowStoreSchemaOutdated extends Error {
     readonly table: string;
@@ -463,6 +473,7 @@ declare class WorkflowRunStore {
     private readonly db;
     private readonly name;
     private readonly table;
+    private classed;
     constructor(db: Db, name?: string);
     create(run: WorkflowRun): void;
     get(id: string): WorkflowRun | undefined;
@@ -474,6 +485,8 @@ declare class WorkflowRunStore {
     countByStatus<S extends WorkflowStatus>(statuses: readonly S[]): Map<S, number>;
     claim(id: string, runtimeId: string, leaseUntil: string, at: string): WorkflowRun | undefined;
     save(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void;
+    /** A table that predates `workflowErrorClassMigration` keeps working; only a seen column is cached, so a later migration is picked up. */
+    private hasErrorClass;
     renew(run: WorkflowRun, fence: WorkflowOwnerFence, leaseUntil: string, at: string): void;
     /**
      * Adds a result under `key` to a run that already finished, for a fact learnt after it ended; no runtime owns such a
@@ -559,6 +572,8 @@ interface CodeRouteOptions {
     envelope?: CodeStepEnvelope;
     /** Rewrites a thrown message before the runtime records it, so a secret in an error never reaches the store. */
     errorText?: (message: string) => string;
+    /** The host's class for a thrown error, read from the error itself and carried on the failed outcome; undefined records none. */
+    errorClass?: (error: unknown) => string | undefined;
 }
 /** Code steps take their input as JSON and answer with one record whose `result` the workflow reads. */
 declare function codeStep<R>(ctx: WorkflowContext, stepId: string, input: object, result: z.ZodType<R>): Promise<R>;
@@ -806,4 +821,4 @@ interface RunTraceSources {
  */
 declare function projectRunTrace(run: WorkflowRun, sources: RunTraceSources): TraceRecord[];
 
-export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, CapabilityLeakError, CapabilityOutsideStepError, CapabilityVault, type CodeRecord, type CodeRouteOptions, type CodeStepEnvelope, CodeStepFailure, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_ARTIFACTS_KEY, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowCapability, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, codeRecordRoute, codeRoute, codeStep, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, memoKey, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowMigration, workflowNameIndexMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };
+export { AUTHORITY_TABLE_NAME, type ActiveStep, type AgentRunnerOptions, type AssistedOptions, AuthorityDeniedError, AuthorityRefusedError, type AuthorizeOptions, type AuthorizeRequest, type AuthorizeResult, CapabilityLeakError, CapabilityOutsideStepError, CapabilityVault, type CodeRecord, type CodeRouteOptions, type CodeStepEnvelope, CodeStepFailure, DEFAULT_RUN_TABLE, DEFAULT_SIGNAL_PATTERNS, type DispatchOptions, type DurableHarnessRunnerOptions, type DurableStepOutcome, EMPTY_OUTPUT_SIGNAL, GATE_CANCELLED_SIGNAL, type LegacyActiveStep, type LegacyStepRunner, type MapItemFailure, type MapItemFn, type MapItemResult, type MapOptions, type MapResult, type RecoverableActiveStep, type RecoverableStepDispatchInput, type RecoverableStepRunner, type RestartRule, type RouteRunner, type RoutedRunner, type RoutedStepInput, type RunTraceSources, type SeedResult, type SignalMatcher, type SignalParser, type SignalSetParser, type StepDispatchAck, StepFailedError, type StepFailureDetail, type StepOperation, type StepOutputFailureKind, StepOutputInvalidError, type StepReconcileOutcome, type StepResult, type StepRoute, type StepRunInput, type StepRunOutcome, type StepRunner, type StepUsage, TRACE_ARTIFACTS_KEY, TRACE_GATES_KEY, type TemplateRenderer, type WorkflowAuthorityOptions, WorkflowCancelledError, type WorkflowCapability, type WorkflowContext, type WorkflowEvent, type WorkflowFn, WorkflowNonDeterminismError, WorkflowNotOwnedError, type WorkflowOwnerFence, type WorkflowOwnerLease, WorkflowOwnershipLostError, WorkflowRecoveryRequiredError, type WorkflowRun, WorkflowRunStore, WorkflowRuntime, type WorkflowRuntimeOptions, WorkflowSchemaDriftError, type WorkflowStartOptions, type WorkflowStatus, WorkflowStoreSchemaOutdated, agentRunner, buildStepVars, codeRecordRoute, codeRoute, codeStep, createSignalParser, createSignalSetParser, durableHarnessRunner, gateIdFor, idempotentRunner, inlineRunner, mapItems, memoKey, mustacheRenderer, parseSignal, parseSignals, projectRunTrace, routedRunner, unfilledVariables, workflowDefinitionVersionMigration, workflowErrorClassMigration, workflowMigration, workflowNameIndexMigration, workflowOwnershipMigration, workflowRunTableDdl, workflowStepRequestKey };

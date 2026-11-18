@@ -10,6 +10,7 @@ const ctxFor = (activeRoot: string): CommandContext => ({
   activeRoot,
   warnings: [],
   format: 'json',
+  caller: 'owner',
 });
 
 async function scaffold(root: string, slug: string): Promise<void> {
@@ -67,10 +68,10 @@ describe('active-work migrate', () => {
       expect(result.applied).toBe(false);
       const alpha = result.initiatives.find((i) => i.slug === 'alpha')!;
       expect(alpha.sessions).toHaveLength(1);
-      expect(alpha.sessions[0].kind).toBe('open');
-      expect(alpha.sessions[0].action).toBe('write');
-      expect(alpha.sessions[0].loops).toBe(1);
-      expect(alpha.sessions[0].ended).toBe('2026-05-12T09:00:00Z');
+      expect(alpha.sessions.at(0)?.kind).toBe('open');
+      expect(alpha.sessions.at(0)?.action).toBe('write');
+      expect(alpha.sessions.at(0)?.loops).toBe(1);
+      expect(alpha.sessions.at(0)?.ended).toBe('2026-05-12T09:00:00Z');
       expect(alpha.task_seq_backfill).toBe(3);
       expect(alpha.handoff).toBe('archive-and-remove');
       expect(result.uncovered).toEqual(['uncovered-one']);
@@ -106,6 +107,18 @@ describe('active-work migrate', () => {
         .catch((e: Error) => e);
       expect(err?.message).toContain('active-work setup');
       expect(err?.message).not.toMatch(/automatically/);
+    });
+  });
+
+  it.each([
+    ['an agent', 'agent' as const],
+    ['a caller no surface marked', undefined],
+  ])('refuses %s, even for a dry run', async (_who, caller) => {
+    await withEmptyActiveRoot(async (root) => {
+      await scaffold(root, 'alpha');
+      const ctx: CommandContext = { activeRoot: root, warnings: [], format: 'json', ...(caller ? { caller } : {}) };
+
+      await expect(migrate.run({ dry_run: true }, ctx)).rejects.toThrow(/for the owner only/);
     });
   });
 });

@@ -1,11 +1,12 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { BriefFrontmatterSchema } from '../schemas/brief.js';
+import type { SessionReport } from '../schemas/session.js';
 import type { WorkerRecord } from '../schemas/worker-record.js';
 import { writeSessionFile } from '../sessions/session-file.js';
 import { findDanglingResolves, type DanglingKind } from '../sessions/open-loops.js';
 import { writeNoteFile } from '../notes/note-file.js';
-import { loadTasks } from '../lint/load-tasks.js';
+import { loadTasks } from '../bootstrap/load.js';
 import { recordUnrecorded, sweepInitiative, type SweepResult } from '../wrap/sweep.js';
 import { readRawFrontmatter, writeFrontmatter } from '../utils/gray-matter-io.js';
 import { today } from '../utils/today.js';
@@ -19,7 +20,7 @@ import type { Args, Filed, Ledger, NoteInput, RejectedResolve } from './_wrap-ar
  */
 export async function verifyTaskIds(initiativeDir: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return;
-  const known = new Set((await loadTasks(initiativeDir)).map((task) => task.id));
+  const known = new Set((await loadTasks(initiativeDir)).tasks.map((task) => task.id));
   const unknown = ids.filter((id) => !known.has(id));
   if (unknown.length === 0) return;
   throw new ValidationError(
@@ -37,6 +38,18 @@ async function stampBriefUpdated(briefPath: string): Promise<string> {
   return updated;
 }
 
+/** The frontmatter fields that record a deliberate answer: `no_*` assertions and reports. */
+function assertionMarkers(
+  args: Args,
+  reports: SessionReport[],
+): { no_loops?: true; no_reports?: true; reports?: SessionReport[] } {
+  return {
+    ...(args.no_loops === true ? { no_loops: true as const } : {}),
+    ...(reports.length > 0 ? { reports } : {}),
+    ...(args.no_reports === true ? { no_reports: true as const } : {}),
+  };
+}
+
 /**
  * Write the session file, then bump `brief.updated`. If the brief write fails
  * the session file is removed again, so a wrap is all-or-nothing rather than
@@ -48,6 +61,7 @@ export async function writeWrap(
   body: string,
   ledger: Ledger,
   worker: WorkerRecord | undefined,
+  reports: SessionReport[],
 ): Promise<{ path: string; filename: string; updated: string }> {
   const session = await writeSessionFile({
     slug: args.slug,
@@ -58,7 +72,7 @@ export async function writeWrap(
     body,
     next_steps: ledger.next_steps,
     resolves: ledger.resolves,
-    ...(args.no_loops === true ? { no_loops: true as const } : {}),
+    ...assertionMarkers(args, reports),
     ...(args.parent_session_id ? { parent_session_id: args.parent_session_id } : {}),
     ...(worker === undefined ? {} : { worker }),
   });

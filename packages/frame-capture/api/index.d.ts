@@ -6,6 +6,14 @@ import { Page, Browser } from 'playwright-core';
  * `TitanMotionApi` (react-ui `/motion`, `MotionProvider` on a `seekClock`), but any page that sets
  * the global can be captured.
  */
+declare const MARK_KINDS: readonly ["settled", "step", "before", "transform-start", "transform-end", "hero"];
+type MarkKind = (typeof MARK_KINDS)[number];
+/** A moment worth looking at: `t` seconds into beat number `beat`. */
+interface PageMark {
+    t: number;
+    beat: number;
+    kind: MarkKind;
+}
 interface TitanMotionApi {
     /** Shows the frame at `t` seconds. It must commit synchronously: the capture screenshots after `ready()`. */
     seek(t: number): void;
@@ -13,6 +21,8 @@ interface TitanMotionApi {
     ready(): Promise<void>;
     /** The timeline length in seconds; the capture renders `duration * fps` frames unless told otherwise. */
     readonly duration: number;
+    /** The moments the page marks, read once after the API appears; a page without it has no marks. */
+    marks?(): PageMark[];
 }
 /** The global the page publishes `TitanMotionApi` under. */
 declare const TITAN_MOTION_GLOBAL = "__titanMotion";
@@ -53,6 +63,8 @@ interface Viewport {
 interface PageOptions extends Viewport {
     /** Load every declared FontFace before frame 0. Off only to measure what it prevents. */
     preloadFonts?: boolean;
+    /** Leave pixels the page does not paint at alpha 0 instead of Chromium's white default. */
+    transparent?: boolean;
 }
 interface FontState {
     family: string;
@@ -83,6 +95,8 @@ interface CapturePage {
     /** `__titanMotion.duration` in seconds. */
     duration: number;
     fonts: FontState[];
+    /** `__titanMotion.marks()`, validated and sorted by t; empty when the page has none. */
+    marks: PageMark[];
     /** Every uncaught page error, collected from before navigation; empty when the open succeeds. */
     errors: readonly Error[];
 }
@@ -135,6 +149,8 @@ interface FramesResult {
     /** `__titanMotion.duration`: the page's own idea of the timeline length. */
     pageDurationS: number;
     fonts: CapturePage['fonts'];
+    /** `__titanMotion.marks()`, sorted by t; empty when the page publishes none. */
+    marks: CapturePage['marks'];
 }
 /**
  * One browser per chunk, not one page per chunk in a shared browser: screenshots encode in the browser
@@ -145,6 +161,17 @@ interface FramesResult {
  * only once all of them have closed their browsers and the spill is gone.
  */
 declare function captureFrames(options: FramesOptions, sink: Sink): Promise<FramesResult>;
+
+interface StillsOptions extends PageOptions {
+    url: string;
+    /** A browser to open the page in; without one, a browser is launched for the stills and closed after. */
+    browser?: Browser;
+}
+/**
+ * True-size PNG stills of one page at the given seconds: one page, no encode. Virtual time only moves forward, so
+ * the moments are taken in time order on one page and returned in the order they were asked for.
+ */
+declare function stills(options: StillsOptions, atS: readonly number[]): Promise<Buffer[]>;
 
 /** One voice clip in the mix: `wavPath(id)` names its file, and it is padded to `durationS`. */
 interface MixSegment {
@@ -157,8 +184,11 @@ interface Encoder {
     write(png: Buffer): Promise<void>;
     finish(): Promise<void>;
 }
-/** One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata. */
-declare function startEncoder(out: string, fps: number, audio: string): Encoder;
+/**
+ * One ffmpeg reading PNGs on stdin, muxing mix.wav, writing H.264 + AAC with no run-specific metadata.
+ * With `plate`, an mp4 under the frames, the PNGs are composited over it, so transparent pixels show the plate.
+ */
+declare function startEncoder(out: string, fps: number, audio: string, plate?: string): Encoder;
 
 /*!
  * The halving test is adapted from anatomy, https://github.com/wheresryan22/anatomy,
@@ -225,4 +255,4 @@ declare function measureHalving<F>(frames: readonly F[], delta: FrameDelta<F>): 
  */
 declare function checkPops<F>(options: PopCheckOptions<F>): Promise<PopReport>;
 
-export { type CapturePage, type Encoder, FontLoadError, type FontState, type FrameDelta, type FramesOptions, type FramesResult, HALVING_RATIO, type HalvingMeasure, MIN_POP_CHANGE, type MixSegment, type PageOptions, type PopCheckOptions, type PopFinding, type PopReport, type RgbaFrame, type SeekFrame, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, changedPixels, checkPops, isPop, launch, measureHalving, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, withBrowser, withCapturePage };
+export { type CapturePage, type Encoder, FontLoadError, type FontState, type FrameDelta, type FramesOptions, type FramesResult, HALVING_RATIO, type HalvingMeasure, MIN_POP_CHANGE, type MarkKind, type MixSegment, type PageMark, type PageOptions, type PopCheckOptions, type PopFinding, type PopReport, type RgbaFrame, type SeekFrame, type StillsOptions, TITAN_MOTION_GLOBAL, type TitanMotionApi, VIRTUAL_TIME_SCRIPT, type Viewport, type VirtualTimeApi, captureFrame, captureFrames, changedPixels, checkPops, isPop, launch, measureHalving, mixAudio, openCapturePage, screenshotFrame, settleFonts, startEncoder, stills, withBrowser, withCapturePage };

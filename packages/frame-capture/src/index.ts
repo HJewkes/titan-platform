@@ -1,4 +1,4 @@
-export { TITAN_MOTION_GLOBAL, type TitanMotionApi } from './protocol.js'
+export { TITAN_MOTION_GLOBAL, type MarkKind, type PageMark, type TitanMotionApi } from './protocol.js'
 export { VIRTUAL_TIME_SCRIPT, type VirtualTimeApi } from './virtual-time.js'
 export {
   captureFrame,
@@ -15,6 +15,7 @@ export {
   type Viewport,
 } from './capture.js'
 export { captureFrames, type FramesOptions, type FramesResult } from './frames.js'
+export { stills, type StillsOptions } from './stills.js'
 export { mixAudio, startEncoder, type Encoder, type MixSegment } from './encode.js'
 export {
   changedPixels,

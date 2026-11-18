@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "plan-applied is left a warning",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": ", \"plan-applied\"",
+      "replace": "",
+      "kills": ["the tap sheet outcome alert shows a landed plan-applied outcome as success"]
+    },
+    {
+      "name": "answered is left a warning",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": ", \"answered\"",
+      "replace": "",
+      "kills": ["the tap sheet outcome alert shows a landed answered outcome as success"]
+    },
+    {
+      "name": "a refused tap counts as landed",
+      "file": "apps/console/src/pages/TapSheet.tsx",
+      "find": ", \"answered\"",
+      "replace": ", \"answered\", \"refused\"",
+      "kills": ["the tap sheet outcome alert shows a refused outcome as a warning"]
+    }
+  ]
+}

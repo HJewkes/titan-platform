@@ -1,5 +1,7 @@
-# Assertion-evidence craft for beat headlines (Alley; Garner & Alley 2013). The word cap and the verb
-# test live in the Q-D7 L0 row (src/lint-headline.ts); this line is the planner's direction only.
+# Presentations and slide design (talks-and-slides study §3): one rule per matrix id, outline, script, beat layout,
+# on-screen text and code. Assertion-evidence craft for beat headlines is Alley; Garner & Alley 2013. The word cap and the verb
+# test live in the Q-D7 L0 row (src/lint-headline.ts); ST11 is the planner's direction only. A split row (S2, T6, B4)
+# is two rules sharing a ref, the second with a `.2` suffix.
 schema: doctrine-craft/v1
 rules:
   - id: talks-ST11
@@ -9,3 +11,339 @@ rules:
     scope: { layer: U }
     enforcement: [planner]
     stages: [plan, script]
+  - id: talks-O1
+    source: { doc: talks-and-slides, ref: O1 }
+    text: "Write a one-sentence throughline before anything else and check every section against it. Cut a section you cannot tie to it, or move it to the companion doc."
+    evidence: []
+    scope: { layer: U* }
+    enforcement: [planner]
+    stages: [plan]
+    param: intent
+  - id: talks-O2
+    source: { doc: talks-and-slides, ref: O2 }
+    text: "Write the commander's intent: if the viewer remembers one thing, it is this. The takeaways section never introduces that one thing for the first time."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-O3
+    source: { doc: talks-and-slides, ref: O3 }
+    text: "Structure the body in three acts: what it does and why it matters, how it works, what to take or watch out for. At most 3 sub-points each; never 7 peer sections of equal weight."
+    evidence: []
+    scope: { layer: T, types: [repo-argument] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-O4
+    source: { doc: talks-and-slides, ref: O4 }
+    text: "Shape the arc from what is to what could be: the pain or status quo, the answer, then the issues that remain and the ideas to borrow. Never a flat tour of the directory tree."
+    evidence: []
+    scope: { layer: T, types: [repo-argument] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-O5
+    source: { doc: talks-and-slides, ref: O5 }
+    text: "Budget about one major concept per minute of runtime: 2 minutes is 2-3 concepts, 10 minutes is 8-10. Choose 1-3 deep dives; never cover every module."
+    evidence: []
+    scope: { layer: T, types: [repo-argument] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-O6
+    source: { doc: talks-and-slides, ref: O6 }
+    text: "Pick the deep-dive modules by what is surprising, central or borrowable, never by size or alphabetical order."
+    evidence: []
+    scope: { layer: T, types: [repo-argument, repo-tour] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-O7
+    source: { doc: talks-and-slides, ref: O7 }
+    text: "Choose one running example, a single request, file or user action, and carry it through the user view, the architecture and the deep dives. Never switch examples between sections."
+    evidence: []
+    scope: { layer: T, types: [repo-argument, repo-tour] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-O8
+    source: { doc: talks-and-slides, ref: O8 }
+    text: "Plan an overview beat before each zoom-in and a return-to-map beat after it. Never zoom two levels in one step."
+    evidence: []
+    scope: { layer: B, beats: [zoom, arch-map] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-S1
+    source: { doc: talks-and-slides, ref: S1 }
+    text: "Open with a curiosity gap or concrete pain in the first 1-2 sentences, then an empowerment promise. Never open with a greeting, a joke or history."
+    evidence: []
+    scope: { layer: U* }
+    enforcement: [planner]
+    stages: [script]
+    param: hook
+  - id: talks-S2
+    source: { doc: talks-and-slides, ref: S2 }
+    text: "Give a spoken roadmap of the 3 acts right after the promise. Never an agenda longer than three items."
+    evidence: []
+    scope: { layer: T, types: [repo-tour] }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S2.2
+    source: { doc: talks-and-slides, ref: S2 }
+    text: "Give a spoken roadmap of the 3 acts right after the promise; the profile's structure sets the acts. Never an agenda longer than three items."
+    evidence: []
+    scope: { layer: U* }
+    enforcement: [planner]
+    stages: [script]
+    param: structure.blocks
+  - id: talks-S3
+    source: { doc: talks-and-slides, ref: S3 }
+    text: "Mark every act transition aloud: that is what it does, now how does it work. Never cut between acts silently."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S4
+    source: { doc: talks-and-slides, ref: S4 }
+    text: "State each beat's assertion in the narration, then give the evidence. Never make the viewer infer the point."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S5
+    source: { doc: talks-and-slides, ref: S5 }
+    text: "Introduce a new concept as a familiar analogy, then the real name, then the concrete instance from the repo. Never introduce jargon without a one-clause gloss."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S6
+    source: { doc: talks-and-slides, ref: S6 }
+    text: "Build a fence: say what a component is not, or how it differs from the obvious alternative. Never describe a design without the alternative it beat."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S7
+    source: { doc: talks-and-slides, ref: S7 }
+    text: "Say the throughline three times: in the hook or promise, at the pivot from mechanism to takeaways, and at the close. Never assume one mention lands."
+    evidence: []
+    scope: { layer: T, types: [repo-argument] }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S8
+    source: { doc: talks-and-slides, ref: S8 }
+    text: "Explain what is hard about the problem and why the code is shaped this way. Never only narrate what the code does."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S9
+    source: { doc: talks-and-slides, ref: S9 }
+    text: "Back claims with credible specifics from the audit: a file path, line count, benchmark or issue number. Never use unsourced superlatives."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S10
+    source: { doc: talks-and-slides, ref: S10 }
+    text: "End on a contributions beat: 3 takeaways, then the throughline, then one call to action to borrow X or avoid Y. Never end on thanks for watching or a fade after the last module."
+    evidence: []
+    scope: { layer: T, types: [repo-argument] }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S11
+    source: { doc: talks-and-slides, ref: S11 }
+    text: "Write narration for the ear: short sentences, no nested clauses. Read code identifiers as words or skip them. Never read code aloud character by character."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [planner]
+    stages: [script]
+  - id: talks-S12
+    source: { doc: talks-and-slides, ref: S12 }
+    text: "Run the freshman test: could a CS student follow this beat with the gloss given? Never write for the agent that just read the whole repo."
+    evidence: []
+    scope: { layer: U* }
+    enforcement: [planner]
+    stages: [script]
+    param: audience.default
+  - id: talks-B1
+    source: { doc: talks-and-slides, ref: B1 }
+    text: "Give each beat exactly one point; if its narration contains and also, split it. Never put two diagrams or two claims on one beat."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [base]
+    stages: [build]
+  - id: talks-B2
+    source: { doc: talks-and-slides, ref: B2 }
+    text: "Use the assertion-evidence layout by default: headline sentence top-left, a visual taking at least 2/3 of the frame below it. Never title-plus-bullets layouts."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [base]
+    stages: [build]
+  - id: talks-B3
+    source: { doc: talks-and-slides, ref: B3 }
+    text: "Make evidence visual: diagram, screenshot, chart, annotated code, terminal output or sequence. Never make the evidence another paragraph of text."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [base]
+    stages: [build]
+  - id: talks-B4
+    source: { doc: talks-and-slides, ref: B4 }
+    text: "Keep a persistent map, the architecture overview, highlighting the current component when entering a deep dive and returning to it after. Never teleport between unrelated diagrams."
+    evidence: []
+    scope: { layer: T, types: [repo-tour, repo-argument, repo-comparison, repo-delta, plan-explainer] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-B4.2
+    source: { doc: talks-and-slides, ref: B4 }
+    text: "Highlight the current component on the architecture map when entering a deep dive, and return to the map after it. Never teleport between unrelated diagrams."
+    evidence: []
+    scope: { layer: B, beats: [arch-map] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-B5
+    source: { doc: talks-and-slides, ref: B5 }
+    text: "Reveal complex diagrams progressively, in sync with the narration: the element appears as it is named. Never show a full 15-box diagram and then talk over it."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [base]
+    stages: [build]
+  - id: talks-B6
+    source: { doc: talks-and-slides, ref: B6 }
+    text: "Use rapid beats, one word or phrase per 1-3 s, for hooks, lists of takeaways and refrains. Never use rapid mode for deep dives that need evidence."
+    evidence: []
+    scope: { layer: B, beats: [hook, list, fact-flash] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-B7
+    source: { doc: talks-and-slides, ref: B7 }
+    text: "Pace explanatory beats at about 1 per 10-30 s; a long explanation is a sequence of builds, not one static beat. Never hold a static frame over 30 s."
+    evidence: []
+    scope: { layer: U* }
+    enforcement: [base]
+    stages: [build]
+    param: pacing.pictureChangeMaxS
+  - id: talks-B8
+    source: { doc: talks-and-slides, ref: B8 }
+    text: "Open with a what-is beat showing the real pain: an error, slow UX or a messy before-state. Never open on a logo or title card longer than about 2 s."
+    evidence: []
+    scope: { layer: T, types: [repo-argument] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-B9
+    source: { doc: talks-and-slides, ref: B9 }
+    text: "End with a single contributions or takeaways beat that stays on screen while the closing narration plays. Never end on a thanks card."
+    evidence: []
+    scope: { layer: T, types: [repo-argument] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-T1
+    source: { doc: talks-and-slides, ref: T1 }
+    text: "Write headlines as full-sentence assertions of at most 2 lines, sentence case, no full stop, broken at a natural phrase. Never topic labels."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [lint]
+    stages: [build, qa]
+    check: { kind: qrule, ref: Q-D7, live: true }
+  - id: talks-T2
+    source: { doc: talks-and-slides, ref: T2 }
+    text: "Keep on-screen text to the headline plus labels on the visual. Never put narration sentences on screen while they are spoken. Captions are a separate layer."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [base]
+    stages: [build]
+  - id: talks-T3
+    source: { doc: talks-and-slides, ref: T3 }
+    text: "Keep on-screen text much shorter than the narration: the screen gives the claim, the voice the explanation. Never exceed about 15 words of non-label text per beat."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [base]
+    stages: [build]
+  - id: talks-T4
+    source: { doc: talks-and-slides, ref: T4 }
+    text: "Use large type, readable on a phone. Never shrink text to fit; cut text instead. Exact sizes come from the information-design rules."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [base]
+    stages: [build]
+  - id: talks-T5
+    source: { doc: talks-and-slides, ref: T5 }
+    text: "Give every diagram a legend or self-explanatory labels and consistent notation across zoom levels. Never reuse a colour or shape to mean different things in different beats."
+    evidence: []
+    scope: { layer: U }
+    enforcement: [base]
+    stages: [build]
+  - id: talks-T6
+    source: { doc: talks-and-slides, ref: T6 }
+    text: "Show agenda and progress as a small persistent marker: the chapter rail or a highlighted map. Never spend a full beat on an agenda slide with more than 3 items."
+    evidence: []
+    scope: { layer: T, types: [repo-tour] }
+    enforcement: [planner]
+    stages: [plan]
+  - id: talks-T6.2
+    source: { doc: talks-and-slides, ref: T6 }
+    text: "Show progress as a small persistent marker whose form the profile's structure sets. Never spend a full beat on an agenda slide with more than 3 items."
+    evidence: []
+    scope: { layer: U* }
+    enforcement: [base]
+    stages: [build]
+    param: structure.blocks
+  - id: talks-C1
+    source: { doc: talks-and-slides, ref: C1 }
+    text: "Show at most about 10 lines of code per beat; prefer 3-6. Never show a whole file or a function longer than the screen."
+    evidence: []
+    scope: { layer: B, beats: [code-walk] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-C2
+    source: { doc: talks-and-slides, ref: C2 }
+    text: "Remove noise such as imports, logging and error plumbing, and mark the elision. Say once that code is simplified and give the real file path. Never present edited code as verbatim."
+    evidence: []
+    scope: { layer: B, beats: [code-walk] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-C3
+    source: { doc: talks-and-slides, ref: C3 }
+    text: "Highlight the 1-3 lines the narration is about, dimming the rest, and move the highlight as the narration moves. Never rely on syntax colouring to direct attention."
+    evidence: []
+    scope: { layer: B, beats: [code-walk] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-C4
+    source: { doc: talks-and-slides, ref: C4 }
+    text: "Go overview to detail: show the whole function shape briefly, then zoom to the lines that matter. Never start inside a detail without context."
+    evidence: []
+    scope: { layer: B, beats: [code-walk] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-C5
+    source: { doc: talks-and-slides, ref: C5 }
+    text: "Use a monospace font, high contrast, short lines of about 60 characters and large size, with key lines out of the bottom third where captions sit. Never a dim theme or wrapped long lines."
+    evidence: []
+    scope: { layer: B, beats: [code-walk] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-C6
+    source: { doc: talks-and-slides, ref: C6 }
+    text: "Annotate with callouts or arrows pointing at tokens, synced to the narration. Never rely on a cursor or pointer the viewer has to hunt for."
+    evidence: []
+    scope: { layer: B, beats: [code-walk] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-C7
+    source: { doc: talks-and-slides, ref: C7 }
+    text: "Pair code with its effect: input, code, then output or state change, a before and after diff, or terminal output. Never show code without showing what it does."
+    evidence: []
+    scope: { layer: B, beats: [code-walk] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-C8
+    source: { doc: talks-and-slides, ref: C8 }
+    text: "Script demos as deterministic captured recordings or renders, with the narration saying what to look at and what to ignore. Never show raw, unexplained terminal scroll."
+    evidence: []
+    scope: { layer: B, beats: [code-walk] }
+    enforcement: [packet]
+    stages: [build]
+  - id: talks-C9
+    source: { doc: talks-and-slides, ref: C9 }
+    text: "Prefer pseudocode or a diagram when the point is the algorithm rather than the syntax. Show real code when the point is a specific idiom worth borrowing."
+    evidence: []
+    scope: { layer: B, beats: [code-walk, algo-trace] }
+    enforcement: [packet]
+    stages: [build]

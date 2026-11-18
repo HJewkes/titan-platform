@@ -1,5 +1,6 @@
 import { kitDdl, type Db, type Migration } from "@titan-design/store-sqlite";
 import { z } from "zod";
+import { FACTORY_HEALTH_MIGRATION } from "./factory-health-store.js";
 import { PHASE_WEEK_MIGRATION } from "./run-store.js";
 import { RED_FLAGS } from "./red-flags.js";
 import type { PoolTask } from "./rule-pick.js";
@@ -88,6 +89,7 @@ const SCORECARD_DDL = `
 export const SCORECARD_MIGRATIONS: readonly Migration[] = [
   { version: 1, name: "ticket-scorecard:tables", up: (db) => db.exec(SCORECARD_DDL + kitDdl({ watermark: true })) },
   PHASE_WEEK_MIGRATION,
+  FACTORY_HEALTH_MIGRATION,
 ];
 
 /**
@@ -96,7 +98,7 @@ export const SCORECARD_MIGRATIONS: readonly Migration[] = [
  */
 export function clearDerivedRows(db: Db): void {
   db.transaction(() => {
-    for (const table of ["task_row", "week_row", "phase_week"]) db.prepare(`DELETE FROM ${table}`).run();
+    for (const table of ["task_row", "week_row", "phase_week", "factory_health_week"]) db.prepare(`DELETE FROM ${table}`).run();
   })();
 }
 

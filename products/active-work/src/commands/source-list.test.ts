@@ -7,7 +7,7 @@ import sourceAddCmd from './source-add.js';
 import { withEmptyActiveRoot, withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
-const ctx = { activeRoot: '', warnings: [], format: 'json' as const };
+const ctx = { activeRoot: '', warnings: [], format: 'json' as const, caller: 'owner' as const };
 
 async function writeSourceFiles(root: string, names: string[]): Promise<string> {
   const dir = path.join(root, SLUG, 'sources');
@@ -66,6 +66,69 @@ describe('source.list', () => {
     });
   });
 
+  describe('limit', () => {
+    async function setMtimes(dir: string, ageDaysByName: Record<string, number>): Promise<void> {
+      const base = Date.parse('2026-01-10T00:00:00Z');
+      for (const [name, days] of Object.entries(ageDaysByName)) {
+        const when = new Date(base - days * 86_400_000);
+        await fs.utimes(path.join(dir, name), when, when);
+      }
+    }
+
+    it('returns the newest N with the total and truncated flag', async () => {
+      await withTempActiveRoot(async (root) => {
+        const dir = await writeSourceFiles(root, [
+          'pr-1-a.md',
+          'pr-2-b.md',
+          'pr-3-c.md',
+          'pr-4-d.md',
+          'pr-5-e.md',
+        ]);
+        await setMtimes(dir, { 'pr-1-a.md': 4, 'pr-2-b.md': 0, 'pr-3-c.md': 3, 'pr-4-d.md': 1, 'pr-5-e.md': 2 });
+
+        const res = await sourceListCmd.run({ slug: SLUG, limit: 2 }, ctx);
+
+        expect(res.sources.map((s) => s.filename)).toEqual(['pr-2-b.md', 'pr-4-d.md']);
+        expect(res.total).toBe(5);
+        expect(res.truncated).toBe(true);
+      });
+    });
+
+    it('caps after the type filter and counts only matching sources in total', async () => {
+      await withTempActiveRoot(async (root) => {
+        const dir = await writeSourceFiles(root, ['pr-1-a.md', 'pr-2-b.md', 'pr-3-c.md', 'deepdive-x.md']);
+        await setMtimes(dir, { 'deepdive-x.md': 0, 'pr-1-a.md': 3, 'pr-2-b.md': 1, 'pr-3-c.md': 2 });
+
+        const res = await sourceListCmd.run({ slug: SLUG, type: 'pr', limit: 2 }, ctx);
+
+        expect(res.sources.map((s) => s.filename)).toEqual(['pr-2-b.md', 'pr-3-c.md']);
+        expect(res.total).toBe(3);
+        expect(res.truncated).toBe(true);
+      });
+    });
+
+    it('is not truncated when the limit exceeds the count', async () => {
+      await withTempActiveRoot(async (root) => {
+        await writeSourceFiles(root, ['pr-1-a.md', 'pr-2-b.md']);
+        const res = await sourceListCmd.run({ slug: SLUG, limit: 5 }, ctx);
+        expect(res.sources).toHaveLength(2);
+        expect(res.total).toBe(2);
+        expect(res.truncated).toBe(false);
+      });
+    });
+
+    it('leaves order and shape unchanged without a limit', async () => {
+      await withTempActiveRoot(async (root) => {
+        const dir = await writeSourceFiles(root, ['deepdive-a.md', 'pr-9-b.md']);
+        await setMtimes(dir, { 'deepdive-a.md': 5, 'pr-9-b.md': 0 });
+        const res = await sourceListCmd.run({ slug: SLUG }, ctx);
+        expect(res.sources.map((s) => s.filename)).toEqual(['deepdive-a.md', 'pr-9-b.md']);
+        expect(res.total).toBeUndefined();
+        expect(res.truncated).toBeUndefined();
+      });
+    });
+  });
+
   it('picks up a source added by source.add without any index update', async () => {
     await withTempActiveRoot(async (root) => {
       const inbox = path.join(root, '_inbox');
@@ -107,7 +170,7 @@ describe('source.list', () => {
       const res = await sourceListCmd.run({ slug: SLUG }, ctx);
       expect(res.drift).toHaveLength(1);
       expect(res.drift[0]).toMatchObject({ slug: SLUG });
-      expect(res.drift[0].path).toContain('sources/deepdive-forgotten.md');
+      expect(res.drift.at(0)?.path).toContain('sources/deepdive-forgotten.md');
     });
   });
 
@@ -163,7 +226,7 @@ describe('source.list', () => {
     await withEmptyActiveRoot(async (root) => {
       await writeSourcesIn(root, ['alpha', 'beta']);
       await writeCharter(root, ['beta']);
-      const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const };
+      const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const, caller: 'owner' as const };
 
       const res = await sourceListCmd.run({ all_initiatives: true }, context);
 
@@ -189,7 +252,7 @@ describe('source.list', () => {
           await fs.mkdir(path.dirname(charter), { recursive: true });
           await fs.writeFile(charter, charterBody, 'utf8');
         }
-        const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const };
+        const context = { activeRoot: '', warnings: [] as string[], format: 'json' as const, caller: 'owner' as const };
 
         const res = await sourceListCmd.run({ all_initiatives: true }, context);
 
@@ -219,7 +282,7 @@ describe('source.list', () => {
         ['alpha', false],
         ['beta', true],
       ]);
-      expect(res.drift[0].path).toContain('sources/pr-2-alpha.md');
+      expect(res.drift.at(0)?.path).toContain('sources/pr-2-alpha.md');
     });
   });
 

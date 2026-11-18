@@ -18,6 +18,7 @@ import { registerNeeds } from "./needs/command.js";
 import { registerBlocker } from "./blocker/command.js";
 import { registerOwnerGates } from "./owner-gates/command.js";
 import { registerPlanner } from "./planner/command.js";
+import { registerDispatch } from "./eligibility/command.js";
 import { registerAutoresearch } from "./autoresearch/cli.js";
 import { FROZEN_HOST_WRITE_VERBS, FrozenHostError, refuseFrozenHost } from "./remote-factory.js";
 import { openFactoryHost, type FactoryHost, type FactoryRoutes } from "./host.js";
@@ -38,12 +39,13 @@ import { factoryRoutes, factoryWorkflows } from "./workflows.js";
 import { sourcesReader } from "./github-sources/mode.js";
 import { webhookSecretPath } from "./ingress/paths.js";
 import { serveReconciler } from "./reconciler/bot-ports.js";
+import { configuredRefillSend } from "./refill-send-ports.js";
 
 export { EXIT };
 export { formatResume } from "./cli-host-verbs.js";
 
 const defaultIo: CliIo = { stdout: (t) => process.stdout.write(t), stderr: (t) => process.stderr.write(t), env: process.env };
-const defaultDeps: CliDeps = { workflows: factoryWorkflows, host: { registry: factoryRegistry }, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, ciTimingFallback: () => (FACTORY_REPO === undefined ? undefined : ghCiTimingPorts(FACTORY_REPO)), gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), reconciler: serveReconciler, configDeprecations, exitAfterServe: () => process.exit() };
+const defaultDeps: CliDeps = { workflows: factoryWorkflows, host: { registry: factoryRegistry }, routes: factoryRoutes, deployWatch: (env) => configuredDeployWatch(env, deployCheckoutFor(env)), deployPacer: (env) => configuredDeployPacer(env, deployCheckoutFor(env)), mainWatch: configuredMainWatch, fixerRetire: configuredFixerRetire, seatDigest: configuredSeatDigest, refillSend: configuredRefillSend, ciTimingFallback: () => (FACTORY_REPO === undefined ? undefined : ghCiTimingPorts(FACTORY_REPO)), gateNotify: configuredGateNotify, consoleAnswers: configuredConsoleAnswers, sources: (env, log) => sourcesReader(env, { log }), ingress: (env) => ({ secretPath: webhookSecretPath(env) }), reconciler: serveReconciler, configDeprecations, exitAfterServe: () => process.exit() };
 
 /** Parse argv and run one verb. Returns the exit code instead of exiting, so tests can call it. */
 export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDeps = defaultDeps): Promise<number> {
@@ -72,7 +74,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo, deps: CliDep
     }
   };
   const verbs: Verbs = { io, deps, dbPath, withHost, setExit };
-  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerRelease, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerAutoresearch, registerReview, registerMarkers]) register(program, verbs);
+  for (const register of [registerResume, registerGate, registerServe, registerLand, registerShepherd, (p: Command, v: Verbs) => registerDigest(p, v, postRpc), registerQueueCounts, registerNeeds, registerService, registerAudit, registerBuildSurface, registerToolchain, registerRelease, registerScorecard, registerContextAudit, registerOwnerGates, registerBlocker, registerBotToken, registerPlanner, registerDispatch, registerAutoresearch, registerReview, registerMarkers]) register(program, verbs);
   return parse(program, argv, io, () => exitCode);
 }
 

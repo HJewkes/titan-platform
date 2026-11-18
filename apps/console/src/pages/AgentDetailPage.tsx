@@ -4,7 +4,7 @@ import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open, type Route } from "../router.js";
-import { migrationHint } from "./SessionFormat.js";
+import { RefLinks, migrationHint } from "./SessionFormat.js";
 import { AgentRetire } from "./AgentRetire.js";
 import { BrokerFailure, MessageFeed, RouteTabs, StatePill, formatCost, tabFrom, type RosterEntry } from "./AgentParts.js";
 import { useMediaQuery } from "./FramePins.js";
@@ -137,8 +137,23 @@ function Runs({ name }: { name: string }): ReactNode {
   const { sessions, degraded } = runs.data;
   if (degraded) return <GraphDegraded degraded={degraded} />;
   if (sessions.length === 0) return <Typography variant="body2">{`No sessions recorded for ${name}.`}</Typography>;
-  return <RunRows sessions={sessions} />;
+  return (
+    <VStack gap={2}>
+      <RunRows sessions={sessions} />
+      {runs.data.nextBefore === null ? null : <AllRunsLink name={name} />}
+    </VStack>
+  );
 }
+
+function AllRunsLink({ name }: { name: string }): ReactNode {
+  return (
+    <Link color="primary" className={PHONE_TAP_LINK} onPress={() => open({ view: "sessions", query: new URLSearchParams({ agent: name }).toString() })}>
+      All runs
+    </Link>
+  );
+}
+
+const taskRefs = (session: SessionRow): string[] => session.taskIds.map((id) => `task:${id}`);
 
 function GraphDegraded({ degraded }: { degraded: SessionsList["degraded"] & object }): ReactNode {
   const { reason, detail } = degraded;
@@ -168,7 +183,6 @@ function RunCards({ sessions }: { sessions: readonly SessionRow[] }): ReactNode 
 }
 
 function RunCard({ session }: { session: SessionRow }): ReactNode {
-  const tasks = session.taskIds.length > 0 ? session.taskIds.join(", ") : "no task";
   return (
     <VStack gap={1} className="min-w-0 border-b border-divider px-inset-md py-inset-sm" testID={`run-card-${session.sessionId}`}>
       <Link color="primary" className={PHONE_TAP_LINK} testID={`run-link-${session.sessionId}`} onPress={() => open({ view: "sessions", id: session.sessionId })}>
@@ -177,7 +191,8 @@ function RunCard({ session }: { session: SessionRow }): ReactNode {
       <Typography variant="body1" className="break-words">
         {session.title ?? "–"}
       </Typography>
-      <Typography variant="caption" color="secondary" className="break-words">{`${tasks} · ${session.turnCount} turns · ${formatCost(session.costUsd)}`}</Typography>
+      <RefLinks refs={taskRefs(session)} />
+      <Typography variant="caption" color="secondary" className="break-words">{`${session.turnCount} turns · ${formatCost(session.costUsd)}`}</Typography>
     </VStack>
   );
 }
@@ -216,7 +231,9 @@ function RunRow({ session }: { session: SessionRow }): ReactNode {
         </Link>
       </TableCell>
       <TableCell>{session.title ?? "–"}</TableCell>
-      <TableCell>{session.taskIds.length > 0 ? session.taskIds.join(", ") : "–"}</TableCell>
+      <TableCell>
+        <RefLinks refs={taskRefs(session)} />
+      </TableCell>
       <TableCell width={80} align="right">
         {String(session.turnCount)}
       </TableCell>

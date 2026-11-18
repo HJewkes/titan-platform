@@ -1,0 +1,52 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a missing Authority value reads as unchanged",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "attest?.adversary?.authority ?? \"missing\"",
+      "replace": "attest?.adversary?.authority ?? \"unchanged\"",
+      "kills": [
+        "authorityLineOf a planned adversary that carried no value reads missing",
+        "authorityLineOf a g10-adversary hold with no adversary member reads missing",
+        "authorityLineOf an unreadable registration reads missing"
+      ]
+    },
+    {
+      "name": "the required read ignores the g10-adversary hold",
+      "file": "products/factory/src/shepherd/attest-evidence.ts",
+      "find": "return attest?.adversaryPlanned === true || holdClassOf(holdReason) === G10_ADVERSARY_CLASS;",
+      "replace": "return attest?.adversaryPlanned === true;",
+      "kills": [
+        "authorityLineOf a g10-adversary hold with no adversary member reads missing"
+      ]
+    },
+    {
+      "name": "the required read ignores an unreadable registration",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "const required = registration?.unread !== undefined || adversaryRequired(",
+      "replace": "const required = adversaryRequired(",
+      "kills": [
+        "authorityLineOf an unreadable registration reads missing"
+      ]
+    },
+    {
+      "name": "an unknown stamped value reads as no line",
+      "file": "products/factory/src/shepherd/owner-tier.ts",
+      "find": "return isAuthorityRead(stamp) ? stamp : \"missing\";",
+      "replace": "return isAuthorityRead(stamp) ? stamp : undefined;",
+      "kills": [
+        "the Authority rows a stored stamp decides at decide time, and an unknown stamped value reads missing"
+      ]
+    },
+    {
+      "name": "a missing line raises no owner-tier row",
+      "file": "products/factory/src/shepherd/risk-tier.ts",
+      "find": "return read === \"missing\" ? \"Authority line missing\" : undefined;",
+      "replace": "return undefined;",
+      "kills": [
+        "the Authority rows widened and missing are owner-tier rows; unchanged and tightened add nothing"
+      ]
+    }
+  ]
+}

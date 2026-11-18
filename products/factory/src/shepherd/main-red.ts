@@ -20,8 +20,8 @@ import { seatCheckout } from "./seat-checkout.js";
 import { FACTORY_IMPLEMENTER_PROFILE } from "./wake.js";
 
 /** How long a down active-work daemon or agent-chat broker is waited out before the step gives the red main to the owner. */
-export const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
-export const SH_MAIN_RED_POLL_MS = 30_000;
+const SH_MAIN_RED_GIVE_UP_MS = GITHUB_READ_GIVE_UP_MS;
+const SH_MAIN_RED_POLL_MS = 30_000;
 
 export const MAIN_RERUN_STEP = "sh-main-rerun";
 
@@ -142,7 +142,7 @@ export interface EpisodeInput extends RedInput {
   episode: number | null;
 }
 
-export interface FixerInput {
+interface FixerInput {
   repo: RepoSlug;
   mergeSha: string;
   task: string;

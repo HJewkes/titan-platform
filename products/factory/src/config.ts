@@ -18,7 +18,7 @@ const noNul = z.string().refine((value) => !value.includes("\0"), "must not cont
 const absolutePath = noNul.refine(isAbsolute, "must be an absolute path");
 
 /** The chore land-pr runs after a merge; strict, so a `shell` or `command` key fails the load instead of being ignored. */
-export const PostMergeConfigSchema = z.strictObject({
+const PostMergeConfigSchema = z.strictObject({
   argv: z.tuple([noNul.min(1, "argv[0] must name a program")], noNul),
   cwd: absolutePath.optional(),
   timeoutMs: z.number().int().positive().optional(),
@@ -27,7 +27,7 @@ export const PostMergeConfigSchema = z.strictObject({
 export type PostMergeConfig = z.infer<typeof PostMergeConfigSchema>;
 
 /** The tick a Shepherd merge wakes after its settle window; capped at 30 s, the wake's own deadline (TP-1433). */
-export const MergeWakeConfigSchema = z.strictObject({
+const MergeWakeConfigSchema = z.strictObject({
   ...PostMergeConfigSchema.shape,
   settleMs: z.number().int().positive().max(30_000).optional(),
 });
@@ -40,7 +40,7 @@ const argvWord = noNul.regex(/^[^-\s]\S*$/, "must be one argument: not empty, no
 /** The reviewer Shepherd dispatches; strict, so a misspelt timeout fails the load instead of leaving the default in force. */
 const profileName = argvWord.refine((v) => !v.includes("/") && !v.includes(".."), "must not contain a slash or ..");
 
-export const ReviewConfigSchema = z.strictObject({
+const ReviewConfigSchema = z.strictObject({
   profile: profileName,
   /** The profile per PR class; a class left out, or no table at all, uses `profile`. */
   roles: z.strictObject({ g10: profileName.optional(), standard: profileName.optional() }).optional(),
@@ -77,7 +77,7 @@ export const ReviewConfigSchema = z.strictObject({
 export type ReviewConfig = z.infer<typeof ReviewConfigSchema>;
 
 /** A repo Shepherd works on with no seat behind it; strict, so a misspelt `path` fails the load instead of leaving no checkout. */
-export const ShepherdRepoConfigSchema = z.strictObject({
+const ShepherdRepoConfigSchema = z.strictObject({
   /** The repo's main checkout, used when no seat binds the repo; a seat's path wins. */
   path: z.string().min(1).optional(),
   /** Shepherd reviews, watches CI and notifies, but never merges, updates the branch or pushes. */
@@ -91,7 +91,7 @@ export const ShepherdRepoConfigSchema = z.strictObject({
 export type ShepherdRepoConfig = z.infer<typeof ShepherdRepoConfigSchema>;
 
 /** The fixer a red main spawns; `configDir` picks the Claude account it runs under. */
-export const FixerConfigSchema = z.strictObject({ configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional() });
+const FixerConfigSchema = z.strictObject({ configDir: argvWord.refine(isAbsolute, "must be an absolute path").optional() });
 
 function isTimeZone(zone: string): boolean {
   try {
@@ -105,12 +105,12 @@ function isTimeZone(zone: string): boolean {
 /** An ntfy topic URL that each written slot is pushed to; the optional token file holds a bearer token, never the token itself. */
 const httpUrl = z.string().refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol), "must be an http or https URL");
 
-export const DigestPushConfigSchema = z.strictObject({ url: httpUrl, tokenFile: absolutePath.optional() });
+const DigestPushConfigSchema = z.strictObject({ url: httpUrl, tokenFile: absolutePath.optional() });
 
 export type DigestPushConfig = z.infer<typeof DigestPushConfigSchema>;
 
 /** The owner digest; queue and log directories default to siblings of `shepherd.seatsDir`. */
-export const DigestConfigSchema = z.strictObject({
+const DigestConfigSchema = z.strictObject({
   outDir: absolutePath.optional(),
   copyDirs: z.array(absolutePath).optional(),
   /** Legacy alias: the Mac's live config still names its one copy destination this way. */
@@ -124,14 +124,14 @@ export const DigestConfigSchema = z.strictObject({
 });
 
 /** Per repo, the required checks a rerun may clear before any wake, and how long to wait before that rerun. */
-export const FlakyChecksSchema = z.strictObject({
+const FlakyChecksSchema = z.strictObject({
   checks: z.array(z.string().min(1)).min(1),
   /** Below the ci-wait route's own 45 minute timeout, which the wait, the rerun and the settle all run inside. */
   waitSeconds: z.number().int().min(0).max(900),
 });
 
 /** Overrides of the machine limits a factory spawn must pass; the defaults are the seat values. */
-export const SpawnGateConfigSchema = z.strictObject({
+const SpawnGateConfigSchema = z.strictObject({
   load5: z.number().positive().optional(),
   buildLoad5: z.number().positive().optional(),
   pressureLevel: z.number().int().positive().optional(),
@@ -145,7 +145,7 @@ export const SpawnGateConfigSchema = z.strictObject({
 });
 
 /** The launchd label is `<labelPrefix>titan-factory`; absent means `dev.hjewkes.`. Uninstall the service before changing it, or the old job stays loaded under the old label. */
-export const ServiceConfigSchema = z.strictObject({
+const ServiceConfigSchema = z.strictObject({
   labelPrefix: noNul.min(1).optional(),
   /** The checkout the service runs from and deploys fast-forward; absent means `<data dir>/deploy/titan-platform`. */
   deployCheckout: absolutePath.optional(),
@@ -155,16 +155,14 @@ export const ServiceConfigSchema = z.strictObject({
   deployWatchMs: z.number().int().min(0).optional(),
 });
 
-export type DigestConfig = z.infer<typeof DigestConfigSchema>;
-
 /** How a standing deploy alarm repeats; absent keys keep the defaults, every 6 deploy-watch ticks and 30 minutes. */
-export const DeployAlarmConfigSchema = z.strictObject({
+const DeployAlarmConfigSchema = z.strictObject({
   renotifyTicks: z.number().int().positive().optional(),
   escalateAfterMinutes: z.number().int().positive().optional(),
 });
 
 /** The GitHub App `shepherd/review` is posted as; absent means the publish step records `published: false`. */
-export const ReviewCheckConfigSchema = z.strictObject({
+const ReviewCheckConfigSchema = z.strictObject({
   appId: z.number().int().positive(),
   installationId: z.number().int().positive(),
   privateKeyPath: absolutePath,
@@ -179,12 +177,10 @@ export type ReviewCheckConfig = z.infer<typeof ReviewCheckConfigSchema>;
  * resolves as `owner-remote` (Q1): any unregistered caller on the broker's 0600 socket can answer, so only gates whose
  * rule admits a remote owner are asked; absent means serve asks nothing.
  */
-export const GateNotifyConfigSchema = z.strictObject({
+const GateNotifyConfigSchema = z.strictObject({
   label: z.string().regex(ASK_LABEL_PATTERN, "must be an agent-chat ask label").default("titan-factory"),
   resolverClass: z.enum(["owner-remote", "owner-terminal"]).default("owner-remote"),
 });
-
-export type GateNotifyConfig = z.infer<typeof GateNotifyConfigSchema>;
 
 function isRemoteFactoryUrl(value: string): boolean {
   if (!URL.canParse(value)) return false;
@@ -211,6 +207,10 @@ const remoteFactoryUrl = z.string().refine(isRemoteFactoryUrl, "must be an http 
 
 /** The schema strips unknown keys, so a misspelt remoteFactory would silently leave the frozen database writable. */
 const misspeltRemoteFactory = (key: string): boolean => key !== "remoteFactory" && key.toLowerCase().replace(/[^a-z]/g, "").startsWith("remotefactory");
+
+const whole = (min: number, max: number) => z.number().int().min(min).max(max).optional();
+/** The limits `dispatch eligible` judges a lane by (TP-5453 P4b); an absent key means its starting value in eligibility/back-pressure.ts. */
+const BackPressureConfigSchema = z.strictObject({ laneOpenPrs: whole(1, 64), ownerQueue: whole(0, 1000), inflowWeeks: whole(1, 12) });
 
 /** Owner-specific bindings live here, outside the public repo; later slices add repos and device keys. */
 export const FactoryConfigSchema = z.object({
@@ -244,28 +244,30 @@ export const FactoryConfigSchema = z.object({
       gateNotify: GateNotifyConfigSchema.optional(),
       /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */
       seatDigest: z.strictObject({ pacing: SeatDigestPacingSchema.optional() }).optional(),
-      /**
-       * Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
+      /** Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
        * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
        * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
-       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275).
+       * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275). `lowTierPolicy` (TP-5403): absent means `shadow`; `on` is the owner's switch (q28), set only after the owner settles which gate code may go low. `ownerTier`: `OwnerTierMode` (TP-5406). `ownerValidate`: `OwnerValidateMode` (TP-5411).
        */
       gateReset: z
         .strictObject({
           twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
+          lowTierPolicy: z.enum(["off", "shadow", "on"]).optional(), ownerTier: z.enum(["off", "shadow", "on"]).optional(), ownerValidate: z.enum(["off", "shadow", "on"]).optional(),
           heldRepair: z.enum(["off", "on"]).optional(),
           noReproProceed: z.enum(["off", "on"]).optional(),
           nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
         })
         .optional(),
+      backPressure: BackPressureConfigSchema.optional(),
       /**
        * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
        * `last-slice-only` closes it only when the PR is its last slice (a `Last slice: yes` body line or `register --last-slice`),
        * or when no other open PR is registered with that task and the body has no `Last slice: no`; else it notes the merge.
        */
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
+      checkCandidates: z.enum(["off", "record", "propose"]).optional(), // Reviewers' check candidates (TP-6482): absent means record; propose only records until B5.
       visualGate: VisualGateSchema.optional(),
       /** The release App's `<app-slug>[bot]` login: only a head it pushed keeps the owner's release answer (TP-5606); absent, none does. */
       releaseAppLogin: z.string().regex(/^[^\s[\]]+\[bot\]$/, "must be an App's <app-slug>[bot] login").optional(),
@@ -329,6 +331,8 @@ export const FactoryConfigSchema = z.object({
 });
 
 export type FactoryConfig = z.infer<typeof FactoryConfigSchema>;
+
+export const checkCandidatesMode = (config: FactoryConfig): "off" | "record" | "propose" => config.shepherd?.checkCandidates ?? "record";
 
 export interface ConfigSources {
   env: NodeJS.ProcessEnv;

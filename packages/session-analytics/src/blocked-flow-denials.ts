@@ -1,4 +1,5 @@
 import { decodeClaudeToolLines } from "@titan-design/session-read";
+import { denialOf } from "./tool-error-class.js";
 
 /** One action the auto-mode classifier refused, read from a seat's transcript. */
 export interface DenialRecord {
@@ -12,8 +13,6 @@ export interface DenialRecord {
   /** The refused call's id; a forked or resumed transcript repeats it, so it is counted once. */
   toolUseId?: string;
 }
-
-const DENIAL = /^Permission for this action (?:was|has been) denied by the Claude Code auto mode classifier\. Reason: \[([^\]]+)\]/;
 
 const BASH_ACTIONS: readonly (readonly [string, RegExp])[] = [
   ["merge", /\bgh pr merge\b|\/pulls\/\d+\/merge\b/],
@@ -54,7 +53,10 @@ export function parseDenials(lines: Iterable<string>, seat: string): DenialRecor
       calls.set(observation.callId, { tool: observation.name, input: observation.input });
       continue;
     }
-    const reason = DENIAL.exec(resultText(observation.output))?.[1];
+    const text = resultText(observation.output);
+    // A result that only quotes the refusal mid-text (a grep of a log) is not a refusal.
+    const denial = text.startsWith("Permission for this action") ? denialOf(text) : null;
+    const reason = denial?.kind === "classifier" ? denial.reason : undefined;
     if (reason === undefined) continue;
     const call = calls.get(observation.callId) ?? { tool: "unknown", input: null };
     denials.push({ seat, at: observation.timestamp ?? "", reason, action: classifyDeniedAction(call.tool, call.input), tool: call.tool, toolUseId: observation.callId });

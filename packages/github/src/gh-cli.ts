@@ -1,6 +1,7 @@
 import { sharedRateBudget, type RateBudget } from "./budget.js";
 import { redact, redactStreams } from "./redact.js";
 import { listForcePushes } from "./force-pushes.js";
+import { readPrOutcome } from "./pr-outcome.js";
 import { graphql } from "./graphql.js";
 import { checkRunBody } from "./check-run-create.js";
 import { GhError, execGh, type GhExec } from "./exec.js";
@@ -46,7 +47,7 @@ export function ghCliWire(exec: GhExec = execGh, options: GhCliOptions = {}): Gi
  * Runs `call` over a `Rest` that speaks as the GitHub App, a different identity from the one the wire reads as.
  * `name` labels the refusal when the wire has no App token provider.
  */
-export type AppScope = <T>(name: string, call: (app: Rest) => Promise<T>) => Promise<T>;
+type AppScope = <T>(name: string, call: (app: Rest) => Promise<T>) => Promise<T>;
 
 /** Every wire method over one `Rest`, whichever transport implements it. */
 export function wireOver(api: Rest, asApp: AppScope): GitHubWire {
@@ -116,6 +117,7 @@ export function wireOver(api: Rest, asApp: AppScope): GitHubWire {
     createReview: (repo, number, request) => asApp("createReview", (app) => createReview(app, repo, number, request)),
     dismissReview: (repo, number, reviewId, message) => asApp("dismissReview", (app) => dismissReview(app, repo, number, reviewId, message)),
     listForcePushes: (repo, number) => listForcePushes(api, repo, number),
+    getPrOutcome: (repo, number) => readPrOutcome(api, repo, number),
   };
 }
 
@@ -137,7 +139,7 @@ export function redactedError(error: unknown, secrets: readonly string[]): Error
   if (error instanceof GhError) {
     const { code, stdout, stderr } = error.result;
     const [cleanOut, cleanErr] = redactStreams(stdout, stderr, secrets);
-    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status, error.rateLimit);
+    return new GhError(error.args, { code, stdout: cleanOut, stderr: cleanErr }, error.status, error.rateLimit, error.transport);
   }
   return new Error(redact(error instanceof Error ? error.message : String(error), secrets));
 }

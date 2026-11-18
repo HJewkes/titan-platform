@@ -1,10 +1,9 @@
 import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { TaskSchema, type Task } from '../schemas/task.js';
+import { homesOf, locateTask, type LocatedTask } from '../tasks/locate.js';
 import { getActiveRoot, getInitiativeDir } from '../utils/paths.js';
-import { readYaml } from '../utils/yaml-io.js';
 import { NotFoundError, UsageError } from '../errors.js';
 
 const NOTE_TAIL_LINES = 5;
@@ -51,17 +50,20 @@ async function assertInitiative(slug: string): Promise<void> {
   if (!stat?.isDirectory()) throw new NotFoundError(`Initiative not found: ${slug}`);
 }
 
-async function readTask(slug: string, id: string): Promise<Task> {
+async function notFoundHint(slug: string, id: string): Promise<string> {
+  const homes = (await homesOf(id)).filter((home) => home !== slug);
+  if (homes.length === 0) return '';
+  return `; filed in ${homes.join(', ')} (task show ${homes[0]} ${id})`;
+}
+
+async function readTask(slug: string, id: string): Promise<LocatedTask> {
   await assertInitiative(slug);
-  const notFound = new NotFoundError(`task ${id} not found in ${slug}`);
+  const message = `task ${id} not found in ${slug}`;
   // The id becomes a filename, so anything that is not a task id is simply absent.
-  if (!TaskSchema.shape.id.safeParse(id).success) throw notFound;
-  try {
-    return await readYaml(path.join(getInitiativeDir(slug), 'tasks', `${id}.yml`), TaskSchema);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw notFound;
-    throw err;
-  }
+  if (!TaskSchema.shape.id.safeParse(id).success) throw new NotFoundError(message);
+  const located = await locateTask(slug, id);
+  if (!located) throw new NotFoundError(message + (await notFoundHint(slug, id)));
+  return located;
 }
 
 function formatValue(value: unknown): string {
@@ -75,19 +77,30 @@ function noteTail(notes: string): string[] {
   return lines.slice(-NOTE_TAIL_LINES);
 }
 
-function renderCompact(task: Task): string {
-  const keys: (keyof Task)[] = [
-    'id',
-    'title',
-    'status',
-    'severity',
-    'estimate',
-    'tags',
-    'done_when',
-  ];
-  const lines = keys
-    .filter((key) => task[key] !== undefined)
+const COMPACT_KEYS: (keyof Task)[] = [
+  'id',
+  'title',
+  'status',
+  'priority',
+  'severity',
+  'estimate',
+  'due',
+  'kind',
+  'cos',
+  'area',
+  'parent',
+  'dep',
+  'bet',
+  'tags',
+  'done_when',
+  'done_at',
+  'done_reason',
+];
+
+function renderCompact({ task, archived }: LocatedTask): string {
+  const lines = COMPACT_KEYS.filter((key) => task[key] !== undefined && task[key] !== null)
     .map((key) => `${key}: ${formatValue(task[key])}`);
+  if (archived) lines.push('archived: yes');
   if (task.notes) {
     lines.push(
       `notes (last ${NOTE_TAIL_LINES} lines):`,
@@ -119,8 +132,9 @@ export default defineCommand<Args, Result>({
     getActiveRoot();
     const { slug, id } = resolveTarget(args);
     const fields = args.fields === undefined ? undefined : parseFields(args.fields);
-    const task = await readTask(slug, id);
-    if (fields === undefined) return ctx.format === 'json' ? task : renderCompact(task);
+    const located = await readTask(slug, id);
+    const { task } = located;
+    if (fields === undefined) return ctx.format === 'json' ? task : renderCompact(located);
     const picked = pick(task, fields);
     if (ctx.format === 'json') return picked;
     return fields.map((key) => `${key}: ${formatValue(picked[key])}`).join('\n') + '\n';

@@ -1,4 +1,4 @@
-import { labelledLineRest } from "@titan-design/session-read";
+import { foldLabelledLine, labelledLineRest } from "@titan-design/session-read";
 import { boundedFindings, findingsText } from "../fix-first-findings.js";
 
 /** The line an adversary verdict must carry above its block; a verdict without it is malformed. */
@@ -31,8 +31,8 @@ export interface AdversaryHoldContext {
   lastReport?: string;
 }
 
-export const HOLD_CONTEXT_START = "HOLD-CONTEXT";
-export const HOLD_CONTEXT_END = "END-HOLD-CONTEXT";
+const HOLD_CONTEXT_START = "HOLD-CONTEXT";
+const HOLD_CONTEXT_END = "END-HOLD-CONTEXT";
 const MARKERS: ReadonlySet<string> = new Set([HOLD_CONTEXT_START, HOLD_CONTEXT_END].map((marker) => marker.toLowerCase()));
 
 const contextEntries = ({ holdReason, matchedFiles, doneWhen, lastReport }: AdversaryHoldContext): string[] => [
@@ -71,20 +71,30 @@ export function hasProbesLine(text: string): boolean {
 
 const SAFER_VALUES: readonly AuthorityLine[] = ["unchanged", "tightened"];
 const WIDENED: AuthorityLine = "widened";
+const AUTHORITY_LABEL = foldLabelledLine(AUTHORITY_HEADING);
+const COLON = ":";
 /** Strictest first: a widening is never read away, and an unreadable line is never read as the safer value. */
 const STRICTNESS = ["widened", "malformed", "unchanged", "tightened"] as const;
 
+/** The fold after the first colon, so a label glued to a word (`Authority-gate: widened`) still yields its value. */
+const valueAfterColon = (raw: string): string => {
+  const line = raw.normalize("NFKC");
+  const at = line.indexOf(COLON);
+  return at < 0 ? "" : foldLabelledLine(line.slice(at + 1));
+};
+
 /**
- * One raw line's reading, or undefined when it carries no Authority label. The label is found through session-read's
- * `labelledLineRest`, the fold the CI-policy line is read with, so a bullet, bold, quote, any case or a full-width colon
- * still labels the line. A rest that folds to exactly `widened` reads widened however it is decorated; unchanged and
- * tightened count only on a plain `Authority: <value>` line, as CI-policy's unchanged counts only when canonical. Any
- * other labelled line reads malformed.
+ * One raw line's reading, or undefined when it carries no Authority label. Any line whose session-read fold starts
+ * `authority` is labelled: unlike CI-policy, Authority takes no identifier-glue exemption (TP-6624), so `Authority-gate:`
+ * or an `authorityLevel` lead is a reading, never skipped beside a safe line. A rest from `labelledLineRest`, or a value
+ * after the colon, that folds to exactly `widened` reads widened however it is decorated; unchanged and tightened count
+ * only on a plain `Authority: <value>` line, as CI-policy's unchanged counts only when canonical. Any other labelled
+ * line reads malformed.
  */
 function authorityReading(raw: string): AuthorityLine | "malformed" | undefined {
+  if (!foldLabelledLine(raw).startsWith(AUTHORITY_LABEL)) return undefined;
   const rest = labelledLineRest(raw, AUTHORITY_HEADING, WIDENED);
-  if (rest === undefined) return undefined;
-  if (rest === WIDENED) return WIDENED;
+  if (rest === WIDENED || valueAfterColon(raw) === WIDENED) return WIDENED;
   const line = raw.trim();
   const value = line.startsWith(AUTHORITY_HEADING) ? line.slice(AUTHORITY_HEADING.length).trim() : undefined;
   return SAFER_VALUES.find((known) => known === value) ?? "malformed";

@@ -1,5 +1,19 @@
 # @titan-design/review-workflow
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [9778eb4]
+  - @titan-design/github@0.13.0
+
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [8485c89]
+  - @titan-design/workflow@0.15.0
+
 ## 0.1.0
 
 ### Minor Changes

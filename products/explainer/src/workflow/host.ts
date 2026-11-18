@@ -23,6 +23,7 @@ import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type R
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
+import type { FfmpegExec } from "../contact-sheet-render.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { QaEngine } from "../qa/qa-engine.js";
 import type { RenderEngine } from "../render/render-stage.js";
@@ -63,6 +64,8 @@ export interface RunHost {
   gather?: GatherDeps;
   /** The sheets stage's ffprobe and ffmpeg; tests pass a fake. */
   media?: MediaExec;
+  /** The ffmpeg the sheets stage cuts and tiles its contact sheets with; the host's own by default, tests pass a fake. */
+  ffmpeg?: FfmpegExec;
   /** The qa stage's browser and ffprobe; real Chromium by default, tests pass a fake. */
   qaEngine?: QaEngine;
   /** The qa stage's timing thresholds in place of the type profile's; tests of the run's plumbing pass lax ones. */
@@ -121,7 +124,8 @@ export interface RunOutcome {
 /** A high runaway backstop, not a per-video budget (owner answer Q3 A). */
 export const DEFAULT_BUDGET_USD = 20;
 export const DEFAULT_SCRIPT_MODEL = "sonnet";
-export const DEFAULT_JUDGE: JudgeConfig = JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" });
+/** A judge from another model family than the script model: a model scoring its own writing favours it (PR-13 self-preference). */
+export const DEFAULT_JUDGE: JudgeConfig = JudgeConfigSchema.parse({ provider: "codex", model: "gpt-5.5" });
 const DEFAULT_LEASE_MS = 120_000;
 
 export function openState(dataDir: string): Db {
@@ -144,14 +148,17 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   if (from === "gather" && !request.gather) throw new Error("a run from gather needs --facts-from <adapter>");
   const runs = new WorkflowRunStore(db);
   const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
-  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
+  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from, request.video) : undefined;
   const basePlan = base ? planOf(base) : undefined;
   const gather = request.gather ?? basePlan?.gather;
   // A replay keeps its base run's video type, else tts falls back to the default voice and every beat stretches (TP-4622).
   const profile = request.profile ?? request.gather?.type ?? basePlan?.profile;
+  const scriptModel = request.scriptModel ?? DEFAULT_SCRIPT_MODEL;
+  const judge = request.judge ?? DEFAULT_JUDGE;
+  if (judge.model === scriptModel) throw new Error(`the judge must differ from the writer: script model "${scriptModel}" and judge "${judge.model}" are the same model`);
   const settings = {
-    budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel: request.scriptModel ?? DEFAULT_SCRIPT_MODEL,
-    judge: request.judge ?? DEFAULT_JUDGE, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
+    budgetUsd: request.budgetUsd ?? DEFAULT_BUDGET_USD, scriptModel,
+    judge, rounds: request.rounds ?? MAX_REWRITE_ROUNDS,
     variants: storeVariants(request, store), samples: request.samples ?? {}, ...(profile ? { profile } : {}),
     ...(gather ? { gather } : {}), ...(request.theater ? { theater: request.theater } : {}),
   };
@@ -220,7 +227,8 @@ const stageExtras = (host: RunHost): Pick<StageDeps, "stylePacks" | "reflection"
 export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
   const store = new ArtifactStore(host.dataDir, db);
   let bridgeFile: BridgeFile | undefined;
-  const bridge = () => (bridgeFile ??= runBridgeFile(host.dataDir, { home: host.bridgeHome, profile: plan?.profile, theater: plan?.theater }));
+  const gatherDay = plan?.gather && "day" in plan.gather ? plan.gather.day : undefined;
+  const bridge = () => (bridgeFile ??= runBridgeFile(host.dataDir, { home: host.bridgeHome, profile: plan?.profile, theater: plan?.theater, day: gatherDay }));
   const now = host.now ?? (() => new Date());
   const late: { runtime?: WorkflowRuntime } = {};
   const cache: CacheDeps = { db, dataDir: host.dataDir, now, runtime: () => late.runtime! };
@@ -230,7 +238,7 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
     ...(host.media ? { media: host.media } : {}), ...(host.qaEngine ? { qaEngine: host.qaEngine } : {}), ...(host.qaTiming ? { qaTiming: host.qaTiming } : {}),
-    ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}),
+    ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}), ...(host.ffmpeg ? { ffmpeg: host.ffmpeg } : {}),
   });
   const builder = runners.worker ? { builder: runners.worker.builder } : {};
   const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);

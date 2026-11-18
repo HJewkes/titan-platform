@@ -1,5 +1,11 @@
 # @titan-design/anthropic-account
 
+## 0.4.1
+
+### Patch Changes
+
+- ff46e59: A usage reading whose window is `null` (the API's answer for an idle five-hour window) no longer discards the whole reading, so `status --statusline` prints the figures instead of the unknown line.
+
 ## 0.4.0
 
 ### Minor Changes

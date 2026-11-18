@@ -6,13 +6,14 @@ import { fileFollowUps, type FollowUpWhere } from "./follow-ups-file.js";
 
 const ORIGIN = "http://127.0.0.1:7400";
 const WHERE: FollowUpWhere = { initiative: "demo", parent: "DM-1", repo: "octo/widget", pr: 7, head: "abcdef0123456789", reviewer: "rev-1" };
-const item = (title: string, severity: FollowUp["severity"] = "low"): FollowUp => ({ title, doneWhen: `${title} is done and verified.`, severity });
+const item = (title: string, severity: FollowUp["severity"] = "medium"): FollowUp => ({ title, doneWhen: `${title} is done and verified.`, severity });
 const parent = { id: "DM-1", status: "open", done_when: "Parent done.", notes: "", tags: [] };
 const other = (status: string, title: string) => ({ id: "DM-2", status, title, done_when: "x", notes: "", tags: [] });
 
 function setup(tasks: Parameters<typeof fakeActiveWork>[0] = [parent]) {
   const aw = fakeActiveWork(tasks);
-  return { aw, port: activeWorkFollowUpTasks({ origin: ORIGIN, fetch: aw.fetch }) };
+  const digest = { append: () => Promise.reject(new Error("no digest row expected")) };
+  return { aw, port: { tasks: activeWorkFollowUpTasks({ origin: ORIGIN, fetch: aw.fetch }), digest } };
 }
 
 describe("fileFollowUps", () => {
@@ -24,6 +25,36 @@ describe("fileFollowUps", () => {
     expect(task).toMatchObject({ status: "open", severity: "medium", tags: ["follow-up:DM-1"], done_when: "Rename helper is done and verified." });
     expect(task.notes).toContain("rev-1");
     expect(task.notes).toContain("octo/widget#7");
+  });
+
+  it("shepherd follow-up carries from_pr and from_task", async () => {
+    const { aw, port } = setup();
+    const { filed } = await fileFollowUps(port, WHERE, [item("Rename helper")]);
+    expect(aw.tasks.get(filed[0]!.id)).toMatchObject({ source: "follow-up", source_ref: { from_pr: "octo/widget#7", from_task: "DM-1" } });
+  });
+
+  it("shepherd follow-up carries class", async () => {
+    const { aw, port } = setup([{ ...parent, class: "upkeep" }]);
+    const { filed } = await fileFollowUps(port, WHERE, [item("Rename helper")]);
+    expect(aw.tasks.get(filed[0]!.id)?.class).toBe("upkeep");
+  });
+
+  it("a follow-up of a parent task with no class is filed with no class", async () => {
+    const { aw, port } = setup();
+    const { filed } = await fileFollowUps(port, WHERE, [item("Rename helper")]);
+    expect(aw.calls.find((call) => call.command === "task.add")?.body).not.toHaveProperty("class");
+    expect(aw.tasks.get(filed[0]!.id)?.class).toBeUndefined();
+  });
+
+  it("reads the parent's class once however many follow-ups it files, and not at all when every one dedupes", async () => {
+    const { aw, port } = setup([{ ...parent, class: "product" }, other("open", "Already open")]);
+    const classReads = () => aw.calls.filter((call) => call.command === "task.list" && call.body.status === "all").length;
+    await fileFollowUps(port, WHERE, [item("Already open")]);
+    const afterDedupe = classReads();
+    await fileFollowUps(port, WHERE, [item("Rename helper"), item("Other nit")]);
+    expect([...aw.tasks.values()].filter((task) => task.source === "follow-up").map((task) => task.class)).toEqual(["product", "product"]);
+    expect(classReads() - afterDedupe).toBe(1 + 2);
+    expect(afterDedupe).toBe(1);
   });
 
   it("links each filed follow-up from the parent task's notes once", async () => {

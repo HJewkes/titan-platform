@@ -15,6 +15,7 @@ import { spawnGate } from "./spawn-gate.js";
 import { BRANCH, shepherdFixture, type ShepherdFixture } from "../test-support/shepherd.js";
 import { z } from "zod";
 import { portOf } from "../test-support/fakes.js";
+import { taskIndexFetch } from "../test-support/task-index.js";
 import type { ReviewerReading } from "./ports.js";
 
 const SHEPHERD_TOOLS = ["register", "status", "list", "timeline", "hold", "release", "merge"].map((verb) => `shepherd__${verb}`);
@@ -76,7 +77,7 @@ async function cli(argv: string[], fixture: ShepherdFixture, deployBehind: GitBe
   let out = "";
   let err = "";
   const io = { stdout: (t: string) => void (out += t), stderr: (t: string) => void (err += t), env: {} };
-  const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, deployBehind });
+  const code = await runCli(argv, io, { workflows: fixture.workflows, routes: fixture.routes, host: { gatePollMs: 5 }, logger: silentLogger, deployBehind, fetch: taskIndexFetch() });
   return { code, out, err };
 }
 

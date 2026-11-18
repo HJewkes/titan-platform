@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a low-tier release gets no decision entry",
+      "file": "products/factory/src/shepherd/view.ts",
+      "find": "  if (stepIdMatches(\"sh-g10-release\", stepId)) return decisionEntry(stepId, payload);\n",
+      "replace": "",
+      "kills": [
+        "the low-tier decision on the timeline the timeline shows the low-tier release with its head, reviewer and rule"
+      ]
+    },
+    {
+      "name": "the decision entry drops its reviewer",
+      "file": "products/factory/src/shepherd/view.ts",
+      "find": "reviewer: verdict.reviewer.agentId, profile: reviewerProfile",
+      "replace": "reviewer: \"\", profile: reviewerProfile",
+      "kills": [
+        "the low-tier decision on the timeline the timeline shows the low-tier release with its head, reviewer and rule"
+      ]
+    },
+    {
+      "name": "the hold reason drops the fact that kept it from low tier",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "  if (!low.eligible) return `${adversary} (kept: ${low.kept})`;\n",
+      "replace": "  if (!low.eligible) return adversary;\n",
+      "kills": [
+        "the low-tier decision on the timeline the timeline shows the kept reason when a policy touch stays adversary"
+      ]
+    }
+  ]
+}

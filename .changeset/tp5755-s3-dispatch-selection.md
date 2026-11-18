@@ -1,0 +1,5 @@
+---
+"@titan-design/factory": minor
+---
+
+Complete the shadow dispatcher's selection policy (TP-5761, TP-5755 S3). The rule file's `relax` (`bet-field`, `no-fold`, `no-owner-steps`) and `intake` (`minSeverity`, default `medium`; `expireDays`, default 28) keys are now schema fields. `dispatch shadow-tick` judges each lane under that policy: agent-filed work below the minimum severity, filed from a PR whose Shepherd run stopped, or unpromoted past the expiry is refused, as is a task serving another outcome than its bet's, a bet whose outcome is retired, and a task with `blocked_on`. Incidents are never refused by intake. A relaxed pass carries `relaxed` and the strict `strict_codes` on its row. When the active-work daemon answers `plan.*` with Unknown command, the tick reads the plan store's files instead and the wake row says `plan_read: "file"`; any other plan read failure still fails the lane closed. A lane whose initiative active-work withholds from agents (its `inventory` `withheld_from_agents` verdict) writes one `owner-only-initiative` row and reads none of its tasks; an unread inventory fails every lane closed. `dispatch eligible` output is unchanged.

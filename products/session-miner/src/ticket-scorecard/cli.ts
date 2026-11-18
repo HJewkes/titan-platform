@@ -1,10 +1,12 @@
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { scorecardStorePath } from "@titan-design/app-paths";
 import { expandHome } from "@titan-design/session-read";
 import type { Command } from "commander";
 import type { MinerConfig } from "../config.js";
 import type { ScorecardPaths } from "./load.js";
+import { factoryHealthLines } from "./health-text.js";
 import type { OriginLinkCounts } from "./read-origin.js";
 import { factoryPerRunCli } from "./per-run.js";
 import { rawClassOf, readSample, rebuiltRows, renderReport, reproduce } from "./reproduce.js";
@@ -22,17 +24,8 @@ interface RunFlags {
   factoryDb?: string;
 }
 
-function dataHome(env: NodeJS.ProcessEnv): string {
-  return env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local", "share");
-}
-
 function stateHome(env: NodeJS.ProcessEnv): string {
   return env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state");
-}
-
-/** The scorecard's own store: `--store`, else `TITAN_SCORECARD_STORE`, else `~/.local/share/titan-scorecard/scorecard.sqlite3`. */
-function defaultStoreFile(env: NodeJS.ProcessEnv): string {
-  return expandHome(env.TITAN_SCORECARD_STORE ?? path.join(dataHome(env), "titan-scorecard", "scorecard.sqlite3"));
 }
 
 function scorecardPaths(config: MinerConfig, flags: RunFlags, env: NodeJS.ProcessEnv): ScorecardPaths {
@@ -49,7 +42,7 @@ function scorecardPaths(config: MinerConfig, flags: RunFlags, env: NodeJS.Proces
 }
 
 function runOptions(config: MinerConfig, flags: RunFlags, env: NodeJS.ProcessEnv): ScorecardRunOptions {
-  const store = expandHome(flags.store ?? defaultStoreFile(env));
+  const store = expandHome(flags.store ?? scorecardStorePath({ env }));
   const dryRun = flags.dryRun === true;
   return {
     paths: scorecardPaths(config, flags, env),
@@ -74,8 +67,9 @@ function renderRun(result: ScorecardRunResult): string {
     `  labels: ${result.labels === null ? "none" : `${result.labels.rows} rows, ${result.labels.invalid} invalid`}`,
     `  dirty tasks ${result.dirtyTasks}  task rows changed ${result.taskRowsChanged} of ${result.taskRows}  week cells changed ${result.weekRowsChanged} of ${result.weekRows}`,
     `  spawns without meta.task: ${originLinksText(result.originLinks)}`,
-    `  phase cells changed ${result.phaseRowsChanged}  pool rows written ${result.poolRowsWritten}  marks advanced ${result.marksAdvanced}`,
+    `  phase cells changed ${result.phaseRowsChanged}  factory health weeks changed ${result.healthRowsChanged}  pool rows written ${result.poolRowsWritten}  marks advanced ${result.marksAdvanced}`,
     `  frozen ${result.frozen.join(", ") || "none"}  drift ${result.drift.join(", ") || "none"}`,
+    ...result.factoryHealth.flatMap(factoryHealthLines),
   ];
   return `${lines.join("\n")}\n`;
 }

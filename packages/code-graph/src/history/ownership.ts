@@ -15,7 +15,7 @@ export interface ComputeOwnershipOptions {
   busFactorThreshold?: number;
 }
 
-export const DEFAULT_BUS_FACTOR_THRESHOLD = 0.5;
+const DEFAULT_BUS_FACTOR_THRESHOLD = 0.5;
 
 /** Ownership per path with non-zero churn, keyed by repo-relative path. */
 export function computeOwnership(

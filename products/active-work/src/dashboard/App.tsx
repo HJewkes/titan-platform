@@ -32,81 +32,9 @@ export function App(): React.JSX.Element {
   }, []);
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        minHeight: '100vh',
-        background: palette.bg,
-      }}
-    >
-      <aside
-        style={{
-          width: 220,
-          flexShrink: 0,
-          background: palette.surface1,
-          borderRight: `1px solid ${palette.border}`,
-          padding: sp[10],
-          display: 'flex',
-          flexDirection: 'column',
-          gap: sp[12],
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 700,
-              color: palette.brand,
-              textTransform: 'uppercase',
-              letterSpacing: 0.8,
-            }}
-          >
-            active-work
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: palette.textTertiary,
-              marginTop: 2,
-            }}
-          >
-            dashboard
-          </div>
-          <LiveIndicator status={liveStatus} />
-        </div>
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: sp[2] }}>
-          {NAV_ITEMS.map((item) => {
-            const active = view === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setView(item.id)}
-                style={{
-                  appearance: 'none',
-                  textAlign: 'left',
-                  background: active ? `${palette.brand}1a` : 'transparent',
-                  border: `1px solid ${active ? `${palette.brand}55` : 'transparent'}`,
-                  color: active ? palette.brand : palette.textSecondary,
-                  padding: `${sp[5]}px ${sp[6]}px`,
-                  borderRadius: radii.sm,
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: active ? 600 : 500,
-                }}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-      <main
-        style={{
-          flex: 1,
-          padding: sp[12],
-          overflowY: 'auto',
-        }}
-      >
+    <div style={{ display: 'flex', minHeight: '100vh', background: palette.bg }}>
+      <Sidebar view={view} liveStatus={liveStatus} onSelect={setView} />
+      <main style={{ flex: 1, padding: sp[12], overflowY: 'auto' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           {view === 'initiatives' && <InitiativesView refreshToken={refreshToken} />}
           {view === 'tasks' && <TasksView refreshToken={refreshToken} />}
@@ -114,5 +42,75 @@ export function App(): React.JSX.Element {
         </div>
       </main>
     </div>
+  );
+}
+
+interface SidebarProps {
+  view: ViewId;
+  liveStatus: LiveStatus;
+  onSelect: (id: ViewId) => void;
+}
+
+function Sidebar({ view, liveStatus, onSelect }: SidebarProps): React.JSX.Element {
+  return (
+    <aside
+      style={{
+        width: 220,
+        flexShrink: 0,
+        background: palette.surface1,
+        borderRight: `1px solid ${palette.border}`,
+        padding: sp[10],
+        display: 'flex',
+        flexDirection: 'column',
+        gap: sp[12],
+      }}
+    >
+      <div>
+        <div style={brandStyle}>active-work</div>
+        <div style={{ fontSize: 11, color: palette.textTertiary, marginTop: 2 }}>dashboard</div>
+        <LiveIndicator status={liveStatus} />
+      </div>
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: sp[2] }}>
+        {NAV_ITEMS.map((item) => (
+          <NavButton key={item.id} item={item} active={view === item.id} onSelect={onSelect} />
+        ))}
+      </nav>
+    </aside>
+  );
+}
+
+const brandStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: palette.brand,
+  textTransform: 'uppercase',
+  letterSpacing: 0.8,
+};
+
+interface NavButtonProps {
+  item: NavItem;
+  active: boolean;
+  onSelect: (id: ViewId) => void;
+}
+
+function NavButton({ item, active, onSelect }: NavButtonProps): React.JSX.Element {
+  return (
+    <button
+      onClick={() => onSelect(item.id)}
+      style={{
+        appearance: 'none',
+        textAlign: 'left',
+        background: active ? `${palette.brand}1a` : 'transparent',
+        border: `1px solid ${active ? `${palette.brand}55` : 'transparent'}`,
+        color: active ? palette.brand : palette.textSecondary,
+        padding: `${sp[5]}px ${sp[6]}px`,
+        borderRadius: radii.sm,
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: active ? 600 : 500,
+      }}
+    >
+      {item.label}
+    </button>
   );
 }

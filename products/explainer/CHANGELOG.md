@@ -1,5 +1,61 @@
 # @titan-design/explainer
 
+## 0.3.9
+
+### Patch Changes
+
+- 58034f4: Remove two exports only their own tests used: the explainer beat worker registry and active-work's forgetPreserved (TP-5794).
+- 7bb20b1: Delete the unused history miner and its test (TP-5816).
+- ff47a29: Stop exporting 81 symbols that only their own file uses.
+
+## 0.3.8
+
+### Patch Changes
+
+- Updated dependencies [d025aac]
+- Updated dependencies [ce68429]
+  - @titan-design/pm@0.11.0
+  - @titan-design/owner-queue@0.8.2
+
+## 0.3.7
+
+### Patch Changes
+
+- Updated dependencies [9778eb4]
+  - @titan-design/github@0.13.0
+
+## 0.3.6
+
+### Patch Changes
+
+- Updated dependencies [8485c89]
+  - @titan-design/workflow@0.15.0
+  - @titan-design/hitl@0.10.1
+
+## 0.3.5
+
+### Patch Changes
+
+- Updated dependencies [239d96b]
+  - @titan-design/pm@0.10.0
+  - @titan-design/owner-queue@0.8.1
+
+## 0.3.4
+
+### Patch Changes
+
+- Updated dependencies [5346139]
+  - @titan-design/owner-queue@0.8.0
+  - @titan-design/pm@0.9.0
+
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [fc303a7]
+- Updated dependencies [d497596]
+  - @titan-design/pm@0.8.0
+
 ## 0.3.2
 
 ### Patch Changes

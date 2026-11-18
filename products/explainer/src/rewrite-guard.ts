@@ -1,6 +1,7 @@
 import { guardRewrite, type GuardOptions } from "@titan-design/speech-vet";
 import { contentTerms, sentencesOf } from "./lint-text.js";
 import { DEVICE_METRICS, deviceSpans, endsOnShortest, numberSpans, spokenText, type TextSpan } from "./lint-register.js";
+import { hallmarkRejections } from "./rewrite-guard-hallmarks.js";
 import { unspokenFieldNumbers } from "./lint-screen.js";
 import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, overlongSentence, type SpeechVerdict } from "./lint-voice.js";
 import { numberRanges } from "./rewrite-spans.js";
@@ -23,6 +24,7 @@ export type BeatRejectionRule =
   | "number-vague"
   | "device-added"
   | "closer-added"
+  | "hallmark-added"
   | "list-lost"
   | "list-emptied"
   | "cue-lost"
@@ -194,8 +196,13 @@ interface NamedList {
   rest: readonly string[];
 }
 
+// A three-word first item whose middle word is a third-person verb ("triager picks restart") is the sentence's own
+// subject and verb ahead of the item's noun.
+const VERB_LED_FIRST = /^[\w'’-]+\s+[\w'’-]*[^\Wsu]s\s+/i;
+
 const itemOf = (raw: string, at: number): ListItem => {
-  const trimmed = at === 0 ? raw.replace(ITEM_LEAD, "") : at === 2 ? raw.replace(ITEM_TAIL, "") : raw;
+  const lead = raw.split(/\s+/).length === 3 ? raw.replace(VERB_LED_FIRST, "") : raw;
+  const trimmed = at === 0 ? lead.replace(ITEM_LEAD, "") : at === 2 ? raw.replace(ITEM_TAIL, "") : raw;
   return { raw, terms: [...contentTerms(trimmed)] };
 };
 
@@ -392,6 +399,7 @@ export function guardBeat(before: ScriptBeat, after: BeatRewrite, opts: BeatGuar
     ...vagueRejections(before.spoken, after),
     ...deviceRejections(before.spoken, after),
     ...closerRejections(before.spoken, after),
+    ...hallmarkRejections(before.spoken, after.spoken),
     ...listRejections(lists, after),
     ...emptiedListRejections(lists, after),
     ...cueRejections(before, after),

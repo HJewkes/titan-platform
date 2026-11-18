@@ -3,9 +3,9 @@ import type { RosterRead, RosterReader } from "./ports.js";
 
 /** How long one `agent ls --json` answers every caller in the serve process. */
 export const ROSTER_TTL_MS = 12_000;
-export const ROSTER_TIMEOUT_MS = 90_000;
+const ROSTER_TIMEOUT_MS = 90_000;
 
-export interface RosterReaderOptions {
+interface RosterReaderOptions {
   now?: () => number;
   ttlMs?: number;
 }

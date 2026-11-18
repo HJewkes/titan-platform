@@ -1,5 +1,31 @@
 # @titan-design/coordinator
 
+## 0.7.3
+
+### Patch Changes
+
+- e58686b: Add the `owner-validate` merge guard row and the `shepherd task-approval check <initiative>/<ID>` verb (TP-5411, gate model S8b). A task tagged `owner-validate` is dispatchable, and its PRs merge, only under the owner's console task approval of its current done_when; a task that cannot be read from active-work is refused too. The check exits 0 when the task may be dispatched and 3 with `no-approval`, `done-when-changed` or `task-unread` otherwise. The live switch `shepherd.gateReset.ownerValidate` (off, shadow, on; absent means shadow) is a new editable factory row; under shadow the merge evidence records the would-gate and no outcome changes.
+
+## 0.7.2
+
+### Patch Changes
+
+- ec9f171: Add the `owner-tier` merge guard row (TP-5406, gate model S2). A reviewed head that changes a merge-policy, hold-command, owner-action, gate-resolve-actor or gate-resolve-check file, a CI workflow file (unless the change is a measured CI budget), a publish file, a settings file, or a policy path no named table covers raises the owner gate at merge. The live switch `shepherd.gateReset.ownerTier` (off, shadow, on; absent means shadow) is a new editable factory row; under shadow the merge evidence records the rows it would have gated on and no outcome changes.
+
+## 0.7.1
+
+### Patch Changes
+
+- caa5937: Add a low-tier policy hold (TP-5403 slice B) that ships in shadow. Under `shepherd.gateReset.lowTierPolicy: on`, a low-tier policy touch is held `g10-review` instead of `g10-adversary`, so it lands on one opus MERGE at its head with green CI and no owner gate; the release records the rule `g10-review/low-tier`, the timeline shows it as a `decision` entry, and the merge evidence records `lowTier`. The switch (off, shadow, on) is a new editable factory row. Absent means `shadow`: the run keeps its `g10-adversary` hold and the reason names the low tier it would have had. Setting `on` is an owner config edit that follows the owner's decision on which gate code may go low.
+
+  No file in the classifier's own import closure (`g10-low-tier-closure.json`: the classifier, the registration hold, their file and line-count readers and the workspace package sources they import) goes low; a test recomputes the closure and fails when the list falls behind. Code that calls the rule or writes the verdicts the release reads is not in that closure.
+
+## 0.7.0
+
+### Minor Changes
+
+- 04aea95: `titan-factory dispatch eligible` now opens with the lane's back-pressure admission (TP-5453 P4b, PROPOSAL 2.3): admit or hold, with closed hold codes (`lane-open-prs`, `merged-not-deployed`, `owner-queue`, `reviewer-limit`, `dependency-stalled`, `signal-unreadable`) and the numbers behind each, the task that would go first, and the lane's task inflow against outflow. It reads only. The limits are `shepherd.backPressure.laneOpenPrs` (3), `ownerQueue` (10, counted over the Shepherd gates `shepherd waiting` lists as waiting on the owner) and `inflowWeeks` (2); an absent key means that starting value. The coordinator adds the three as live editable factory rows.
+
 ## 0.6.0
 
 ### Minor Changes

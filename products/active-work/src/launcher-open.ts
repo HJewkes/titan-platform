@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import * as clackPrompts from '@clack/prompts';
 import newCommand from './commands/new.js';
 import openCommand from './commands/open.js';
-import { agentCaller } from './commands/_done-when-gate.js';
+import { cliCaller } from './commands/_done-when-gate.js';
 import { buildClaudeArgs } from './launcher-args.js';
 import { buildLauncherEnv } from './launcher-lease.js';
 import { launchProfileEnv } from './launcher-profile.js';
@@ -12,6 +12,7 @@ import { getActiveRoot } from './utils/paths.js';
 import { EXIT, NotFoundError } from './errors.js';
 import { color } from './utils/color.js';
 import { exitAfterFlush } from './utils/exit.js';
+import { appendUsage } from './utils/usage-log.js';
 import type { CommandContext } from './registry/index.js';
 
 interface InitiativeSummary {
@@ -38,10 +39,12 @@ interface PickerResult {
 
 type OpenResult = OpenSuccess | PickerResult;
 
+type OpenedWithMetadata = Exclude<Awaited<ReturnType<typeof openCommand.run>>, { picker: true }>;
+
 function launcherContext(): CommandContext {
   return { activeRoot: getActiveRoot(), warnings: [], format: 'json',
     cwd: process.cwd(),
-    caller: agentCaller(process.env),
+    caller: cliCaller(process.env),
   };
 }
 
@@ -72,7 +75,39 @@ export async function runOpen(
     // one session make it its own sibling on the next bootstrap.
     lease_mode: 'defer' as const,
   });
-  return openCommand.run(parsed, ctx);
+  const result = await openCommand.run(parsed, ctx);
+  if (!('picker' in result)) await recordOpenUsage(result);
+  return result;
+}
+
+/** aw runs `open` in-process, so the dispatcher's usage log never sees it; wall time counts from process start. */
+async function recordOpenUsage(opened: OpenedWithMetadata): Promise<void> {
+  const { slug, resolved_from, facet, metadata } = opened;
+  await appendUsage({
+    ts: new Date().toISOString(),
+    command: 'aw.open',
+    args: {
+      slug,
+      ...(resolved_from ? { resolved_from } : {}),
+      ...(facet ? { facet: facet.name } : {}),
+    },
+    duration_ms: performance.now(),
+    ...(metadata.timings_ms ? { timings_ms: metadata.timings_ms } : {}),
+    success: true,
+    exit_code: 0,
+  });
+}
+
+/** Counts from process start, so node start and imports are included in the time to spawn. */
+async function recordLaunchUsage(slug: string, toSpawnMs: number): Promise<void> {
+  await appendUsage({
+    ts: new Date().toISOString(),
+    command: 'aw.launch',
+    args: { slug },
+    duration_ms: toSpawnMs,
+    success: true,
+    exit_code: 0,
+  });
 }
 
 /**
@@ -178,7 +213,7 @@ const CLAUDE_MISSING =
   'error: `claude` not found on PATH. Install Claude Code, ' +
   'or run `active-work open <slug>` to print the prompt.\n';
 
-export function spawnClaude(
+export async function spawnClaude(
   opened: OpenSuccess,
   cwd: string,
   { remoteControl, profile }: LaunchOptions,
@@ -190,6 +225,7 @@ export function spawnClaude(
     (dir) => existsSync(dir),
   );
   if (warning) process.stderr.write(color.yellow(`warning: ${warning}\n`));
+  await recordLaunchUsage(opened.slug, performance.now());
   const claudeArgs = buildClaudeArgs(opened.prompt, opened.channels, { remoteControl });
   const child = spawn('claude', claudeArgs, {
     cwd,

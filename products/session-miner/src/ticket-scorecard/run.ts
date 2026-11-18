@@ -5,25 +5,30 @@ import {
   DEFAULT_THRESHOLDS,
   SCORECARD_MIGRATIONS,
   clearDerivedRows,
+  factoryHealthWeeks,
   isoWeek,
   phaseWeeks,
+  readFactoryHealth,
   readPhaseWeeks,
   readTaskRows,
   readWeekRows,
   recordRun,
+  upsertFactoryHealth,
   upsertPhaseWeeks,
   upsertTaskRows,
   upsertWeekRows,
   weekRows,
+  type FactoryHealth,
   type WeekRow,
 } from "@titan-design/session-analytics";
 import { openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { EXIT_LOCKED, tryLock } from "../graph-refresh.js";
 import { dirtySet } from "./dirty.js";
 import { freezeWeeks, type FreezeResult } from "./freeze.js";
-import { buildIndexes, closeSources, notMeasured, openSources, rowSources, type RowSources, type ScorecardPaths } from "./load.js";
+import { buildIndexes, closeSources, notMeasured, openSources, rowSources, type Indexes, type RowSources, type ScorecardPaths } from "./load.js";
 import type { PerRunSource } from "./per-run.js";
 import { snapshotPool } from "./pool.js";
+import { factoryHealthInput } from "./read-health.js";
 import type { OriginLinkCounts } from "./read-origin.js";
 import { computeRows } from "./rows.js";
 import type { SourceName } from "./sources.js";
@@ -59,8 +64,11 @@ export interface ScorecardRunResult {
   taskRowsChanged: number;
   weekRowsChanged: number;
   phaseRowsChanged: number;
+  healthRowsChanged: number;
   poolRowsWritten: number;
   marksAdvanced: number;
+  /** The "Factory health" group of the last two weeks dispatched in; empty when no row was computed. */
+  factoryHealth: FactoryHealth[];
   /** Spawns with no recorded task, by how the session origin link fared; null when no row was computed. */
   originLinks: OriginLinkCounts | null;
   taskRows: number;
@@ -75,9 +83,11 @@ interface Changes {
   taskRowsChanged: number;
   weekRowsChanged: number;
   phaseRowsChanged: number;
+  healthRowsChanged: number;
   poolRowsWritten: number;
   marksAdvanced: number;
   originLinks: OriginLinkCounts | null;
+  factoryHealth: FactoryHealth[];
   freeze: FreezeResult;
 }
 
@@ -93,9 +103,8 @@ function syncWeekRows(store: Db, cells: readonly WeekRow[], computedAt: string):
   return changed.length;
 }
 
-function computeTaskRows(store: Db, s: RowSources, options: ScorecardRunOptions, computedAt: string): Pick<Changes, "dirtyTasks" | "taskRowsChanged" | "marksAdvanced" | "originLinks"> {
+function computeTaskRows(store: Db, s: RowSources, idx: Indexes, options: ScorecardRunOptions, computedAt: string): Pick<Changes, "dirtyTasks" | "taskRowsChanged" | "marksAdvanced" | "originLinks"> {
   const before = readMarks(store);
-  const idx = buildIndexes(s);
   const dirty = dirtySet(s, idx, before, options.rebuild);
   const rows = computeRows(store, s, idx, dirty.keys);
   const taskRowsChanged = upsertTaskRows(store, rows, computedAt);
@@ -104,18 +113,31 @@ function computeTaskRows(store: Db, s: RowSources, options: ScorecardRunOptions,
 
 const NO_FREEZE: FreezeResult = { frozen: [], drift: [], filesWritten: 0 };
 
+/** Weeks the dry run prints the group for. */
+const SHOWN_HEALTH_WEEKS = 2;
+
+/** The group over every stored task row; it reads whole stores, so it is recomputed on every pass and written only where it moved. */
+function computeHealth(store: Db, s: RowSources, idx: Indexes, computedAt: string): { weeks: FactoryHealth[]; changed: number } {
+  const weeks = factoryHealthWeeks(factoryHealthInput(s, idx, readTaskRows(store)));
+  return { weeks, changed: upsertFactoryHealth(store, weeks, computedAt) };
+}
+
 function computeAll(store: Db, s: RowSources, options: ScorecardRunOptions): Changes {
   const now = options.now();
   const computedAt = now.toISOString();
   const week = isoWeek(computedAt);
   if (options.rebuild) clearDerivedRows(store);
   const poolRowsWritten = snapshotPool(store, week, s.tasks, s.labels, options.paths.initiativesRoot);
-  const tasks = computeTaskRows(store, s, options, computedAt);
+  const idx = buildIndexes(s);
+  const tasks = computeTaskRows(store, s, idx, options, computedAt);
   const cells = weekRows(readTaskRows(store), DEFAULT_THRESHOLDS);
   const weekRowsChanged = syncWeekRows(store, cells, computedAt);
   const phaseRowsChanged = upsertPhaseWeeks(store, phaseWeeks([...s.perRun.values()]), computedAt);
-  const freeze = options.weeksDir === null ? NO_FREEZE : freezeWeeks(options.weeksDir, cells, readPhaseWeeks(store), week);
-  return { ...tasks, weekRowsChanged, phaseRowsChanged, poolRowsWritten, freeze };
+  const health = computeHealth(store, s, idx, computedAt);
+  const stored = { cells, phases: readPhaseWeeks(store), health: readFactoryHealth(store) };
+  const freeze = options.weeksDir === null ? NO_FREEZE : freezeWeeks(options.weeksDir, stored, week);
+  const factoryHealth = health.weeks.slice(-SHOWN_HEALTH_WEEKS);
+  return { ...tasks, weekRowsChanged, phaseRowsChanged, healthRowsChanged: health.changed, poolRowsWritten, factoryHealth, freeze };
 }
 
 function openStore(file: string): Db {
@@ -125,10 +147,21 @@ function openStore(file: string): Db {
 }
 
 function changedCount(c: Changes): number {
-  return c.taskRowsChanged + c.weekRowsChanged + c.phaseRowsChanged + c.poolRowsWritten + c.freeze.filesWritten;
+  return c.taskRowsChanged + c.weekRowsChanged + c.phaseRowsChanged + c.healthRowsChanged + c.poolRowsWritten + c.freeze.filesWritten;
 }
 
-const NOTHING: Changes = { dirtyTasks: 0, taskRowsChanged: 0, weekRowsChanged: 0, phaseRowsChanged: 0, poolRowsWritten: 0, marksAdvanced: 0, originLinks: null, freeze: NO_FREEZE };
+const NOTHING: Changes = {
+  dirtyTasks: 0,
+  taskRowsChanged: 0,
+  weekRowsChanged: 0,
+  phaseRowsChanged: 0,
+  healthRowsChanged: 0,
+  poolRowsWritten: 0,
+  marksAdvanced: 0,
+  originLinks: null,
+  factoryHealth: [],
+  freeze: NO_FREEZE,
+};
 
 async function runLocked(options: ScorecardRunOptions): Promise<ScorecardRunResult> {
   const startedAt = options.now();

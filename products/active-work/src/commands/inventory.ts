@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { listInitiativeSlugs } from '../sessions/initiatives.js';
+import { listSlugsForCaller, wireVisibility } from '../sessions/visibility.js';
 import { getActiveRoot } from '../utils/paths.js';
 import { inventoryCache } from '../workspace-index/inventory-cache.js';
 import { summarizeInventory, totalInventory } from '../workspace-index/inventory-summary.js';
@@ -25,6 +25,9 @@ const ClassesSchema = z.object(
 const InitiativeSchema = z.object({
   slug: z.string(),
   human_only: z.boolean(),
+  // The full verdict, brief and charter together (TP-5556): true when agents may not read it,
+  // and true for every row when the charter is unreadable. Readers treat a missing field as true.
+  withheld_from_agents: z.boolean(),
   total: StatSchema,
   classes: ClassesSchema,
   nested_dirs: z.array(StatSchema.extend({ dir: z.string() })),
@@ -50,11 +53,15 @@ export default defineCommand<Args, Result>({
   async run(_args, ctx) {
     const activeRoot = getActiveRoot();
     const [slugs, files, humanOnly] = await Promise.all([
-      listInitiativeSlugs(activeRoot),
+      listSlugsForCaller(activeRoot, ctx),
       inventoryCache.scan(activeRoot),
       humanOnlyPredicate(activeRoot, ctx.warnings),
     ]);
-    const initiatives = summarizeInventory(slugs, files, humanOnly.isHumanOnly);
+    const wire = await wireVisibility(activeRoot, slugs);
+    const initiatives = summarizeInventory(slugs, files, humanOnly.isHumanOnly).map((row) => ({
+      ...row,
+      withheld_from_agents: wire.get(row.slug)?.withheld_from_agents ?? true,
+    }));
     return {
       initiatives,
       totals: totalInventory(initiatives),

@@ -94,7 +94,7 @@ function sceneHost(fake: FakeGitHub, ref: ShepherdStoreRef, roles: ReviewerRoles
   const adversary = twoMerge && { holdMember: { profile: DEFAULT_ADVERSARY_PROFILE }, twoMergeRelease: twoMerge };
   const { roster: up, ...reviewers } = shared;
   const roster: RosterReader = rosterDown ? { ...up, read: async () => ({ kind: "unknown", error: new Error("roster down") }) } : up;
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster, review: { ...reviewers, roles, ...adversary } });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), store: ref, now: () => 0, sleep: async (_ms, signal) => sleep(1, signal), roster, review: { ...reviewers, roles, ...adversary }, ownerTier: "off" });
   const reviewed: ShepherdPhases["review"] = async (ctx, request) => (request.headSha === silentAt ? { kind: "none", cause: "no-verdict", reason: "no_block" } : reviewPhase(ctx, request));
   const review: ShepherdPhases["review"] = async (ctx, request) => {
     const verdict = await reviewed(ctx, request);

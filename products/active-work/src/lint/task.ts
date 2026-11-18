@@ -5,7 +5,7 @@ import { DEFAULT_LIMITS, type LintFinding, type LintLimits } from './types.js';
 
 function countNotesLines(notes: string): number {
   const lines = notes.split('\n');
-  while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+  while (lines.length > 0 && lines.at(-1)?.trim() === '') {
     lines.pop();
   }
   return lines.length;

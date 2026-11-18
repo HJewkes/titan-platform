@@ -13,11 +13,20 @@
     {
       "name": "acceptExternalVerdict drops the reviewer's Follow-ups fields",
       "file": "products/factory/src/shepherd/external-review.ts",
-      "find": ", ...followUpsFields(message.text) };",
-      "replace": " };",
+      "find": "...followUpsFields(message.text), ",
+      "replace": "",
       "kills": [
         "acceptExternalVerdict an adopted seat reviewer's MERGE carries its Follow-ups items",
         "acceptExternalVerdict an adopted seat reviewer's malformed Follow-ups block carries its warning and the MERGE stands"
+      ]
+    },
+    {
+      "name": "acceptExternalVerdict drops the reviewer's Check-candidates fields",
+      "file": "products/factory/src/shepherd/external-review.ts",
+      "find": ", ...checkCandidatesFields(message.text) };",
+      "replace": " };",
+      "kills": [
+        "acceptExternalVerdict an external verdict carries its check candidates"
       ]
     }
   ]

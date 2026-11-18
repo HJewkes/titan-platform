@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { embedSnapshot, pageDataSource } from "@titan-design/react-app";
 import { invokeCommand, successEnvelope } from "@titan-design/registry";
@@ -53,7 +53,15 @@ describe("a post-merge feedback sheet on #/rounds (TP-5458)", () => {
   it("shows each merged PR with its link, changed paths, context and one notes box", async () => {
     await renderSheet();
 
-    expect(screen.getByTestId("round-feedback-link-example-org/example-design#41").textContent).toContain("example-org/example-design#41");
+    const opened = vi.spyOn(window, "open").mockReturnValue(null);
+    const linkText = screen.getByTestId("round-feedback-link-example-org/example-design#41");
+    expect(linkText.textContent).toContain("example-org/example-design#41");
+    const link = linkText.closest("a");
+    expect(link?.getAttribute("href")).toMatch(/^https:\/\//);
+    expect(link?.getAttribute("target")).toBe("_blank");
+    expect(link?.getAttribute("rel")).toContain("noopener");
+    if (link) fireEvent.click(link);
+    expect(opened).not.toHaveBeenCalled();
     expect(screen.getByTestId("round-feedback-files-example-org/example-design#44").textContent).toContain("src/tokens/color.json");
     expect(screen.getByText("task EX-101")).toBeTruthy();
     expect(screen.getByText(/Measured visual tier T2/)).toBeTruthy();

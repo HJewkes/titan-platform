@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "agent filings divided by every filing instead of closings",
+      "file": "packages/session-analytics/src/ticket-scorecard/factory-health.ts",
+      "find": "    perClosed: ratio(agent.length, closed),",
+      "replace": "    perClosed: ratio(agent.length, filed.length),",
+      "kills": ["factory health agent-filed tasks are divided by tasks closed and by merged PRs in the week, inferred filings marked"]
+    },
+    {
+      "name": "filed_by read before the recorded source",
+      "file": "packages/session-analytics/src/ticket-scorecard/factory-health.ts",
+      "find": "  if (recorded.source !== null) return { value: asFiler(recorded.source), origin: \"recorded\" };\n  if (recorded.filedBy !== null) return { value: asFiler(recorded.filedBy), origin: \"recorded\" };",
+      "replace": "  if (recorded.filedBy !== null) return { value: asFiler(recorded.filedBy), origin: \"recorded\" };\n  if (recorded.source !== null) return { value: asFiler(recorded.source), origin: \"recorded\" };",
+      "kills": ["factory health the recorded source decides the filer before filed_by and the inferred label"]
+    },
+    {
+      "name": "gate holds counted over every week",
+      "file": "packages/session-analytics/src/ticket-scorecard/factory-health.ts",
+      "find": "  const gateHolds = input.gateHoldAts.filter(at).length;",
+      "replace": "  const gateHolds = input.gateHoldAts.length;",
+      "kills": ["factory health spawn refusals and gate holds are counted per 100 dispatched tasks"]
+    },
+    {
+      "name": "fix rounds averaged over every task of the tier",
+      "file": "packages/session-analytics/src/ticket-scorecard/factory-health.ts",
+      "find": "fixRoundsMean: ratio(rounds, withPr.length) };",
+      "replace": "fixRoundsMean: ratio(rounds, members.length) };",
+      "kills": ["factory health each dispatch model gets its merge rate and mean fix rounds over tasks with a PR"]
+    },
+    {
+      "name": "an absent wake cause reads as no wakes",
+      "file": "packages/session-analytics/src/ticket-scorecard/factory-health.ts",
+      "find": "      wakes: input.wakes === null ? null : seatWakes(input.wakes, week),",
+      "replace": "      wakes: seatWakes(input.wakes ?? [], week),",
+      "kills": ["factory health figures with no source show as not measured, never zero"]
+    }
+  ]
+}

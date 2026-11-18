@@ -2,14 +2,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { meaningfulTerms, orExpression } from '@titan-design/retrieval';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
 import { relatedContext } from './related.js';
-import { meaningfulTerms, orExpression } from './terms.js';
 import { workspaceSpanReader } from './workspace-spans.js';
 import { openGraph } from '../session-index/graph.js';
 import { refreshInto, scaffold } from '../test-support/workspace-index/fixture.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 /**
  * A latency guard for class-scoped search on a transcript-heavy graph (TP-1960).
@@ -61,7 +62,7 @@ function seedTranscripts(): void {
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+  return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
 async function timed(run: () => unknown): Promise<number> {
@@ -102,6 +103,7 @@ beforeAll(async () => {
   root = path.join(dir, 'active');
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
+  writeCharter(root);
   (await refreshInto(dbPath, root)).db.close();
   seedTranscripts();
 }, 120_000);

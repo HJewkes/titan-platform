@@ -164,9 +164,9 @@ describe('renderWorkerRollup', () => {
 
   it('bounds each spawner exception list and counts the rest', () => {
     const inputs = Array.from({ length: 20 }, (_, i) => stub('aa-w', i));
-    const [spawner] = buildWorkerRollup(inputs).spawners;
-    expect(spawner.exceptions).toHaveLength(3);
-    expect(spawner.exceptions_omitted).toBe(17);
+    const spawner = buildWorkerRollup(inputs).spawners.at(0);
+    expect(spawner?.exceptions).toHaveLength(3);
+    expect(spawner?.exceptions_omitted).toBe(17);
   });
 });
 
@@ -203,7 +203,7 @@ describe('bootstrap worker roll-up', () => {
         includeLiveStatus: false,
       });
       const section = prompt.split('# Parallel sessions since then\n')[1] ?? '';
-      const lines = section.split('\n\n')[0].split('\n');
+      const lines = (section.split('\n\n')[0] ?? '').split('\n');
       expect(lines.length).toBeLessThanOrEqual(5);
       expect(lines[0]).toContain('5 workers');
     });

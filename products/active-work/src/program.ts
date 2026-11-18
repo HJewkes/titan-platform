@@ -3,7 +3,7 @@ import { registry } from './registry/index.js';
 import './commands/index.js'; // populates the registry via side effect
 import { getActiveRoot } from './utils/paths.js';
 import { formatError, EXIT } from './errors.js';
-import { agentCaller } from './commands/_done-when-gate.js';
+import { cliCaller } from './commands/_done-when-gate.js';
 import {
   successEnvelope,
   errorEnvelope,
@@ -100,7 +100,7 @@ function makeAction(
       warnings: [],
       format,
       cwd: process.cwd(),
-      caller: agentCaller(process.env),
+      caller: cliCaller(process.env),
     };
 
     const result = await invoke(cmd, raw, ctx, format);
@@ -175,7 +175,7 @@ type Accumulator = (value: string, previous: string[] | undefined) => string[];
  * `--tags a,b` from a caller used to the old comma lists would otherwise store one wrong value.
  */
 function refuseCommaList(long: string, accumulate: Accumulator): Accumulator {
-  const flag = long.split(/\s/)[0];
+  const flag = long.split(/\s/).at(0) ?? long;
   return (value, previous) => {
     if (value.includes(',')) {
       const parts = value.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
@@ -188,7 +188,7 @@ function refuseCommaList(long: string, accumulate: Accumulator): Accumulator {
 
 /** `@<file>` expands before the comma check, so each line of the file is held to the rule a repeated flag is. */
 function expandFiles(long: string, accumulate: Accumulator): Accumulator {
-  const flag = long.split(/\s/)[0];
+  const flag = long.split(/\s/).at(0) ?? long;
   return (value, previous) => {
     let collected = previous;
     for (const line of expandFileValue(flag, value)) collected = accumulate(line, collected);

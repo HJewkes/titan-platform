@@ -9,6 +9,8 @@ export type { ReviewComment } from "./review-comment.js";
 export type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
 export type { ForcePush, ForcePushPage } from "./force-pushes.js";
 export { FORCE_PUSHES_CAP, ForcePushesTruncated } from "./force-pushes.js";
+export type { PrOutcome, PrOutcomeReview } from "./pr-outcome.js";
+export { PR_OUTCOME_CAP, PrOutcomeMalformed } from "./pr-outcome.js";
 export type { BackstopCommit, BackstopDonePr, BackstopOpenPr, BackstopRange, BackstopRequest, BackstopReview, BackstopSnapshot, BackstopTrain, RateLimit, RollupContext } from "./backstop-read.js";
 export { BACKSTOP_CAPS, BackstopTruncated, DONE_OVERLAP_MS, graphqlPoints, readBackstopSnapshot, snapshotRequests, TRAIN_PREFIX } from "./backstop-read.js";
 export { isConcluded, isPassing, isPassingConclusion, isSucceeded, latestPerName, withoutSupersededCancels } from "./checks.js";
@@ -33,6 +35,7 @@ export type { CheckConclusion, CreateCheckRunRequest } from "./check-run-create.
 export { CHECK_CONCLUSIONS } from "./check-run-create.js";
 export type { GhExec, GhExecOptions, GhResult, GitExec } from "./exec.js";
 export { GhError, execGh, execGit } from "./exec.js";
+export type { GhTransport } from "./transport.js";
 export type { LsRemoteOptions } from "./ls-remote.js";
 export { LsRemoteError, lsRemoteBranchHead, lsRemotePullHead } from "./ls-remote.js";
 export type { GhCliOptions } from "./gh-cli.js";

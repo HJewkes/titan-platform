@@ -2,13 +2,13 @@ import type { JsonEnvelope } from "@titan-design/registry";
 import { InvalidArgumentError } from "commander";
 import { configPath, loadConfig } from "../config.js";
 import type { GateRecord } from "@titan-design/hitl";
-import { ownerQueueSources } from "../needs/command.js";
+import { ownerQueueSources, shellNeedsView } from "../needs/command.js";
 import { collectNeeds } from "../needs/merged.js";
 import type { GateSummary } from "../context.js";
 import type { WatchRow } from "../shepherd/view-schema.js";
 import type { DigestSources, GateFact } from "./collect.js";
 import type { GateReader } from "../needs/hitl-source.js";
-import { activeWorkOrigin } from "../shepherd/cleanup-ports.js";
+import { activeWorkOrigin } from "../shepherd/active-work-origin.js";
 import { activeWorkTaskDates, agentChatSpans } from "./flow-sources.js";
 import { readFriction } from "./friction.js";
 import { pacePath, readPacePools } from "./pace.js";
@@ -34,7 +34,7 @@ export interface DigestFlags {
   full?: boolean;
 }
 
-export interface DigestDeps {
+interface DigestDeps {
   /** The factory store, read for owner friction; without it the digest leaves that section out. */
   dbPath?: string;
   exec?: Exec;
@@ -99,7 +99,7 @@ function factorySources(call: FactoryCall, env: NodeJS.ProcessEnv, morningDir: s
   return {
     rows: () => data<WatchRow[]>("shepherd.list", { state: "all" }),
     gates: async () => (await pendingGates()).map(gateFact),
-    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir })),
+    needs: async () => collectNeeds(ownerQueueSources(env, pendingGateReader(await pendingGates()), { morningDir }), shellNeedsView(env)),
   };
 }
 

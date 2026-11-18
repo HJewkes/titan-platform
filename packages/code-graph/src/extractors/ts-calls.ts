@@ -5,7 +5,7 @@ import { symbolId } from "./ids.js";
 import { inRepoFileId, remapDistToSrc } from "./module-resolution.js";
 import { declarationQualifiedName } from "./ts-scope.js";
 
-export interface TsCallContext {
+interface TsCallContext {
   srcFileId: string;
   /** Qualified names this file has symbol nodes for; a caller must be one of them. */
   localSymbols: ReadonlySet<string>;

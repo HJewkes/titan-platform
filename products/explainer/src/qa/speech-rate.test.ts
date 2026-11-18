@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BEAT_MAX_WPM, OVERALL_WPM_BAND, speechRateReport, speechRateSummary } from "./speech-rate.js";
+import { qaGateChecks } from "./qa-gates.js";
+import { qaStageHarness } from "./qa-stage.test-helpers.js";
 
 describe("speech rate", () => {
   it("flags a beat over the per-beat limit and names it", () => {
@@ -42,5 +44,46 @@ describe("speech rate", () => {
     const report = speechRateReport([]);
     expect(report.overallWpm).toBeNull();
     expect(speechRateSummary(report)).toBe("speech rate: not measured (no beat has word timings)");
+  });
+});
+
+describe("speech rate qa rows", () => {
+  const harness = qaStageHarness();
+  const rows = async (speechRate: unknown) => {
+    const { report } = await harness.run({});
+    const checks = qaGateChecks(JSON.stringify({ ...report, speechRate }));
+    return Object.fromEntries(checks.map((check) => [check.name, check]));
+  };
+  const measured = (wpm: number, fastBeats: string[]) => ({
+    overallWpm: wpm, overallInBand: wpm >= 150 && wpm <= 190, beats: [], fastBeats,
+  });
+
+  it("passes both rows for an in-band video with no fast beat", async () => {
+    const checks = await rows(measured(170, []));
+
+    expect(checks["speech-rate-overall"]).toMatchObject({ gate: false, pass: true });
+    expect(checks["speech-rate-beats"]).toMatchObject({ gate: false, pass: true });
+  });
+
+  it("fails the overall row outside the band, naming the wpm and the band", async () => {
+    const checks = await rows(measured(100, []));
+
+    expect(checks["speech-rate-overall"]).toMatchObject({ gate: false, pass: false });
+    expect(checks["speech-rate-overall"]?.detail).toContain("100 wpm");
+    expect(checks["speech-rate-overall"]?.detail).toContain("150-190");
+  });
+
+  it("fails the beats row listing the fast beats", async () => {
+    const checks = await rows(measured(170, ["b1", "b3"]));
+
+    expect(checks["speech-rate-beats"]).toMatchObject({ gate: false, pass: false });
+    expect(checks["speech-rate-beats"]?.detail).toContain("b1, b3");
+  });
+
+  it("passes both rows with detail 'not measured' when qa.json has no speechRate", async () => {
+    const checks = await rows(undefined);
+
+    expect(checks["speech-rate-overall"]).toMatchObject({ pass: true, detail: "not measured" });
+    expect(checks["speech-rate-beats"]).toMatchObject({ pass: true, detail: "not measured" });
   });
 });

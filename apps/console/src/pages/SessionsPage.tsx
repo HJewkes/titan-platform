@@ -133,6 +133,11 @@ function SessionCard({ row }: { row: SessionRow }): ReactNode {
         </Link>
         {row.agentName ? <AgentFilterLink agent={row.agentName} className={PHONE_TAP_ID_LINK} /> : <NoneText />}
       </HStack>
+      {row.title ? (
+        <Typography variant="body2" className="break-words">
+          {row.title}
+        </Typography>
+      ) : null}
       <RefLinks refs={[...row.taskIds.map((id) => `task:${id}`), ...row.prs]} />
       <Typography variant="caption" color="secondary" className="break-words">
         {figures}
@@ -147,6 +152,7 @@ function SessionTable({ agent, first, cursors }: PagedRows): ReactNode {
       <TableHeader>
         <TableRow>
           <TableHeaderCell>Agent</TableHeaderCell>
+          <TableHeaderCell>Title</TableHeaderCell>
           <TableHeaderCell>Tasks</TableHeaderCell>
           <TableHeaderCell>PR</TableHeaderCell>
           <TableHeaderCell width={180}>Started</TableHeaderCell>
@@ -194,6 +200,7 @@ function SessionTableRow({ row }: { row: SessionRow }): ReactNode {
   return (
     <TableRow testID={`session-row-${row.sessionId}`}>
       <TableCell>{row.agentName ? <AgentFilterLink agent={row.agentName} /> : <NoneText />}</TableCell>
+      <TableCell>{row.title ?? "–"}</TableCell>
       <TableCell>
         <RefLinks refs={row.taskIds.map((id) => `task:${id}`)} />
       </TableCell>

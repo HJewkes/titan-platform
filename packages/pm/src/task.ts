@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TASK_ID_REGEX } from "./ids.js";
+import { SLUG, TASK_ID_REGEX } from "./ids.js";
 import { sourceRefProblem, taskProvenanceFields } from "./provenance.js";
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -23,14 +23,14 @@ const ISO_DATETIME_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\
 const isValidIsoDatetime = (value: string): boolean =>
   ISO_DATETIME_REGEX.test(value) && isValidIsoDate(value.slice(0, 10)) && !Number.isNaN(new Date(value).getTime());
 
-export const isoDatetime = z
+const isoDatetime = z
   .string()
   .refine(isValidIsoDatetime, { message: "Must be a valid ISO-8601 datetime, e.g. 2026-10-08T14:03:22Z" });
 
 // active-work writes full datetimes now, and its older task files still carry a bare date.
-export const isoDateOrDatetime = z.union([isoDate, isoDatetime]);
+const isoDateOrDatetime = z.union([isoDate, isoDatetime]);
 
-export const isoDateOrDatetimeOrNull = z.union([isoDateOrDatetime, z.null()]);
+const isoDateOrDatetimeOrNull = z.union([isoDateOrDatetime, z.null()]);
 
 const taskId = z.string().regex(TASK_ID_REGEX, {
   message: "id must match /^[A-Z][A-Z0-9]*-\\d+$/ (e.g. EC-1)",
@@ -43,7 +43,14 @@ export const deliverableId = z.string().regex(DELIVERABLE_ID_REGEX, {
   message: "deliverable id must match /^[A-Za-z][A-Za-z0-9-]*$/ (e.g. console-v1)",
 });
 
-const isUnique = (ids: string[]): boolean => new Set(ids).size === ids.length;
+// A task key names a task across initiatives: `<initiative-slug>/<ID>`.
+const TASK_KEY_REGEX = new RegExp(`^${SLUG}/${TASK_ID_REGEX.source.slice(1)}`);
+
+const movedKey = z.string().regex(TASK_KEY_REGEX, {
+  message: "must be a task key <initiative-slug>/<ID> (e.g. alpha/EC-1)",
+});
+
+const isUnique =(ids: string[]): boolean => new Set(ids).size === ids.length;
 
 const uniqueTaskIds = z.array(taskId).refine(isUnique, { message: "dep ids must be unique" });
 
@@ -56,7 +63,7 @@ const nonNegative = z.number().nonnegative();
 // deliverable.test.ts greps these sources for.
 const contextAtFirstDeliverable = nonNegative.optional();
 
-export const ActualSchema = z.object({
+const ActualSchema = z.object({
   agentHours: nonNegative.optional(),
   reviewAgentHours: nonNegative.optional(),
   usd: nonNegative.optional(),
@@ -67,7 +74,7 @@ export const ActualSchema = z.object({
   model: z.string().min(1).optional(),
 });
 
-export const ClaimedHoursSchema = z.object({
+const ClaimedHoursSchema = z.object({
   hours: nonNegative,
   by: z.string().min(1),
   at: isoDatetime,
@@ -98,6 +105,8 @@ export const TaskSchema = z.object({
   done_at: isoDateOrDatetimeOrNull,
   actual: ActualSchema.optional(),
   claimedHours: z.array(ClaimedHoursSchema).optional(),
+  moved_to: movedKey.optional(),
+  moved_from: movedKey.optional(),
   ...taskProvenanceFields,
 }).superRefine((task, ctx) => {
   const problem = sourceRefProblem(task);

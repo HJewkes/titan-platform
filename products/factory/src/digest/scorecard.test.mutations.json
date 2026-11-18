@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the weekly slot drops the frozen group",
+      "file": "products/factory/src/digest/scorecard.ts",
+      "find": "factoryHealth: frozen.factoryHealth ?? null };",
+      "replace": "factoryHealth: null };",
+      "kills": ["the factory health group in the digest digest weekly slot prints the factory health group as one line"]
+    },
+    {
+      "name": "inferred filings lose their mark",
+      "file": "products/factory/src/digest/factory-health.ts",
+      "find": "  const inferred = g.agentFiledInferred > 0 ? \" (inferred labels)\" : \"\";",
+      "replace": "  const inferred = \"\";",
+      "kills": ["the factory health group in the digest digest weekly slot prints the factory health group as one line"]
+    },
+    {
+      "name": "the weekly slot leaves the group line out",
+      "file": "products/factory/src/digest/scorecard.ts",
+      "find": "...body, factoryHealthLine(s.factoryHealth)];",
+      "replace": "...body];",
+      "kills": ["the factory health group in the digest a week frozen before the group shows factory health as not measured"]
+    }
+  ]
+}

@@ -14,10 +14,10 @@ import { ReviewerAskTimedOut, ReviewerGateRosterUnread, ReviewerMachineHold, Rev
 import { SpawnDeferred } from "./spawn-gate.js";
 import type { ReviewAsk, RosterReader, SpawnGate } from "./ports.js";
 
-export const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
+const DEFAULT_ROSTER_TIMEOUT_MS = 10_000;
 /** The lineage read lists every retired generation too, many times the live roster, so it outlasts the roster's timeout on a busy broker (TP-4731). */
 const DEFAULT_LINEAGE_TIMEOUT_MS = 90_000;
-export const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
+const DEFAULT_SPAWN_TIMEOUT_MS = 90_000;
 
 /**
  * A roster row plus its transcript fields. `predecessor` is present only when agent-chat reports it, so a row without it

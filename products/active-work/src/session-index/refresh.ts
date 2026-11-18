@@ -14,7 +14,7 @@ import { snapshotOffsets } from './episodes.js';
 import { refreshSteps, type RefreshSteps } from './refresh-steps.js';
 import { runDeltaPass } from './delta-pass.js';
 import { bytesAdvanced, dbBytes, lapTimer, rowsWrittenCounter } from './pass-metrics.js';
-import { restoreUnvisited, retiredSessions, sealedFilter, unvisitedOk } from './retired.js';
+import { retiredSessions, sealedFilter } from './retired.js';
 import { rollupUnfinishedTurns } from './unfinished-turns.js';
 import type { DiscoveredTranscript } from '@titan-design/session-read';
 
@@ -215,7 +215,8 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
           new Set(options.dirtyPaths),
         );
     const visiting = unsealed.slice(0, options.limit ?? unsealed.length);
-    const unvisited = unvisitedOk(graph, discovered, visiting);
+    // Discovery just listed these files, so the missing sweep needs no stat for the ones the walk skipped.
+    const present = discovered.map((transcript) => transcript.displayPath);
     const verify = options.verifyHashes ?? options.full ?? false;
 
     syncPrices(graph, PRICE_TABLE, { tableVersion: PRICE_TABLE_VERSION });
@@ -242,9 +243,9 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
           }),
       facetLimit: options.facetLimit,
       yieldPoint,
+      present,
     });
     if (summary.indexed + summary.rewound > 0) clearDocumentFrequency(graph.db.name);
-    const restored = restoreUnvisited(graph, unvisited);
     phases.corpus = lap();
     // After the rollup, because segmentation reads the wake causes it derives.
     const episodes = await steps.refreshEpisodes(
@@ -293,7 +294,7 @@ export async function runRefresh(options: RefreshOptions = {}): Promise<RefreshS
       unchanged: summary.unchanged,
       quarantined: summary.quarantined,
       missing: summary.missing,
-      reconciledMissing: summary.markedMissing - restored,
+      reconciledMissing: summary.markedMissing,
       facetsBackfilled: summary.facetsBackfilled,
       facetBacklog: summary.facetBacklog,
       ...episodes,

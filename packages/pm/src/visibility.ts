@@ -31,3 +31,18 @@ export function isAgentVisible(initiative: InitiativeBriefRef): boolean {
   if (declared !== undefined) return declared === "agent-visible";
   return transitional.has(initiative.slug);
 }
+
+export type AgentAccess = "shown" | "withheld";
+
+export interface AgentAccessInput extends InitiativeBriefRef {
+  /** Whether the charter lists the initiative human-only; `unknown` when the charter could not be read. */
+  humanOnly: boolean | "unknown";
+}
+
+/**
+ * The one verdict on whether agents may read an initiative. The brief and the charter must
+ * both allow it; an unknown charter withholds everything, so neither source can fail open.
+ */
+export function agentAccess(input: AgentAccessInput): AgentAccess {
+  return input.humanOnly === false && isAgentVisible(input) ? "shown" : "withheld";
+}

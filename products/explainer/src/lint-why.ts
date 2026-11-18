@@ -1,4 +1,5 @@
 import type { L0Check, L0Input, L0Result } from "./eval-l0.js";
+import { contentTerms } from "./lint-text.js";
 import { loadStructures } from "./profile-load.js";
 import type { ScriptBeat, ScriptChapter, ScriptV1 } from "./script-schema.js";
 import type { NarrativeStructure } from "./structure-schema.js";
@@ -22,6 +23,8 @@ const CHAPTER_COUNT = /\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten
 const SHA = /^[0-9a-f]{7,40}$/;
 // The planner guide asks for contractions ("you'll"), so the promise's "you" may carry one before its verb.
 const YOU_VERB = /\byou(?:['’]ll)?\s+\w+/i;
+// "By the end" and "be able to" make the promise a teaser the hallmark rows already flag.
+const TEASER_PROMISE = /^\s*by the end\b|\bbe able to\b/i;
 
 const isTodo = (value: unknown): value is string => typeof value === "string" && value.startsWith("TODO:");
 const norm = (text: string): string => text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -128,17 +131,28 @@ export function whyBeforeHow(script: ScriptV1): L0Result {
   return verdict("Q-W3", "heuristic", late);
 }
 
+const carriesValue = (beat: ScriptBeat): boolean => Boolean(beat.user_value?.fact_ids.length);
+
+/** Q-W4 counts a user value only when the beat's spoken words carry at least half its content terms. */
+function speaksValue(beat: ScriptBeat): boolean {
+  if (!beat.user_value || !carriesValue(beat)) return false;
+  const terms = [...contentTerms(beat.user_value.text)];
+  const said = contentTerms(beat.spoken);
+  return terms.filter((term) => said.has(term)).length * 2 >= terms.length;
+}
+
 function userValuePerChapter(script: ScriptV1): L0Result {
   const missing = bodyChapters(script).flatMap((chapter) => {
     const beats = beatsOf(script, chapter);
-    return beats.some((beat) => beat.user_value?.fact_ids.length) ? [] : [firstBodyBeat(beats)?.id ?? chapter.id];
+    if (beats.some(speaksValue)) return [];
+    return [(beats.find(carriesValue) ?? firstBodyBeat(beats))?.id ?? chapter.id];
   });
   return verdict("Q-W4", "tagged", missing);
 }
 
 function promiseShape(script: ScriptV1): L0Result {
   const promise = script.video.promise;
-  const scriptFailure = isTodo(promise) || !YOU_VERB.test(promise) || /\btour of\b/i.test(promise) || CHAPTER_COUNT.test(promise);
+  const scriptFailure = isTodo(promise) || !YOU_VERB.test(promise) || TEASER_PROMISE.test(promise) || /\btour of\b/i.test(promise) || CHAPTER_COUNT.test(promise);
   const beats = script.beats.filter((beat) => beat.function === "PROMISE" && (/\btour of\b/i.test(beat.spoken) || CHAPTER_COUNT.test(beat.spoken)));
   return verdict("Q-W5", "tagged", beats.map((beat) => beat.id), scriptFailure ? 1 : 0);
 }

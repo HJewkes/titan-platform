@@ -182,7 +182,7 @@ async function readSlugTasks(root, slug, unreadable) {
   return tasks;
 }
 
-export async function readRoot(root) {
+async function readRoot(root) {
   const entries = await fs.readdir(root, { withFileTypes: true });
   const slugs = entries
     .filter((e) => e.isDirectory() && !e.name.startsWith('.'))

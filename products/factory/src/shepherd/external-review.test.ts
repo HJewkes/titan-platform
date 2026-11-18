@@ -109,6 +109,15 @@ describe("acceptExternalVerdict", () => {
     expect(accepted).not.toHaveProperty("followUps");
   });
 
+  it("an external verdict carries its check candidates", () => {
+    const block = "Check-candidates:\n- Swallowed error | lint | A catch that drops the error reads as success";
+    const text = `Findings.\n\n${block}\n\nVerdict: FIX_FIRST\nPR: ${REPO}#4\nHead: ${HEAD}\n`;
+
+    const accepted = acceptExternalVerdict({ ...target, external: SEAT.name }, SEAT, [said(SEAT, text, 2)]);
+
+    expect(accepted).toMatchObject({ kind: "verdict", verdict: "FIX_FIRST", checkCandidates: [{ classKey: "swallowed-error", route: "lint", sketch: "A catch that drops the error reads as success" }] });
+  });
+
   it("is no verdict when a WAIT strictly follows a MERGE at the same head", () => {
     const messages = [said(SEAT, verdictAt("MERGE"), 2), said(SEAT, verdictAt("WAIT"), 3)];
 
@@ -358,7 +367,9 @@ describe("seatFixFirst", () => {
     const failing: ReviewerReader = { read: async () => Promise.reject(missing) };
     const owner = { implementer: "tc-tp-9-a", branch: "agent-chat/tc-tp-9-a" };
     const task = { ...target, owner, others: [{ implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b", label: `${REPO}#5` }] };
-    const untied = (name: string, missing: string) => `seat check: the transcript of ${name} could not be read and nothing says whose reviewer it is (no record names a PR; ${missing}): Error`;
+    const NO_WRITE_TIME = "it never ages out, since the roster gives no write time";
+    const untied = (name: string, missing: string, hint = NO_WRITE_TIME) =>
+      `seat check: the transcript of ${name} could not be read and nothing says whose reviewer it is (no record names a PR; ${missing}): Error; run 'agent-chat agent retire ${name}' if it is no PR's reviewer, or ${hint}`;
 
     it("blocks the PR whose implementer the roster names as the reviewer's", async () => {
       const own = agent("tc-tp-9-a-review");
@@ -407,6 +418,59 @@ describe("seatFixFirst", () => {
       const result = await unlessSeatFixFirst(rosterOf(agent("tc-tp-7-c-review")), failing, task, shepherdMerge, vi.fn(), Date.now, seatWait);
 
       expect(result).toEqual({ kind: "none", reason: untied("tc-tp-7-c-review", 'no registration\'s implementer or branch is "tc-tp-7-c"'), seatHeld: shepherdMerge });
+    });
+
+    describe("a stuck reviewer no registration owns, beside two registered PRs", () => {
+      const HOUR_MS = 60 * 60_000;
+      const NOW = Date.UTC(2030, 0, 2, 12);
+      const stuck = (writtenAgoMs: number, presence: ReviewerAgent["presence"] = "exited") => ({ ...agent("tc-tp-7-c-review"), presence, lastWrittenAt: NOW - writtenAgoMs });
+      const pr5 = { ...target, pr: 5, owner: { implementer: "tc-tp-5-b", branch: "agent-chat/tc-tp-5-b" }, others: [{ ...owner, label: `${REPO}#4` }] };
+      const missing = 'no registration\'s implementer or branch is "tc-tp-7-c"';
+      const checkBoth = (rows: readonly ReviewerAgent[], warn = vi.fn()) => Promise.all([task, pr5].map((at) => seatFixFirst(async () => rows, failing, at, warn, () => NOW)));
+
+      it("clears both PRs, warning with the reviewer's name, once it has written nothing for 5h", async () => {
+        const warn = vi.fn();
+
+        expect(await checkBoth([stuck(5 * HOUR_MS)], warn)).toEqual([{ kind: "clear" }, { kind: "clear" }]);
+        expect(warn).toHaveBeenCalledTimes(2);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(`tc-tp-7-c-review is not the reviewer of ${REPO}#4`));
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining(`tc-tp-7-c-review is not the reviewer of ${REPO}#5`));
+      });
+
+      it("holds both PRs with a retry after 1h, naming the retire command and the age-out time", async () => {
+        const hint = `it ages out at ${new Date(NOW + 3 * HOUR_MS).toISOString()}`;
+
+        const [four, five] = await checkBoth([stuck(HOUR_MS)]);
+
+        expect(four).toEqual({ kind: "none", reason: untied("tc-tp-7-c-review", missing, hint), retry: true });
+        expect(five).toEqual({ kind: "none", reason: untied("tc-tp-7-c-review", missing, hint), retry: true });
+      });
+
+      it("never ages out while any row of the name is not stopped, however old its last write", async () => {
+        const [four] = await checkBoth([stuck(5 * HOUR_MS, "detached"), { ...stuck(9 * HOUR_MS), sessionId: "session-old" }]);
+
+        expect(four).toEqual({ kind: "none", reason: untied("tc-tp-7-c-review", missing, "it never ages out while a row of it is detached"), retry: true });
+      });
+
+      it("ages out a deregistered reviewer by its newest write across rows", async () => {
+        const rows = [stuck(5 * HOUR_MS, "deregistered"), { ...stuck(HOUR_MS), sessionId: "session-new" }];
+
+        const [four] = await checkBoth(rows);
+
+        expect(four).toMatchObject({ kind: "none", retry: true, reason: expect.stringContaining(new Date(NOW + 3 * HOUR_MS).toISOString()) });
+      });
+
+      it("keeps blocking the PR whose implementer the roster ties it to, however old", async () => {
+        const own = { ...agent("tc-tp-9-a-review"), lastWrittenAt: NOW - 9 * HOUR_MS };
+
+        expect(await seatFixFirst(rosterOf(own), failing, task, vi.fn(), () => NOW)).toEqual({ kind: "none", reason: "seat check: the transcript of tc-tp-9-a-review could not be read and the roster ties it to this PR's implementer: Error" });
+      });
+
+      it("keeps a read that may clear blocking with a retry, however old", async () => {
+        const reader: ReviewerReader = { read: async () => Promise.reject(new ReviewerBrokerBusy("busy")) };
+
+        expect(await seatFixFirst(async () => [stuck(9 * HOUR_MS)], reader, task, vi.fn(), () => NOW)).toMatchObject({ kind: "none", retry: true });
+      });
     });
   });
 

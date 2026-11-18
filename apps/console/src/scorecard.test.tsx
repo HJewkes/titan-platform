@@ -69,6 +69,35 @@ describe("the ticket scorecard page", () => {
   });
 });
 
+describe("the factory health section", () => {
+  it("shows the group's figures, model tiers and seat wakes", async () => {
+    renderPage(snapshot(), "#/scorecard");
+
+    const health = await screen.findByTestId("scorecard-factory-health");
+    expect(within(health).getByTestId("scorecard-health-per-merged-pr").textContent).toContain("1.1");
+    expect(within(health).getByTestId("scorecard-health-per-merged-pr").textContent).toContain("inferred");
+    expect(within(health).getByTestId("scorecard-health-holds").textContent).toContain("41.67");
+    expect(within(health).getByTestId("scorecard-tier-large").textContent).toContain("75%");
+    expect(within(health).getByTestId("scorecard-wakes-orbit-coord").textContent).toContain("18");
+  });
+
+  it("shows a figure with no source as not measured, never zero", async () => {
+    renderPage(snapshot(), "#/scorecard");
+
+    const health = await screen.findByTestId("scorecard-factory-health");
+    expect(within(health).getByTestId("scorecard-health-code-size").textContent).toContain("not measured");
+    expect(within(health).getByTestId("scorecard-health-guard-denials").textContent).toContain("not measured");
+    expect(within(screen.getByTestId("scorecard-wakes-kiln-coord")).getByText("not measured")).toBeTruthy();
+  });
+
+  it("says not measured for a week scored before the group", async () => {
+    renderPage(snapshot(), "#/scorecard?week=2031-W09");
+
+    const health = await screen.findByTestId("scorecard-factory-health");
+    expect(within(health).getByText(/Not measured: this week was scored before/)).toBeTruthy();
+  });
+});
+
 describe("a scorecard task's row", () => {
   it("marks each inferred column and leaves recorded ones bare", async () => {
     renderPage(snapshot(), `#/scorecard/${encodeURIComponent("orbit-relay/OR-15")}`);

@@ -5,6 +5,7 @@ import { getActiveRoot } from '../utils/paths.js';
 import { parseFrontmatter } from '../utils/gray-matter-io.js';
 import { flipWorkspaceSpans, pendingBackfillSources } from './backfill.js';
 import { rebuildEdges, type EdgeCounts, type NoteFacts } from './edges.js';
+import { collectMentionTexts } from './mention-texts.js';
 import { readRecord, type WorkspaceRecord } from './read.js';
 import { scanWorkspace, type WorkspaceClass, type WorkspaceFile } from './scan.js';
 import { clearDocumentFrequency } from '../search/document-frequency.js';
@@ -28,6 +29,8 @@ export interface WorkspaceRefreshSummary {
   malformed: { path: string; reason: string }[];
   rows: Record<WorkspaceClass, number>;
   edges: EdgeCounts;
+  /** Source bodies over 256 KB, left out of the mentions pass. */
+  oversizedSources: number;
   /**
    * Fraction of `search_fts` rows with no span behind them. `workspace_fts`
    * deletes its rows with its spans, so this measures the transcript table,
@@ -53,6 +56,8 @@ interface WorkspaceRefreshOptions {
   activeRoot?: string;
   /** Re-read every file, ignoring the watermarks. Callers reset the tables first. */
   full?: boolean;
+  /** Reads one note file for the edge pass; injected so a test can count body reads. */
+  readNote?: (absolutePath: string) => Promise<string>;
 }
 
 /**
@@ -179,8 +184,51 @@ function removeVanished(
  * because filing one new task makes an existing note's `TP-40` resolve. 556
  * small files is the price of a full rebuild and an incremental sequence
  * producing the same edges.
+ *
+ * Only the edges are recomputed over the whole corpus; the bodies are not. A
+ * body is cached per graph by path with the same `mtime` and `size` pair that
+ * gates indexing, so a pass reads just the notes that changed or are new, and
+ * the cache is rebuilt from the surviving rows so removed notes drop out.
  */
-async function collectNoteFacts(activeRoot: string, graph: WorkspaceGraph): Promise<NoteFacts[]> {
+const bodyCaches = new WeakMap<WorkspaceGraph, Map<string, CachedBody>>();
+
+interface CachedBody {
+  mtime: string;
+  size: number;
+  body: string;
+}
+
+interface NoteBodySource {
+  readNote: (absolutePath: string) => Promise<string>;
+  files: ReadonlyMap<string, WorkspaceFile>;
+  full: boolean;
+}
+
+async function cachedBody(
+  activeRoot: string,
+  relativePath: string,
+  previous: ReadonlyMap<string, CachedBody>,
+  next: Map<string, CachedBody>,
+  source: NoteBodySource,
+): Promise<string> {
+  const file = source.files.get(relativePath);
+  const hit = previous.get(relativePath);
+  if (!source.full && file && hit && hit.mtime === file.mtime && hit.size === file.size) {
+    next.set(relativePath, hit);
+    return hit.body;
+  }
+  const body = await readNoteBody(toAbsolute(activeRoot, relativePath), source.readNote);
+  if (file && body !== null) next.set(relativePath, { mtime: file.mtime, size: file.size, body });
+  return body ?? '';
+}
+
+async function collectNoteFacts(
+  activeRoot: string,
+  graph: WorkspaceGraph,
+  source: NoteBodySource,
+): Promise<NoteFacts[]> {
+  const previous = bodyCaches.get(graph) ?? new Map<string, CachedBody>();
+  const next = new Map<string, CachedBody>();
   const rows = graph.db
     .prepare<
       [],
@@ -197,9 +245,10 @@ async function collectNoteFacts(activeRoot: string, graph: WorkspaceGraph): Prom
       ref: row.note_ref,
       initiative: row.initiative,
       tags: parseTags(row.tags),
-      body: await readBody(toAbsolute(activeRoot, row.path)),
+      body: await cachedBody(activeRoot, row.path, previous, next, source),
     })),
   );
+  bodyCaches.set(graph, next);
   return facts;
 }
 
@@ -216,12 +265,15 @@ function parseTags(stored: string | null): string[] {
   }
 }
 
-/** The body, not the file: frontmatter is metadata, and `mentions` is defined over prose. */
-async function readBody(absolutePath: string): Promise<string> {
+/** The body, not the file: frontmatter is metadata, and `mentions` is defined over prose. A failed read is null so it is never cached. */
+async function readNoteBody(
+  absolutePath: string,
+  readNote: (absolutePath: string) => Promise<string>,
+): Promise<string | null> {
   try {
-    return parseFrontmatter(await fs.readFile(absolutePath, 'utf8')).content;
+    return parseFrontmatter(await readNote(absolutePath)).content;
   } catch {
-    return '';
+    return null;
   }
 }
 
@@ -234,6 +286,7 @@ function countRows(graph: WorkspaceGraph): Record<WorkspaceClass, number> {
     task: count('workspace_task'),
     session: count('session_record'),
     source: count('source'),
+    plan: count('plan_record'),
   };
 }
 
@@ -298,7 +351,14 @@ export async function refreshWorkspace(
   const legacySpansRetired = flipWorkspaceSpans(graph);
   writer.spansChanged += legacySpansRetired;
   if (writer.spansChanged > 0) clearDocumentFrequency(graph.db.name);
-  const edges = rebuildEdges(graph, await collectNoteFacts(activeRoot, graph));
+  const readNote = options.readNote ?? ((p: string) => fs.readFile(p, 'utf8'));
+  const source = {
+    readNote,
+    files: new Map(files.map((f) => [f.path, f])),
+    full: options.full ?? false,
+  };
+  const { texts, oversizedSources } = await collectMentionTexts(activeRoot, graph);
+  const edges = rebuildEdges(graph, await collectNoteFacts(activeRoot, graph, source), texts);
   return {
     files: files.length,
     indexed,
@@ -307,6 +367,7 @@ export async function refreshWorkspace(
     malformed,
     rows: countRows(graph),
     edges,
+    oversizedSources,
     orphanRatio: graph.spans.orphanRatio(),
     legacySpansRetired,
   };

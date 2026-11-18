@@ -30,7 +30,7 @@ export const GateRunSchema = z.object({
 });
 export type GateRun = z.infer<typeof GateRunSchema>;
 
-export const ReviewRowSchema = z.object({
+const ReviewRowSchema = z.object({
   rubric: z.number().int().min(1),
   result: z.enum(["pass", "fail"]),
   file: z.string().optional(),
@@ -70,7 +70,6 @@ export const CommandResultSchema = z.object({ pass: z.boolean(), status: z.numbe
 /** `task` is the filed `<initiative>/<id>`, or null with why it could not be filed. */
 export const FiledTaskSchema = z.object({ task: z.string().nullable(), detail: z.string() });
 export const ExtractSchema = z.object({ targets: z.unknown(), costUsd: z.number().optional() });
-export const PlanSchema = z.object({ spec: z.unknown() });
 
 export const DeviceAnswer = (headSha: string) => z.object({ decision: z.enum(["pass", "fail"]), headSha: z.literal(headSha), note: z.string().optional() });
 export const InfraParkAnswer = (headSha: string) => z.object({ decision: z.enum(["retry", "stop"]), headSha: z.literal(headSha) });

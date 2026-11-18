@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { LedgerRowSchema } from '@titan-design/decider';
 import {
   assembleBootstrap,
   type LiveStatusFetcher,
@@ -8,7 +9,6 @@ import {
   type SiblingSession,
 } from './prompt.js';
 import { formatTimeSince, recentlyDoneTasks } from './render-tasks.js';
-import { formatElapsedShort } from './render-sessions.js';
 import newCommand from '../commands/new.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
@@ -39,6 +39,7 @@ interface SessionFixture {
   next_steps?: NextStepFixture[];
   resolves?: ResolveFixture[];
   no_loops?: true;
+  ledger?: true;
 }
 
 function nextStepLines(steps: NextStepFixture[]): string[] {
@@ -80,6 +81,7 @@ async function writeSession(activeRoot: string, session: SessionFixture): Promis
     `ended: ${session.ended}`,
     `track: ${session.track}`,
     ...(session.no_loops ? ['no_loops: true'] : []),
+    ...(session.ledger ? ['ledger: true'] : []),
     ...nextStepLines(session.next_steps ?? []),
     ...resolveLines(session.resolves ?? []),
     '---',
@@ -792,6 +794,39 @@ describe('assembleBootstrap', () => {
     });
   });
 
+  it('keeps a real session as the narrative when a newer loop ledger record exists (TP-1016)', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await fs.rm(path.join(activeRoot, SAMPLE_SLUG, 'sessions', '2026-05-10-1430-fixture001.md'));
+      await writeSession(activeRoot, {
+        session_id: 'real-adhoc',
+        started: '2026-05-09T09:00:00Z',
+        ended: '2026-05-09T10:00:00Z',
+        track: 'adhoc',
+        body: '- Real work before the loop\n',
+      });
+      await writeSession(activeRoot, {
+        session_id: 'loop-ab12cd34',
+        started: '2026-05-11T09:00:00Z',
+        ended: '2026-05-11T09:00:00Z',
+        track: 'adhoc',
+        ledger: true,
+        body: 'Loop opened outside wrap: follow up\n',
+        next_steps: [{ id: 's1', text: 'follow up', kind: 'prose' }],
+      });
+
+      const { prompt, metadata } = await assembleBootstrap({
+        activeRoot,
+        slug: SAMPLE_SLUG,
+        now: FIXTURE_NOW,
+        ...offlineOpts,
+      });
+
+      expect(metadata.last_session?.filename).toBe('2026-05-09-0900-real-adhoc.md');
+      expect(prompt).not.toContain('# Parallel sessions');
+      expect(prompt).not.toContain('Loop opened outside wrap');
+    });
+  });
+
   it('excludes parallel sessions older than the last canonical one (AW-36)', async () => {
     await withTempActiveRoot(async (activeRoot) => {
       await writeSession(activeRoot, {
@@ -866,11 +901,13 @@ describe('assembleBootstrap open loops', () => {
         ...offlineOpts,
       });
 
-      expect(prompt).toContain('# Open loops (2 hanging, oldest 15d)');
-      expect(prompt).toContain('[15d] SQLite index blocked on eval harness');
-      expect(prompt).toContain('[ 1d] PR #57 awaiting review');
+      expect(prompt).toContain('# Open loops (2 hanging, oldest from 2026-04-27)');
+      expect(prompt).toContain('- SQLite index blocked on eval harness');
+      expect(prompt).toContain('- PR #57 awaiting review');
       expect(prompt).toContain('(from 2026-04-27, ref 2026-04-27-0900-loop-old#s1)');
-      expect(prompt.indexOf('[15d]')).toBeLessThan(prompt.indexOf('[ 1d]'));
+      expect(prompt.indexOf('SQLite index blocked')).toBeLessThan(
+        prompt.indexOf('PR #57 awaiting review'),
+      );
       expect(metadata.open_loop_count).toBe(2);
     });
   });
@@ -901,8 +938,8 @@ describe('assembleBootstrap open loops', () => {
         ...offlineOpts,
       });
 
-      expect(prompt).toContain('[1d] SI-1 Drain the miner backlog');
-      expect(prompt).toContain('[1d] PR #3 (agent-chat) is open');
+      expect(prompt).toContain('- SI-1 Drain the miner backlog');
+      expect(prompt).toContain('- PR #3 (agent-chat) is open');
       expect(prompt).not.toContain('SI-1 SI-1');
       expect(prompt).not.toContain('github.com/HJewkes/agent-chat/pull/3 PR #3');
     });
@@ -928,7 +965,7 @@ describe('assembleBootstrap open loops', () => {
         ...offlineOpts,
       });
 
-      expect(prompt).toContain('[1d] SI-1 SI-2 is done, so unblock this');
+      expect(prompt).toContain('- SI-1 SI-2 is done, so unblock this');
     });
   });
 
@@ -957,7 +994,7 @@ describe('assembleBootstrap open loops', () => {
         ...offlineOpts,
       });
 
-      expect(prompt).toContain('[1d] PR #3 awaiting review');
+      expect(prompt).toContain('- PR #3 awaiting review');
     });
   });
 
@@ -1362,7 +1399,7 @@ describe('sibling-session detection (CC-9)', () => {
         ...offlineOpts,
       });
       expect(prompt).toContain('/Users/dev/code/sample');
-      expect(prompt).toContain('12m ago');
+      expect(prompt).toContain('started at 2026-05-12T15:48:00Z');
       expect(prompt).toContain('active-work wrap --track adhoc');
       // The top task is named so the ownership question is answerable.
       expect(prompt).toContain('First sample task');
@@ -1536,24 +1573,52 @@ describe('sibling-session detection (CC-9)', () => {
       expect(prompt).toContain('/Users/dev/code/other-checkout');
     });
   });
-});
 
-describe('formatElapsedShort', () => {
-  const now = new Date('2026-05-12T12:00:00Z');
+  describe('recent owner answers (TP-6331)', () => {
+    const answered = LedgerRowSchema.parse({
+      key: 'k-answered',
+      source: 'queue',
+      asked_at: '2026-05-10T09:00:00Z',
+      initiative: SAMPLE_SLUG,
+      header: 'Pick a store',
+      question: 'Which store?',
+      options: [],
+      recommended: null,
+      answer: 'SQLite',
+    });
 
-  it('reports sub-minute ages as "just started"', () => {
-    expect(formatElapsedShort(new Date('2026-05-12T11:59:30Z'), now)).toBe('just started');
-  });
+    it('puts injected ledger rows in the prompt', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const { prompt } = await assembleBootstrap({
+          activeRoot,
+          slug: SAMPLE_SLUG,
+          now: FIXTURE_NOW,
+          decisionRows: async () => ({ rows: [answered], malformed: 0 }),
+          ...offlineOpts,
+        });
 
-  it('reports minutes under an hour', () => {
-    expect(formatElapsedShort(new Date('2026-05-12T11:23:00Z'), now)).toBe('37m ago');
-  });
+        expect(prompt).toContain(
+          '# Recent owner answers\n- 2026-05-10 Q: Pick a store -> SQLite (precedent k-answered)',
+        );
+      });
+    });
 
-  it('reports whole hours without a minutes remainder', () => {
-    expect(formatElapsedShort(new Date('2026-05-12T10:00:00Z'), now)).toBe('2h ago');
-  });
+    it('still assembles the prompt and reports a throwing reader as degraded', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const { prompt, metadata } = await assembleBootstrap({
+          activeRoot,
+          slug: SAMPLE_SLUG,
+          now: FIXTURE_NOW,
+          decisionRows: async () => {
+            throw new Error('ledger unreadable');
+          },
+          ...offlineOpts,
+        });
 
-  it('reports hours and minutes together', () => {
-    expect(formatElapsedShort(new Date('2026-05-12T09:35:00Z'), now)).toBe('2h 25m ago');
+        expect(prompt).not.toContain('Recent owner answers');
+        expect(prompt).toContain('Sample Initiative');
+        expect(metadata.retrieval_degraded).toContain('decisions: error (ledger unreadable)');
+      });
+    });
   });
 });

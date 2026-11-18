@@ -11,10 +11,10 @@ import { clearReviewWait, noteReviewWait, transient } from "./review-wait.js";
 import type { AwaitVerdictResult, ReviewWiring } from "./review.js";
 import type { OwnerOverride } from "./override-stats.js";
 import type { Registration } from "./store.js";
-import { awaitingTranscript, rosterTie, type SeatRow, type SeatTarget } from "./seat-tie.js";
+import { awaitingTranscript, rosterTie, untiedAgeOut, type SeatRow, type SeatTarget } from "./seat-tie.js";
 import { DamagedTranscriptError, ownRecordsNameOtherPr, reviewsThisPr, type NameRead } from "./seat-evidence.js";
 import type { SeatReader } from "./seat-reader.js";
-import { fixFirstFindings, followUpsFields, namesTarget, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
+import { checkCandidatesFields, fixFirstFindings, followUpsFields, namesTarget, type AwaitVerdictInput, type ReviewerAgent, type ReviewerMessage, type ReviewerReader, type ReviewTarget } from "@titan-design/review-panel";
 
 /** The reviewer a hold waits on, from `hold --reviewer` alone; a name in the hold's reason text is never read as one. */
 export function externalReviewer(registration: Registration | undefined): string | undefined {
@@ -31,7 +31,7 @@ export function adoptedReviewer(registration: Registration | undefined): string 
   return holdClass !== undefined && OWN_REVIEW_HOLDS.has(holdClass) ? undefined : externalReviewer(registration);
 }
 
-export interface ExternalVerdictInput {
+interface ExternalVerdictInput {
   repo: string;
   pr: number;
   head: string;
@@ -55,7 +55,8 @@ export function acceptExternalVerdict(input: ExternalVerdictInput, row: Reviewer
   if (!newest) return { kind: "none" };
   const { message, block } = newest;
   if (!block.ok) return { kind: "none", reason: "wait" };
-  const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId }, ...followUpsFields(message.text) };
+  const reviewerNotes = { ...followUpsFields(message.text), ...checkCandidatesFields(message.text) };
+  const accepted = { kind: "verdict" as const, head: block.head, locator: message.locator, reviewer: { agentId: row.agentId, sessionId: row.sessionId }, ...reviewerNotes };
   return block.verdict === "MERGE" ? { ...accepted, verdict: "MERGE", ...(block.ciPolicy && { ciPolicy: block.ciPolicy }) } : { ...accepted, verdict: "FIX_FIRST", text: fixFirstFindings(input, own, message.text), ...(block.closer && { closer: block.closer }) };
 }
 
@@ -142,7 +143,7 @@ async function readReviewer(reader: SeatReader, target: ReviewTarget, rows: read
  * `clear` lets the MERGE stand; a FIX_FIRST sends the head back; a `none` with a reason is a read that failed, or a seat WAIT
  * (`wait`, naming the `seat`), and blocks the head too. `retry` marks a failed read that may succeed if asked again.
  */
-export type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true; seat?: string } | { kind: "clear"; merged?: string };
+type SeatCheck = Extract<AwaitVerdictResult, { verdict: "FIX_FIRST" }> | { kind: "none"; reason: string; wait?: true; retry?: true; seat?: string } | { kind: "clear"; merged?: string };
 
 const retryIf = (clears: boolean) => (clears ? { retry: true as const } : {});
 
@@ -170,9 +171,10 @@ const unread = (name: string, failure: unknown, clears: boolean): SeatCheck => {
  * so the seat wait bounds it. One that reads the same every time clears with a warning only on evidence that the reviewer is
  * another PR's: every failed session is damaged and its own records name a PR with another number, or the failed sessions' name stem or
  * directory is another registered PR's implementer or branch. A row of the name tied to this PR still blocks. With no evidence either
- * way it blocks with a retry, so the seat wait holds the MERGE, and the reason names what was missing.
+ * way it blocks with a retry, so the seat wait holds the MERGE, and the reason names what was missing (see `unowned`).
+ * `rows` is every roster row of the name; only those with a session were read.
  */
-function failedRead(name: string, target: SeatTarget, read: NameRead, rows: readonly SeatRow[], warn: (line: string) => void): SeatCheck | undefined {
+function failedRead(name: string, target: SeatTarget, read: NameRead, rows: readonly SeatRow[], warn: (line: string) => void, now: number): SeatCheck | undefined {
   const hards = read.failures.filter((each) => !(each instanceof DamagedTranscriptError));
   const failure = hards[0] ?? read.failures[0];
   if (failure === undefined) return undefined;
@@ -180,11 +182,20 @@ function failedRead(name: string, target: SeatTarget, read: NameRead, rows: read
   const clearing = hards.find(transient);
   if (clearing !== undefined) return unread(name, clearing, true);
   const tieOf = (of: readonly SeatRow[]) => rosterTie(target, of, seatStem);
-  const tie = tieOf(rows).kind === "own" ? { kind: "own" as const } : tieOf(read.failedRows);
+  const tie = tieOf(rows.filter((row) => row.sessionId !== "")).kind === "own" ? { kind: "own" as const } : tieOf(read.failedRows);
   if (tie.kind !== "own" && read.failures.every((each) => ownRecordsNameOtherPr(target, each))) return untied(name, target, "its records name another PR", failure, warn);
   if (tie.kind === "other") return untied(name, target, `the roster ties it to ${tie.pr}'s registration`, failure, warn);
-  const why = tie.kind === "own" ? "the roster ties it to this PR's implementer" : `nothing says whose reviewer it is (no record names a PR; ${tie.missing})`;
-  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read and ${why}: ${failureText(failure)}`, ...retryIf(tie.kind === "none") };
+  if (tie.kind === "own") return { kind: "none", reason: `seat check: the transcript of ${name} could not be read and the roster ties it to this PR's implementer: ${failureText(failure)}` };
+  return unowned(name, target, tie.missing, failure, rows, now, warn);
+}
+
+/** A reviewer nothing ties to any PR blocks with a retry and names how to retire it, until it has stopped and written nothing for the age-out. */
+function unowned(name: string, target: SeatTarget, missing: string, failure: unknown, rows: readonly SeatRow[], now: number, warn: (line: string) => void): SeatCheck | undefined {
+  const age = untiedAgeOut(rows, now);
+  if (age.kind === "aged") return untied(name, target, `nothing ties it to a PR and it has stopped, with no write since ${new Date(age.since).toISOString()}`, failure, warn);
+  const why = `nothing says whose reviewer it is (no record names a PR; ${missing})`;
+  const hint = `run 'agent-chat agent retire ${name}' if it is no PR's reviewer, or ${age.hint}`;
+  return { kind: "none", reason: `seat check: the transcript of ${name} could not be read and ${why}: ${failureText(failure)}; ${hint}`, retry: true };
 }
 
 /** The PR's own reviewer, spawned but with no transcript yet, may still say FIX_FIRST, so the seat wait holds the MERGE for it. */
@@ -209,7 +220,13 @@ function sentBack(name: string, target: ReviewTarget, message: ReviewerMessage, 
  * readable records or the roster show it is another PR's reviewer (see `failedRead`). A reviewer with no transcript yet reads as no
  * verdict, unless the roster ties it to this PR: that one blocks with a retry (see `notWrittenYet`). Any FIX_FIRST is preferred over a failed read, since a fixer can act on it.
  */
-export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: SeatReader, target: SeatTarget, warn: (line: string) => void = console.warn): Promise<SeatCheck> {
+export async function seatFixFirst(
+  roster: () => Promise<readonly ReviewerAgent[]>,
+  reader: SeatReader,
+  target: SeatTarget,
+  warn: (line: string) => void = console.warn,
+  now: () => number = Date.now,
+): Promise<SeatCheck> {
   let listed: readonly ReviewerAgent[];
   try {
     listed = await roster();
@@ -227,7 +244,7 @@ export async function seatFixFirst(roster: () => Promise<readonly ReviewerAgent[
     if (newest?.verdict === "FIX_FIRST") return sentBack(name, target, newest.message, read.messages);
     if (newest?.verdict === "WAIT") return { kind: "none", reason: `seat check: ${name} said WAIT at ${target.head}, so its required checks had not finished`, wait: true, seat: name };
     if (newest?.verdict === "MERGE") merged ??= name;
-    failed ??= failedRead(name, target, read, named, warn) ?? notWrittenYet(name, target, namedSeats);
+    failed ??= failedRead(name, target, read, namedSeats, warn, now()) ?? notWrittenYet(name, target, namedSeats);
   }
   return failed ?? { kind: "clear", ...(merged !== undefined && { merged }) };
 }
@@ -261,11 +278,12 @@ const unsettled = (check: SeatCheck): boolean => check.kind === "none" && (check
  * its verdict and a broker timeout does not cost the own MERGE; the deadline returns the standing check. The hold shows in the view,
  * because the step records nothing until it ends.
  */
-async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: SeatTarget, timing: SeatWaitTiming, signal: AbortSignal, warn?: (line: string) => void): Promise<SeatCheck> {
+async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: SeatTarget, seatWait: SeatWait, warn: ((line: string) => void) | undefined, now: () => number): Promise<SeatCheck> {
+  const { timing, signal } = seatWait;
   const clock = deadline(timing);
   try {
     for (;;) {
-      const check = await seatFixFirst(roster, reader, target, warn);
+      const check = await seatFixFirst(roster, reader, target, warn, now);
       if (!unsettled(check) || clock.expired()) return check;
       if (check.kind === "none") noteReviewWait(target.repo, target.pr, `holding Shepherd's MERGE at ${target.head} on the seat check: ${check.reason}`);
       await clock.sleep(timing.pollMs, signal);
@@ -282,7 +300,7 @@ async function awaitSeatSettled(roster: () => Promise<readonly ReviewerAgent[]>,
  */
 export async function unlessSeatFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: SeatTarget, result: AwaitVerdictResult, warn?: (line: string) => void, now: () => number = Date.now, seatWait?: SeatWait): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "MERGE") return result;
-  const check = seatWait ? await awaitSeatSettled(roster, reader, target, seatWait.timing, seatWait.signal, warn) : await seatFixFirst(roster, reader, target, warn);
+  const check = seatWait ? await awaitSeatSettled(roster, reader, target, seatWait, warn, now) : await seatFixFirst(roster, reader, target, warn, now);
   if (check.kind === "clear") return result;
   if (check.kind === "verdict") return { ...check, ownerOverride: disagreement(target.head, "MERGE", "FIX_FIRST", now) };
   const none: SeatNone = { kind: "none", reason: check.reason, ...(check.seat !== undefined && { seat: check.seat }) };
@@ -357,6 +375,6 @@ export function seatVetoed(
 /** The reverse G10 disagreement: Shepherd's own review sent the head back while a seat reviewer said MERGE at it. The verdict stands. */
 async function seatMergeOverFixFirst(roster: () => Promise<readonly ReviewerAgent[]>, reader: ReviewerReader, target: SeatTarget, result: AwaitVerdictResult, now: () => number): Promise<AwaitVerdictResult> {
   if (result.kind !== "verdict" || result.verdict !== "FIX_FIRST") return result;
-  const check = await seatFixFirst(roster, reader, target);
+  const check = await seatFixFirst(roster, reader, target, undefined, now);
   return check.kind === "clear" && check.merged !== undefined ? { ...result, ownerOverride: disagreement(target.head, "FIX_FIRST", "MERGE", now) } : result;
 }

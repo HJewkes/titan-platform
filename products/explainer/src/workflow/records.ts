@@ -34,6 +34,14 @@ export type StageUsage = z.infer<typeof StageUsageSchema>;
 
 export const NO_USAGE: StageUsage = { usd: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, calls: 0 };
 
+/** One stage's StepUsage row as `render-manifest.json` lists it: its record's spend, and its wall time in seconds. */
+export const StepUsageRowSchema = z.strictObject({ stage: z.enum(STAGES), wallS: z.number().nonnegative(), ...StageUsageSchema.shape });
+export type StepUsageRow = z.infer<typeof StepUsageRowSchema>;
+
+const seconds = (ms: number): number => Math.round(ms) / 1000;
+
+export const stepUsageRow = (record: Pick<StageRecord, "stage" | "wallMs" | "usage">): StepUsageRow => ({ stage: record.stage, wallS: seconds(record.wallMs), ...record.usage });
+
 /** A check's verdict. `gate: true` means a failed check failed its stage; any other check is reported only. */
 export const CheckSchema = z.object({ name: z.string(), pass: z.boolean(), gate: z.boolean().optional(), detail: z.string().optional() });
 export type Check = z.infer<typeof CheckSchema>;

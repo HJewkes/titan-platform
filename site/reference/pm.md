@@ -284,6 +284,26 @@ A transitional list, dated 2026-11-12, keeps a named set of code initiatives vis
 briefs carry no `visibility` key yet. An explicit `visibility` always wins over it, and a
 follow-up deletes the list once those briefs declare it.
 
+## Task keys
+
+`resolveTaskKey(input, index)` turns a task reference into the one canonical key,
+`<initiative>/<TASK-ID>`, that execution records join on. `input` is a bare id (`AL-7`), a
+prefixed key (`alpha/AL-7`) or a repo-qualified one (`acme/alpha/AL-7`). `index` holds every
+task's id and initiative and every initiative's `task_prefix`, as active-work records them.
+The answer is `{ ok: true, key }`, or `{ ok: false, reason, detail }` with `reason` one of
+`malformed`, `not-found`, `ambiguous` or `wrong-initiative`. An id two initiatives hold goes to
+the one whose `task_prefix` issued it. A qualifier that is not the task's initiative is refused,
+never corrected; the refusal carries the key the id alone resolves to as `proposed`, so a report
+can name it.
+
+```ts
+import { resolveTaskKey } from "@titan-design/pm";
+
+const index = { tasks: [{ id: "AL-7", initiative: "alpha" }], prefixes: [{ initiative: "alpha", taskPrefix: "AL" }] };
+resolveTaskKey("AL-7", index); // { ok: true, key: "alpha/AL-7", ... }
+resolveTaskKey("beta/AL-7", index); // { ok: false, reason: "wrong-initiative", proposed: "alpha/AL-7", ... }
+```
+
 ## Planning records
 
 Four strict schemas type the planning layer an initiative keeps beside its tasks. Each record
@@ -294,7 +314,7 @@ refused. Unknown keys are refused too.
 |---|---|---|
 | `OutcomeSchema` | `alpha/faster-landing` | `statement`, `measure`, `state` (`draft`, `active`, `retired`), optional `owner_intent` |
 | `BetSchema` | `alpha/B1` | ISO `week`, `outcome` id, `order`, `tasks` (`alpha/AL-1` keys) or a `selector`, `prediction`, `state` (`proposed`, `selected`, `dropped`, `done`), optional `cites` |
-| `FreezeSchema` | `alpha/F1` | exactly one of `tag` or `selector`, `reason`, `end_condition`, `set_by` (`owner`, `decider`), `intent_ref`, `quote_ref` |
+| `FreezeSchema` | `alpha/F1` | exactly one of `tag` or `selector`, `reason`, `end_condition`, `set_by` (`owner`, `decider`), `intent_ref`, `quote_ref`, optional `ended_on` once the owner ends it |
 | `OutOfScopeSchema` | `alpha/X1` | `statement`, `intent_ref`, `quote_ref`, `date` of the owner statement, optional `revisit_when` |
 
 A bet's `prediction` names the `metric` it should move, its `direction`, the `baseline`, the
@@ -317,6 +337,47 @@ OutOfScopeSchema.parse({
   date: "2026-11-12",
 });
 ```
+
+### The plan store (`@titan-design/pm/node`)
+
+The `./node` subpath is the one file store for these records, so every writer agrees on the
+layout and the lock. A record lives at `<activeRoot>/<initiative>/plan/<dir>/<suffix>.yml`, where
+`<dir>` is `outcomes`, `bets`, `freezes` or `out-of-scope` and `<suffix>` is the part of the id
+after the slash. A bet keeps its week as a field, so selecting it never moves the file.
+
+| Export | Does |
+|---|---|
+| `readPlanRecord(root, kind, id)` | the record, or `null` for a malformed id or a missing file; a file that fails its schema throws |
+| `loadPlanRecords(root, initiative, kind)` | every record of one kind, in filename order; a missing folder holds none |
+| `writePlanRecord(root, kind, record)` | validates before any disk write, then writes atomically |
+| `withPlanLock(root, initiative, fn)` | runs `fn` holding `<initiative>/plan/.lock` (proper-lockfile, 10 s stale, 20 s wait) |
+| `nextPlanId(initiative, letter, records)` | the next `<initiative>/<letter><n>` id |
+| `PlanStoreError` | a refusal with `kind`: `invalid`, `not-found` (no initiative folder) or `lock-timeout` |
+
+```ts
+import { readPlanRecord, withPlanLock, writePlanRecord } from "@titan-design/pm/node";
+
+await withPlanLock(root, "alpha", async () => {
+  const bet = await readPlanRecord(root, "bet", "alpha/B1");
+  if (bet !== null) await writePlanRecord(root, "bet", { ...bet, order: 2 });
+});
+```
+
+### The task reader (`@titan-design/pm/node`)
+
+`readInitiativeTasks(root, slug, { archive })` is the one reader for an initiative's task files.
+It reads `<root>/<slug>/tasks/*.yml` and `*.yaml` in filename order and validates each with
+`TaskSchema`. With `archive: true` it appends `tasks/archive/` rows after every live row, each
+flagged `archived`. It resolves to `{ tasks, unparsed, missing }`:
+
+| Field | Holds |
+|---|---|
+| `tasks` | `{ initiative, file, archived, mtimeMs, task }` per file that parsed; `file` is relative to `root` (`alpha/tasks/AL-1.yml`) |
+| `unparsed` | `{ initiative, file, reason }` per file that failed YAML (`yaml: ...`) or the schema (`priority: ...`); never thrown |
+| `missing` | `true` when `tasks/` does not exist; any other directory error throws |
+
+It reads only the slug it is given and makes no visibility decision. Repeated ids are all
+returned, so a caller keeps its own policy for a repeat within or across initiatives.
 
 ## Task provenance
 
@@ -359,10 +420,26 @@ brief may require it.
 
 ## What it deliberately does not do
 
-It reads no files, parses no YAML and writes nothing, the category and deliverable
-registries included. It does not check that a task's `deliverables` ids exist. It
+The root entry reads no files, parses no YAML and writes nothing, the category and deliverable
+registries included; only the `./node` plan store and task reader touch disk. It does not check that a task's `deliverables` ids exist. It
 does not choose the area ids; those come from `$tiers` and the products outside this repo. It has no task numbering, and it
 knows a task's initiative only by its id prefix (`EC` for `EC-1`).
+
+## Intent digests
+
+`parseIntentDigest(text)` reads a `titan-intent-digest/v1` file: front matter (`schema`, `slug`,
+`initiative`, `built_from`), then exactly six sections (Standing direction, Reasons, Ruled out,
+Taste, Open questions, Superseded). Each bullet reads
+`- I<n> <YYYY-MM-DD> "<quote>" (quote: <ref>)[ superseded-by: I<m>]`. The line id is
+`<slug>/I<n>`, checked with the planning `intent_ref` and `quote_ref` grammars. The quote ends at
+the last `" (quote:` on the line, so it may hold double quotes.
+
+It is strict, with no best-effort read. It returns `{ ok: true, slug, initiative, builtFrom, lines }`
+(each line has `id`, `date`, `quote`, `ref`, `section`, optional `supersededBy`) or
+`{ ok: false, errors }`, each error with its 1-based `line`. A missing quote, date or ref, a
+non-ISO date, an unknown, duplicate or missing section, a duplicate id and a `superseded-by`
+naming an id not in the file are all errors, as are a slug that is not a lowercase slug or differs from
+`initiative`, and a repeated or unknown front matter key. It does no I/O.
 
 ## Actuals and claims
 

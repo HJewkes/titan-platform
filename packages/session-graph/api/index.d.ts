@@ -88,6 +88,9 @@ declare const ORIGIN_TASK_LINK_MIGRATION_NAME = "origin task link";
 declare const ORIGIN_EXPERIMENT_MIGRATION_NAME = "origin experiment arm";
 
 /** Recorded in `_migration`; store-sqlite refuses a database whose applied name differs, so never rename it. */
+declare const ORIGIN_EXECUTION_MIGRATION_NAME = "origin execution phase";
+
+/** Recorded in `_migration`; store-sqlite refuses a database whose applied name differs, so never rename it. */
 declare const ORIGIN_ROUTE_MIGRATION_NAME = "origin route decision";
 
 /** Recorded in `_migration`; store-sqlite refuses a database whose applied name differs, so never rename it. */
@@ -183,6 +186,34 @@ interface DeltaSource {
  */
 declare function purgeTranscript(graph: SessionGraph, transcriptId: number): string[];
 
+/**
+ * Drain's tables live in the 2000 band, above session-graph's own migrations and below
+ * nothing else of this package's: a product layering them on its graph composes them with
+ * its own versions. Templates and occurrences hold ids and locators only, never blob text.
+ */
+declare const DRAIN_TEMPLATE_MIGRATION: Migration;
+declare const DRAIN_SCREENED_MIGRATION: Migration;
+interface DrainSummary {
+    candidates: number;
+    screened: number;
+    clustered: number;
+    newTemplates: number;
+    templates: number;
+    unreadable: number;
+}
+interface TemplateRow {
+    templateId: string;
+    maskedSignature: string;
+    occurrenceCount: number;
+    createdAt: string;
+}
+/** Cluster tool-result error facts not yet handled into recurring failure templates. */
+declare function ingestDrain(graph: SessionGraph, options?: {
+    limit?: number;
+}): Promise<DrainSummary>;
+/** Recurring failure templates, most frequent first. */
+declare function listTemplates(graph: SessionGraph, limit: number): TemplateRow[];
+
 /** Recompute turn aggregates, shared-session counters and the audit rollup for the given sessions in one transaction. */
 declare function rollupSessions(graph: SessionGraph, sessionIds: readonly string[]): number;
 /**
@@ -195,6 +226,7 @@ declare function rollupYielding(graph: SessionGraph, sessionIds: readonly string
 interface ReconcileCounts {
     prMerges: number;
     prCreates: number;
+    builtOn: number;
     subagents: number;
 }
 /** Whole-table reconciliations, run once at the end of a refresh pass after the rollup. */
@@ -322,6 +354,8 @@ interface ResolvedOrigin {
     routeFacts?: string | null;
     routeCandidate?: string | null;
     routeCandidateWanted?: string | null;
+    /** The launcher's execution ledger phase for this session: its outcome once terminal. */
+    executionPhase?: string | null;
 }
 /** Stored when a task-aware resolver found no id, so the row is not offered again. */
 declare const NO_TASK_LINK = "none";
@@ -555,6 +589,81 @@ interface EpisodeRow {
  */
 declare function replaceEpisodes(graph: SessionGraph, sessionId: string, heuristic: string, rows: readonly EpisodeRow[]): number;
 
+/** A file to look up: a repo-relative path, in one repo or, with no repo, in any. */
+interface TouchedFileQuery {
+    repo?: string | null;
+    path: string;
+}
+interface SessionsTouchingFilesOptions {
+    files: readonly TouchedFileQuery[];
+    /** ISO time; a session whose touch of the files is older is left out. */
+    since: string;
+    limit?: number;
+}
+/** Initiatives a session's task edges name, with how many edges name each. */
+interface SessionTaskInitiative {
+    initiative: string;
+    edges: number;
+}
+interface SessionTouchingFiles {
+    sessionId: string;
+    /** The latest of the session's first touches of the named files. */
+    touchedAt: string;
+    cwd: string | null;
+    title: string | null;
+    /** The named files' refs this session touched. */
+    fileRefs: string[];
+    tasks: SessionTaskInitiative[];
+}
+/**
+ * Sessions that touched any of the files since a time, newest first and capped. An edge records
+ * a session's first touch of a file, so a session that came back to a file later still dates from
+ * its first touch. Which sessions a caller may see is the caller's policy: rows carry the cwd and
+ * the initiatives their task edges name so it can decide.
+ */
+declare function sessionsTouchingFiles(graph: SessionGraph, options: SessionsTouchingFilesOptions): SessionTouchingFiles[];
+
+/** What one commit says about where it came from, as its caller read the message. */
+interface CommitLinks {
+    /** The `(#n)` a squash subject ends with, or null. */
+    prNumber: number | null;
+    /** Short repo name of the blamed checkout; narrows a PR number shared across repos. */
+    repoName: string | null;
+    /** `Agent-Session:` trailer values. */
+    trailerSessionIds: readonly string[];
+    /** Task ids the squash message's `Refs:` line names. */
+    refTaskIds: readonly string[];
+}
+/** The rung that found a session: its own trailer, a link to the subject's PR, or a run of that PR's task. */
+type SessionStep = "trailer" | "pr-subject" | "pr-task";
+/** The rung that found a task: the squash `Refs:` line, or a session found above that ran it. */
+type TaskStep = "refs" | "session-ran";
+interface LineageTask {
+    taskId: string;
+    initiative: string | null;
+    step: TaskStep;
+}
+interface LineageSession {
+    sessionId: string;
+    step: SessionStep;
+    cwd: string | null;
+    title: string | null;
+    /** Initiatives the session's task edges name, so the caller can decide who may see it. */
+    tasks: SessionTaskInitiative[];
+}
+interface CommitLineage {
+    prRefs: string[];
+    tasks: LineageTask[];
+    sessions: LineageSession[];
+}
+/**
+ * Walks one commit up the ladder: its `Agent-Session:` trailer, then the sessions linked to the
+ * PR its subject names, then the tasks those sessions ran or the `Refs:` line names, then every
+ * session that ran one of those tasks. Each row says which rung found it. Which rows a caller may
+ * see is the caller's policy: sessions carry the cwd and task initiatives it decides on.
+ */
+declare function commitLineage(graph: SessionGraph, links: CommitLinks): CommitLineage;
+
 /** USD per million tokens for one model prefix from one date. Shaped so session-analytics' `PRICE_TABLE` passes straight through. */
 interface PriceInput {
     /** Matched against `request.model` in `request_cost` by longest prefix at an id boundary: the id itself, or followed by -YYYYMMDD, [..], or both as -YYYYMMDD[..]. */
@@ -618,8 +727,11 @@ declare function indexSource(graph: SessionGraph, source: SessionSourceDescripto
 declare function indexCodexSource(graph: SessionGraph, source: SessionSourceDescriptor): Promise<NormalizedIndexResult>;
 
 declare function isInjectedCause(cause: WakeCause): boolean;
-/** A line nobody typed: an injected cause, or a headless `sdk` prompt unless the caller keeps those. */
-declare function isUntypedPrompt(inbound: Pick<Inbound, "cause" | "promptSource">, indexSdkPrompts?: boolean): boolean;
+/**
+ * A line nobody typed: an injected cause, or a headless `sdk` prompt unless the caller keeps those.
+ * Older transcripts carry no `promptSource`; their session's `sdk-cli` entrypoint stands in for it.
+ */
+declare function isUntypedPrompt(inbound: Pick<Inbound, "cause" | "promptSource">, indexSdkPrompts?: boolean, sessionEntrypoint?: string | null): boolean;
 /** Prompt text with every injected block removed; empty when nothing the human wrote is left. */
 declare function stripInjected(text: string): string;
 
@@ -705,4 +817,4 @@ declare function ensureNormalizedSchema(db: Db): void;
 /** Ambiguity is explicit; workspace session bodies remain in their original namespace. */
 declare function resolveConversationAlias(db: Db, legacyRef: string): string | null;
 
-export { AUDIT_DDL, AUDIT_FACET, AUDIT_MIGRATION_NAME, AUDIT_TABLES, type BackfillOptions, type BackfillSummary, type ConversationSummary, DEFAULT_FACET_LIMIT, DERIVED_TABLES, DOMAIN_DDL, type DeltaSource, EPISODE_TABLE, type EpisodeRow, type ExternalEvent, FACET_TABLE, INBOUND_BROADCAST_MIGRATION_NAME, type IndexOptions, type IndexedSpan, KIT, type LongPromptPrice, MIGRATIONS, NORMALIZED_TABLES, NO_ENRICHMENT, NO_ORIGINS, NO_PR_OUTCOMES, NO_TASK_LINK, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedIndexResult, type NormalizedTurn, type NormalizedUsageOptions, type NormalizedUsageSummary, ORIGIN_DDL, ORIGIN_EXPERIMENT_MIGRATION_NAME, ORIGIN_MIGRATION_NAME, ORIGIN_ROUTE_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_TASK_LINK_MIGRATION_NAME, ORIGIN_VIEWS, type OpenSessionGraphOptions, type OriginEnrichment, type OriginResolution, type OriginResolver, PRICE_LONG_PROMPT_MIGRATION_NAME, type PrDue, type PrEnrichment, type PrKey, type PrOutcomeBand, type PrResolution, type PrResolver, type PriceInput, REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, type ReadIndexedTextOptions, type ReconcileCounts, type ReconcileResult, type RefreshOptions, type RefreshSummary, type ResolvedOrigin, type ResolvedPr, type ResolvedReview, type ResolvedTask, type ReviewProjection, type ReviewRoundOptions, type ReviewerProfilePredicate, SIGNAL_COPY_RANK, type SessionGraph, SessionGraphNotMigratedError, type SourceIndexPort, type SourceIndexResult, type SyncPricesOptions, type TaskEnrichment, type TaskLinkSource, type TaskResolution, type TaskResolver, type TranscriptOutcome, allSessionIds, allTaskIds, applyAudit, applyDelta, backfillFacets, countNormalizedEvents, countNormalizedSessions, countRounds, derivedTables, enrichPrs, enrichTasks, ensureNormalizedSchema, hasNormalizedTables, indexCodexSource, indexSource, indexTranscript, isInjectedCause, isReviewerProfile, isUntypedPrompt, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions, normalizedSourcePath, normalizedUsage, openSessionGraph, projectReviewRounds, prsNeedingOutcome, purgeTranscript, readIndexedText, reconcile, reconcilePrices, refreshCorpus, replaceEpisodes, resetIndex, resolveConversationAlias, resolveOrigins, rollupSessions, rollupYielding, sessionsNeedingOrigin, stripInjected, syncPrices };
+export { AUDIT_DDL, AUDIT_FACET, AUDIT_MIGRATION_NAME, AUDIT_TABLES, type BackfillOptions, type BackfillSummary, type CommitLineage, type CommitLinks, type ConversationSummary, DEFAULT_FACET_LIMIT, DERIVED_TABLES, DOMAIN_DDL, DRAIN_SCREENED_MIGRATION, DRAIN_TEMPLATE_MIGRATION, type DeltaSource, type DrainSummary, EPISODE_TABLE, type EpisodeRow, type ExternalEvent, FACET_TABLE, INBOUND_BROADCAST_MIGRATION_NAME, type IndexOptions, type IndexedSpan, KIT, type LineageSession, type LineageTask, type LongPromptPrice, MIGRATIONS, NORMALIZED_TABLES, NO_ENRICHMENT, NO_ORIGINS, NO_PR_OUTCOMES, NO_TASK_LINK, type NormalizedConversationDetail, type NormalizedErrorFact, type NormalizedIndexResult, type NormalizedTurn, type NormalizedUsageOptions, type NormalizedUsageSummary, ORIGIN_DDL, ORIGIN_EXECUTION_MIGRATION_NAME, ORIGIN_EXPERIMENT_MIGRATION_NAME, ORIGIN_MIGRATION_NAME, ORIGIN_ROUTE_MIGRATION_NAME, ORIGIN_TABLES, ORIGIN_TASK_LINK_MIGRATION_NAME, ORIGIN_VIEWS, type OpenSessionGraphOptions, type OriginEnrichment, type OriginResolution, type OriginResolver, PRICE_LONG_PROMPT_MIGRATION_NAME, type PrDue, type PrEnrichment, type PrKey, type PrOutcomeBand, type PrResolution, type PrResolver, type PriceInput, REVIEW_DDL, REVIEW_TABLE, REVIEW_VERDICT_MIGRATION_NAME, type ReadIndexedTextOptions, type ReconcileCounts, type ReconcileResult, type RefreshOptions, type RefreshSummary, type ResolvedOrigin, type ResolvedPr, type ResolvedReview, type ResolvedTask, type ReviewProjection, type ReviewRoundOptions, type ReviewerProfilePredicate, SIGNAL_COPY_RANK, type SessionGraph, SessionGraphNotMigratedError, type SessionStep, type SessionTaskInitiative, type SessionTouchingFiles, type SessionsTouchingFilesOptions, type SourceIndexPort, type SourceIndexResult, type SyncPricesOptions, type TaskEnrichment, type TaskLinkSource, type TaskResolution, type TaskResolver, type TaskStep, type TemplateRow, type TouchedFileQuery, type TranscriptOutcome, allSessionIds, allTaskIds, applyAudit, applyDelta, backfillFacets, commitLineage, countNormalizedEvents, countNormalizedSessions, countRounds, derivedTables, enrichPrs, enrichTasks, ensureNormalizedSchema, hasNormalizedTables, indexCodexSource, indexSource, indexTranscript, ingestDrain, isInjectedCause, isReviewerProfile, isUntypedPrompt, listTemplates, normalizedConversationDetail, normalizedErrorFacts, normalizedSessions, normalizedSourcePath, normalizedUsage, openSessionGraph, projectReviewRounds, prsNeedingOutcome, purgeTranscript, readIndexedText, reconcile, reconcilePrices, refreshCorpus, replaceEpisodes, resetIndex, resolveConversationAlias, resolveOrigins, rollupSessions, rollupYielding, sessionsNeedingOrigin, sessionsTouchingFiles, stripInjected, syncPrices };

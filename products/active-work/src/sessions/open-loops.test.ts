@@ -658,6 +658,39 @@ describe('loadSessionsFromDir', () => {
     expect(sessions).toEqual([]);
     expect(malformed).toEqual([{ file: 'broken.md', reason: 'no frontmatter block' }]);
   });
+
+  it('returns 40 shuffled-mtime files filename-ascending with malformed in filename order', async () => {
+    const dir = path.join(initiativeDir, 'sessions');
+    const stems: string[] = [];
+    for (let i = 0; i < 40; i++) {
+      const day = String((i % 28) + 1).padStart(2, '0');
+      const month = i < 28 ? '08' : '09';
+      const stem = `2026-${month}-${day}-s${i}`;
+      stems.push(stem);
+      if (i === 30 || i === 7) {
+        await fs.writeFile(path.join(dir, `${stem}.md`), 'no frontmatter here\n', 'utf8');
+      } else {
+        await writeSession({ session_id: `s${i}`, ended: `2026-${month}-${day}T10:00:00Z`, file: stem });
+      }
+    }
+    const base = Date.now() / 1000;
+    for (const [i, stem] of stems.entries()) {
+      const mtime = base - ((i * 17) % 40) * 60;
+      await fs.utimes(path.join(dir, `${stem}.md`), mtime, mtime);
+    }
+
+    const { sessions, malformed } = await loadSessionsFromDir(initiativeDir);
+
+    expect(sessions.map((s) => s.sessionFile)).toEqual(
+      stems.filter((_, i) => i !== 7 && i !== 30),
+    );
+    expect(malformed.map((m) => m.file)).toEqual([`${stems[7]}.md`, `${stems[30]}.md`]);
+  });
+
+  it('returns empty when the sessions directory is missing', async () => {
+    rmSync(path.join(initiativeDir, 'sessions'), { recursive: true, force: true });
+    expect(await loadSessionsFromDir(initiativeDir)).toEqual({ sessions: [], malformed: [] });
+  });
 });
 
 describe('deriveResolvedLoops', () => {
@@ -700,9 +733,9 @@ describe('deriveResolvedLoops', () => {
       resolves: [{ ref: `${opener}#n1`, outcome: 'done' }],
     });
 
-    const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop.outcome).toBe('done');
-    expect(loop.note).toBeUndefined();
+    const loop = (await deriveResolvedLoops(initiativeDir, { now: NOW })).at(0);
+    expect(loop?.outcome).toBe('done');
+    expect(loop?.note).toBeUndefined();
   });
 
   it('lets the later of two resolutions win', async () => {
@@ -722,9 +755,9 @@ describe('deriveResolvedLoops', () => {
       resolves: [{ ref: `${opener}#n1`, outcome: 'abandoned', note: 'reverted, not worth it' }],
     });
 
-    const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop.outcome).toBe('abandoned');
-    expect(loop.note).toBe('reverted, not worth it');
+    const loop = (await deriveResolvedLoops(initiativeDir, { now: NOW })).at(0);
+    expect(loop?.outcome).toBe('abandoned');
+    expect(loop?.note).toBe('reverted, not worth it');
   });
 
   // `iso8601` accepts any timezone offset, so "later" cannot be decided by
@@ -750,10 +783,10 @@ describe('deriveResolvedLoops', () => {
       resolves: [{ ref: `${opener}#n1`, outcome: 'abandoned', note: 'reverted an hour later' }],
     });
 
-    const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop.outcome).toBe('abandoned');
-    expect(loop.note).toBe('reverted an hour later');
-    expect(loop.closedBy).toBe('2026-07-22-c');
+    const loop = (await deriveResolvedLoops(initiativeDir, { now: NOW })).at(0);
+    expect(loop?.outcome).toBe('abandoned');
+    expect(loop?.note).toBe('reverted an hour later');
+    expect(loop?.closedBy).toBe('2026-07-22-c');
   });
 
   // Auto-resolution states no outcome and gives no reason; reporting it as
@@ -787,7 +820,8 @@ describe('triggersMet', () => {
       ended: '2026-07-20T10:00:00Z',
       next_steps: [{ id: 'n1', text: 'a promise', ...step }],
     });
-    const [loop] = await deriveOpenLoops(initiativeDir, { now: NOW });
+    const loop = (await deriveOpenLoops(initiativeDir, { now: NOW })).at(0);
+    if (loop === undefined) throw new Error('expected one derived open loop');
     return loop;
   }
 

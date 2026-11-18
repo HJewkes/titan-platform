@@ -21,6 +21,7 @@ interface DiscoverOptions {
     home?: string;
     env?: Readonly<Record<string, string | undefined>>;
 }
+declare function profilesRoot(env?: Readonly<Record<string, string | undefined>>, home?: string): string;
 declare function discoverProfiles(options?: DiscoverOptions): AccountProfile[];
 
 interface ReadAccountsOptions extends DiscoverOptions, KeychainOptions {
@@ -153,7 +154,7 @@ declare function readUsage(configDir: string, options?: ReadUsageOptions): Usage
 declare function readReadings(configDir: string): ObservedReading[];
 declare function writeReading(configDir: string, reading: UsageReading): string;
 
-export { CONFIG_DIRS_ENV, CREDENTIALS_FILE, DEFAULT_REFRESH_SCOPES, DEFAULT_REFRESH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DEPOSIT_ASKER, type DiscoverOptions, EXPIRY_MARGIN_MS, type FetchLike, KEYCHAIN_SERVICE, type KeychainExec, type KeychainExecResult, type KeychainOptions, MAX_CREDENTIALS_BYTES, MAX_READING_BYTES, MAX_REFRESH_TIMEOUT_MS, MAX_RESPONSE_BYTES, MAX_TOKEN_RESPONSE_BYTES, OAUTH_BETA, OAUTH_CLIENT_ID, PROFILE_ROOT_ENV, type PollAllEntry, type PollAllOptions, type PollFailure, type PollFailureKind, type PollOptions, type PollResult, REFRESH_LOCK, type ReadAccountsOptions, type ReadLoginOptions, type ReadText, type ReadUsageOptions, type RefreshFailureDeposit, type RefreshFailureKind, type RefreshOptions, type RefreshResult, TOKEN_URL, USAGE_FILE, USAGE_URL, type UsageFileRead, accountIdentity, discoverProfiles, keychainService, pollAll, pollUsage, readAccounts, readLoginState, readReadings, readUsage, refreshFailureDeposit, refreshIfNeeded, sessionsDir, usageFilePath, writeReading };
+export { CONFIG_DIRS_ENV, CREDENTIALS_FILE, DEFAULT_REFRESH_SCOPES, DEFAULT_REFRESH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, DEPOSIT_ASKER, type DiscoverOptions, EXPIRY_MARGIN_MS, type FetchLike, KEYCHAIN_SERVICE, type KeychainExec, type KeychainExecResult, type KeychainOptions, MAX_CREDENTIALS_BYTES, MAX_READING_BYTES, MAX_REFRESH_TIMEOUT_MS, MAX_RESPONSE_BYTES, MAX_TOKEN_RESPONSE_BYTES, OAUTH_BETA, OAUTH_CLIENT_ID, PROFILE_ROOT_ENV, type PollAllEntry, type PollAllOptions, type PollFailure, type PollFailureKind, type PollOptions, type PollResult, REFRESH_LOCK, type ReadAccountsOptions, type ReadLoginOptions, type ReadText, type ReadUsageOptions, type RefreshFailureDeposit, type RefreshFailureKind, type RefreshOptions, type RefreshResult, TOKEN_URL, USAGE_FILE, USAGE_URL, type UsageFileRead, accountIdentity, discoverProfiles, keychainService, pollAll, pollUsage, profilesRoot, readAccounts, readLoginState, readReadings, readUsage, refreshFailureDeposit, refreshIfNeeded, sessionsDir, usageFilePath, writeReading };
 
 // ./dist/merge.d.ts
 import { z } from 'zod';
@@ -166,11 +167,19 @@ declare const windowSchema: z.ZodObject<{
 declare const usageReadingSchema: z.ZodObject<{
     session_id: z.ZodString;
     written_at: z.ZodNumber;
-    rate_limits: z.ZodRecord<z.ZodString, z.ZodObject<{
+    rate_limits: z.ZodPipe<z.ZodRecord<z.ZodString, z.ZodNullable<z.ZodObject<{
         used_percentage: z.ZodNumber;
         resets_at: z.ZodOptional<z.ZodNumber>;
         severity: z.ZodOptional<z.ZodString>;
-    }, z.core.$strip>>;
+    }, z.core.$strip>>>, z.ZodTransform<Record<string, {
+        used_percentage: number;
+        resets_at?: number | undefined;
+        severity?: string | undefined;
+    }>, Record<string, {
+        used_percentage: number;
+        resets_at?: number | undefined;
+        severity?: string | undefined;
+    } | null>>>;
     scoped: z.ZodOptional<z.ZodObject<{
         model: z.ZodString;
         used_pct: z.ZodNumber;
@@ -182,11 +191,19 @@ declare const usageReadingSchema: z.ZodObject<{
 declare const observedReadingSchema: z.ZodObject<{
     session_id: z.ZodString;
     written_at: z.ZodNumber;
-    rate_limits: z.ZodRecord<z.ZodString, z.ZodObject<{
+    rate_limits: z.ZodPipe<z.ZodRecord<z.ZodString, z.ZodNullable<z.ZodObject<{
         used_percentage: z.ZodNumber;
         resets_at: z.ZodOptional<z.ZodNumber>;
         severity: z.ZodOptional<z.ZodString>;
-    }, z.core.$strip>>;
+    }, z.core.$strip>>>, z.ZodTransform<Record<string, {
+        used_percentage: number;
+        resets_at?: number | undefined;
+        severity?: string | undefined;
+    }>, Record<string, {
+        used_percentage: number;
+        resets_at?: number | undefined;
+        severity?: string | undefined;
+    } | null>>>;
     scoped: z.ZodOptional<z.ZodObject<{
         model: z.ZodString;
         used_pct: z.ZodNumber;
@@ -226,6 +243,9 @@ type LoginState = {
     canRefresh: boolean;
 } | {
     status: "missing";
+} | {
+    status: "logged-out";
+    reason: string;
 } | {
     status: "refused";
     reason: RefusedReason;

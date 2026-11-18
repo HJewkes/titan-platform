@@ -115,8 +115,8 @@ export {
   readWorkerReports,
   readWorkerSessions,
 } from "./events-db.js";
-export type { ErrorClass } from "./tool-error-class.js";
-export { ERROR_CLASSES, classifyError } from "./tool-error-class.js";
+export type { Denial, ErrorClass } from "./tool-error-class.js";
+export { ERROR_CLASSES, classifyError, denialOf } from "./tool-error-class.js";
 export type { FollowUpClass } from "./follow-up-class.js";
 export { FOLLOW_UP_CLASSES, classifyFollowUp } from "./follow-up-class.js";
 export type { FrictionCluster, FrictionLine, FrictionSource } from "./friction-lines.js";
@@ -129,9 +129,11 @@ export type { AgentLog, Agreement, AgreementRow, AgreementSummary, LogClusterRow
 export type { FrictionClusterRow, FrictionDailyReport, FrictionRow, LogSide, ReportSide } from "./friction-daily.js";
 export { frictionDailyReport } from "./friction-daily.js";
 export { FRICTION_ASKER, frictionDeposit, frictionDepositId, renderFrictionMarkdown, renderLogTop, renderReportTop } from "./friction-render.js";
+export type { ChainLink, ChainLinkKind, PredecessorChainInput } from "./predecessor-chain.js";
+export { predecessorChain } from "./predecessor-chain.js";
 export type { GenerationEnd, SeatGeneration, SeatGenerationsInput } from "./seat-generations.js";
 export { TELEPORT_COMPLETED_EVENT, seatGenerations, seatGenerationsSchema } from "./seat-generations.js";
-export { readAgentSessions, readCoverage } from "./cost-report-queries.js";
+export { readAgentNames, readAgentSessions, readCoverage } from "./cost-report-queries.js";
 export type {
   CompactionMark,
   ModelRequests,
@@ -161,6 +163,8 @@ export type { ToolFamily } from "@titan-design/session-read";
 export { SESSION_TIMELINE_VERSION, TIMELINE_GAP_MIN_MS, TIMELINE_TEXT_CAP } from "./timeline-types.js";
 export type { SessionTimelineOptions } from "./timeline.js";
 export { SessionTimelineAccumulator, buildSessionTimeline } from "./timeline.js";
+export type { ImplementerCoverage, LinkCoverage, ReviewerCoverage } from "./link-coverage.js";
+export { linkCoverage } from "./link-coverage.js";
 export { countAtOrBefore } from "./count-at-or-before.js";
 export type { ReviewFillReport } from "./review-fill.js";
 export { reviewFillReport, reviewFillSchema } from "./review-fill.js";
@@ -173,6 +177,8 @@ export { REVIEW_FILL_COMPARISON, SUCCESSOR_REWORK_COMPARISON, compareWindows } f
 export { renderReviewFillText, renderSuccessorReworkText, renderWindowComparisonText } from "./render-guardrails.js";
 export type { ActualsTask, CappedHours, TaskActuals, TaskActualsFlag, TaskActualsOptions, TaskPr } from "./task-actuals.js";
 export { DEFAULT_ACTIVE_CAP_MINUTES, taskActuals } from "./task-actuals.js";
+export type { LedgerPr, LedgerRow, LedgerVerdict } from "./task-ledger.js";
+export { readTaskInitiative, taskLedger } from "./task-ledger.js";
 export type { EstimateBand, RouteAgreement, RouteOutcomeGroup, RouteOutcomesOptions } from "./route-outcomes.js";
 export { routeOutcomes } from "./route-outcomes.js";
 export type { PrDiff, PrFeatures } from "./task-actuals-pr.js";
@@ -234,3 +240,7 @@ export type { PhaseRun, PhaseWeek } from "./ticket-scorecard/phase-weeks.js";
 export { phaseWeeks } from "./ticket-scorecard/phase-weeks.js";
 export type { ScorecardRunLog } from "./ticket-scorecard/run-store.js";
 export { readPhaseWeeks, recordRun, upsertPhaseWeeks } from "./ticket-scorecard/run-store.js";
+export type { FactoryHealth, FactoryHealthInput, FiledTask, WakeCount } from "./ticket-scorecard/factory-health.js";
+export { factoryHealthSchema, factoryHealthWeeks, filerOf } from "./ticket-scorecard/factory-health.js";
+export { readFactoryHealth, upsertFactoryHealth } from "./ticket-scorecard/factory-health-store.js";
+export { firstDispatch } from "./ticket-scorecard/task-row-facts.js";

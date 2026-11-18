@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a MERGE need not stand at the PR head",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "  return verdict?.value === \"MERGE\" && standsAt(verdict, mergeUp) === prHead && checks.green && checks.head === prHead;\n",
+      "replace": "  return verdict?.value === \"MERGE\" && checks.green && checks.head === prHead;\n",
+      "kills": [
+        "releasing a low-tier policy hold a MERGE at the previous head does not release it after a push"
+      ]
+    },
+    {
+      "name": "any profile releases the hold",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "  if (!isOpusProfile(reviewProfile)) return false;\n  return verdict?.value",
+      "replace": "  return verdict?.value",
+      "kills": [
+        "releasing a low-tier policy hold a MERGE from a non-opus profile does not release it",
+        "releasing a low-tier policy hold a carried or external verdict with no profile does not release it"
+      ]
+    },
+    {
+      "name": "the checks need not be read at the PR head",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "standsAt(verdict, mergeUp) === prHead && checks.green && checks.head === prHead;",
+      "replace": "standsAt(verdict, mergeUp) === prHead && checks.green;",
+      "kills": [
+        "releasing a low-tier policy hold green checks at another head do not release it"
+      ]
+    },
+    {
+      "name": "a hold naming a reviewer releases itself",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "  if (!run.held || holdClassOf(run.holdReason) !== G10_REVIEW_CLASS || maybeAssigned(run)) return false;\n",
+      "replace": "  if (!run.held || holdClassOf(run.holdReason) !== G10_REVIEW_CLASS) return false;\n",
+      "kills": [
+        "releasing a low-tier policy hold a hold naming a reviewer does not release itself"
+      ]
+    },
+    {
+      "name": "the release records no rule",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "...(released && { rule: LOW_TIER_RULE, verdict: input.verdict,",
+      "replace": "...(released && { verdict: input.verdict,",
+      "kills": [
+        "releasing a low-tier policy hold a low-tier hold releases on one opus MERGE at the fresh PR head with green checks"
+      ]
+    }
+  ]
+}

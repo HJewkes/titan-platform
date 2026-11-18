@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Alert, Button, ButtonText, EmptyState, HStack, Input, Link, Section, SectionContent, SectionHeader, Select, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Typography, VStack } from "@titan-design/react-ui";
+import { LoadError } from "../shell/LoadError.js";
 import { Skeleton } from "../shell/Loading.js";
 import type { QueryResult } from "@titan-design/react-app";
 import type { ConsoleCommands } from "../../server/commands.js";
@@ -64,7 +65,7 @@ export function TasksPage({ query }: { query?: string }): ReactNode {
 
 function TasksBody({ args, tasks }: { args: TasksArgs; tasks: QueryResult<TasksResult> }): ReactNode {
   if (tasks.status === "loading") return <TasksSkeleton />;
-  if (tasks.data === undefined) return <Alert status="error" message={`Could not load tasks: ${tasks.error.message}`} />;
+  if (tasks.data === undefined) return <LoadError message={`Could not load tasks: ${tasks.error.message}`} onRetry={tasks.refetch} />;
   return tasks.data.tasks.length === 0 ? <NoMatches /> : <TaskPages args={args} shown={[]} page={tasks.data} />;
 }
 

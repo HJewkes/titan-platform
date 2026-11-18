@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the store opens writable",
+      "file": "products/factory/src/shepherd/task-key-report.ts",
+      "find": "  uri.searchParams.set(\"mode\", \"ro\");\n",
+      "replace": "",
+      "kills": ["shepherd task-key-report creates no store at a missing path"]
+    },
+    {
+      "name": "an owner-only mapping is named",
+      "file": "products/factory/src/shepherd/task-key-report.ts",
+      "find": "  return agentVisible.has(key.slice(0, at)) ? key : `${OWNER_ONLY}${key.slice(at)}`;",
+      "replace": "  return key;",
+      "kills": ["shepherd task-key-report lists each non-canonical key with its proposed mapping or no match, and counts them"]
+    },
+    {
+      "name": "a bare key counts as resolved",
+      "file": "products/factory/src/shepherd/task-key-report.ts",
+      "find": "  if (resolved.ok && resolved.key === row.task) return null;",
+      "replace": "  if (resolved.ok) return null;",
+      "kills": ["shepherd task-key-report lists each non-canonical key with its proposed mapping or no match, and counts them"]
+    },
+    {
+      "name": "an unreadable index is a usage error",
+      "file": "products/factory/src/cli-shepherd-task-key-report.ts",
+      "find": "    return (io.stderr(`error: ${errorMessage(error)}\\n`), EXIT.UNAVAILABLE);",
+      "replace": "    return (io.stderr(`error: ${errorMessage(error)}\\n`), EXIT.USAGE);",
+      "kills": ["shepherd task-key-report exits 69 when the task index cannot be read"]
+    }
+  ]
+}

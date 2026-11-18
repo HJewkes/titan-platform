@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the original bytes are never put into the blob cache",
+      "file": "products/active-work/src/sources/ingest.ts",
+      "find": "  new CacheBlobTable(input.db).put({ namespace: 'source', model: 'original', contentHash }, bytes);\n",
+      "replace": "",
+      "kills": ["ingestSource keeps the original in place and stores its bytes under the sha256"]
+    },
+    {
+      "name": "an unchanged source is always re-extracted",
+      "file": "products/active-work/src/sources/ingest.ts",
+      "find": "if (await isCurrent(extractedPath, header))",
+      "replace": "if (false && (await isCurrent(extractedPath, header)))",
+      "kills": ["ingestSource is a noop on unchanged bytes and leaves the extracted file untouched"]
+    },
+    {
+      "name": "a pdf is accepted as text",
+      "file": "products/active-work/src/sources/ingest.ts",
+      "find": "const TEXT_EXTENSIONS = new Set(['.md', '.txt']);",
+      "replace": "const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.pdf']);",
+      "kills": ["ingestSource refuses a pdf"]
+    },
+    {
+      "name": "the extractor version is left out of the frontmatter",
+      "file": "products/active-work/src/sources/ingest.ts",
+      "find": "    `extractor_version: ${EXTRACTOR_VERSION}`,\n",
+      "replace": "",
+      "kills": ["ingestSource writes the extracted markdown with frontmatter followed by the text"]
+    }
+  ]
+}

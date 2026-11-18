@@ -54,7 +54,7 @@ export function classifyThrownSend(thrown: unknown): "unreachable" | "indetermin
   return code !== undefined && NEVER_LEFT_CODES.has(code) ? "unreachable" : "indeterminate";
 }
 
-export type FetchAttempt =
+type FetchAttempt =
   | { sent: true; response: Response }
   | { sent: false; kind: "unreachable" | "indeterminate"; cause: unknown };
 

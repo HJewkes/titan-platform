@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BET_ID_REGEX, OUTCOME_ID_REGEX, SLUG, TASK_ID_REGEX } from "./ids.js";
+import { PREDICTION_CHECKS } from "./prediction-check.js";
 import { isoDate } from "./task.js";
 
 // Planning records live in an initiative's plan/ folder, so each id carries its initiative as a prefix.
@@ -85,6 +86,8 @@ export const BetSchema = z
     tasks: z.array(taskKey).optional(),
     selector: text.optional(),
     prediction: PredictionSchema,
+    /** Set by the prediction check; absent until the bet has been read against the scorecard. */
+    prediction_check: z.enum(PREDICTION_CHECKS).optional(),
     state: z.enum(BET_STATES),
     cites: z.array(OwnerIntentRefSchema).optional(),
   })
@@ -117,6 +120,8 @@ export const FreezeSchema = z
     end_condition: FreezeEndConditionSchema,
     set_by: z.enum(FREEZE_SETTERS),
     ...OwnerIntentRefSchema.shape,
+    /** The day the owner ended the freeze; absent while it stands. */
+    ended_on: isoDate.optional(),
   })
   .refine(belongsToInitiative, initiativePrefix)
   .refine((freeze) => (freeze.tag === undefined) !== (freeze.selector === undefined), {
@@ -139,3 +144,32 @@ export const OutOfScopeSchema = z
   .refine(belongsToInitiative, initiativePrefix);
 
 export type OutOfScope = z.infer<typeof OutOfScopeSchema>;
+
+export const INTENT_SECTIONS = [
+  "Standing direction",
+  "Reasons",
+  "Ruled out",
+  "Taste",
+  "Open questions",
+  "Superseded",
+] as const;
+
+export type IntentSection = (typeof INTENT_SECTIONS)[number];
+
+const intentLineId = scopedId("I\\d+", "alpha/I3");
+
+/*
+ * One dated, quoted line of the owner's intent, cited by bets and freezes as `<initiative>/I<n>`. The quote stays on
+ * one line because the digest format is one bullet per line.
+ */
+export const IntentLineSchema = z.strictObject({
+  id: intentLineId,
+  section: z.enum(INTENT_SECTIONS),
+  date: isoDate,
+  quote: z.string().min(1, { message: "quote is empty" }).regex(/^[^\r\n]*$/, { message: "quote must be one line" }),
+  /** The reference to the exact quote, for example `msg:3f2a91`. */
+  ref: quoteRef,
+  superseded_by: intentLineId.optional(),
+});
+
+export type IntentLine = z.infer<typeof IntentLineSchema>;

@@ -1,9 +1,9 @@
 import { promises as fs, mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import lockfile from 'proper-lockfile';
-import { LockTimeoutError } from '../errors.js';
+import { LockCompromisedError, LockTimeoutError } from '../errors.js';
 import { atomicWrite, LOCK_STALE_MS, withFileLock } from './fs-atomic.js';
 
 let dir: string;
@@ -71,8 +71,8 @@ describe('withFileLock', () => {
 
     // Each caller's enter and exit must be adjacent in the log.
     for (let i = 0; i < events.length; i += 2) {
-      const enter = events[i].split(':');
-      const exit = events[i + 1].split(':');
+      const enter = (events[i] ?? '').split(':');
+      const exit = (events[i + 1] ?? '').split(':');
       expect(enter[0]).toBe('enter');
       expect(exit[0]).toBe('exit');
       expect(enter[1]).toBe(exit[1]);
@@ -103,6 +103,36 @@ describe('withFileLock', () => {
       await expect(attempt).rejects.toThrow(/Gave up after 200ms .* Retry later/);
     } finally {
       await release();
+    }
+  });
+
+  it('fails the holder with LockCompromisedError when the lock is compromised, without crashing', async () => {
+    const lockTarget = path.join(dir, 'compromised.lock');
+    let compromise: ((err: Error) => void) | undefined;
+    const lockSpy = vi.spyOn(lockfile, 'lock').mockImplementation(async (_file, options) => {
+      compromise = options?.onCompromised;
+      return async () => {
+        throw new Error('Lock is already released');
+      };
+    });
+    const uncaught = vi.fn();
+    process.on('uncaughtException', uncaught);
+
+    try {
+      const held = withFileLock(lockTarget, () => new Promise<string>(() => {}));
+      await vi.waitFor(() => expect(lockSpy).toHaveBeenCalled());
+      const ecompromised = Object.assign(new Error('Unable to update lock within the stale threshold'), {
+        code: 'ECOMPROMISED',
+      });
+      expect(compromise).toBeTypeOf('function');
+      compromise?.(ecompromised);
+
+      await expect(held).rejects.toBeInstanceOf(LockCompromisedError);
+      await expect(held).rejects.toMatchObject({ cause: ecompromised });
+      expect(uncaught).not.toHaveBeenCalled();
+    } finally {
+      process.off('uncaughtException', uncaught);
+      lockSpy.mockRestore();
     }
   });
 

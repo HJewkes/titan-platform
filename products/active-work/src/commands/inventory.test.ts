@@ -6,7 +6,7 @@ import inventoryCmd from './inventory.js';
 import { scanInventory } from '../workspace-index/inventory.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
 
-const ctx = () => ({ activeRoot: '', warnings: [] as string[], format: 'json' as const });
+const ctx = () => ({ activeRoot: '', warnings: [] as string[], format: 'json' as const, caller: 'owner' as const });
 
 async function put(root: string, rel: string, body: string, mtime?: string): Promise<void> {
   const file = path.join(root, rel);
@@ -128,6 +128,43 @@ describe('inventory', () => {
       expect(res.human_only_known).toBe(false);
       expect(res.initiatives.every((row) => row.human_only)).toBe(true);
       expect(context.warnings.join('\n')).toMatch(/every initiative is flagged human_only/);
+    });
+  });
+
+  it('withholds every row from agents when the charter is unreadable, agent-visible briefs included', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGarden(root);
+      await put(root, 'alpha/brief.md', '---\nvisibility: agent-visible\n---\n');
+
+      const res = await inventoryCmd.run({}, ctx());
+
+      expect(res.initiatives.map((row) => [row.slug, row.withheld_from_agents])).toEqual([
+        ['alpha', true],
+        ['garden', true],
+      ]);
+    });
+  });
+
+  it('emits no agent_visible field on any row', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await seedGarden(root);
+
+      const res = await inventoryCmd.run({}, ctx());
+
+      expect(res.initiatives.every((row) => !('agent_visible' in row))).toBe(true);
+    });
+  });
+
+  it('withholds a human-only row from agents even when its brief is agent-visible', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await writeCharter(root, ['garden-plan']);
+      await put(root, 'alpha/brief.md', '---\nvisibility: agent-visible\n---\n');
+      await put(root, 'garden-plan/brief.md', '---\nvisibility: agent-visible\n---\n');
+
+      const res = await inventoryCmd.run({}, ctx());
+      const withheld = (slug: string) => res.initiatives.find((row) => row.slug === slug)?.withheld_from_agents;
+
+      expect([withheld('alpha'), withheld('garden-plan')]).toEqual([false, true]);
     });
   });
 

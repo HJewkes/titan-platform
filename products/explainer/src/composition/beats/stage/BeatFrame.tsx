@@ -8,13 +8,13 @@ import { useStageFit } from "./stageFit.js";
  * behind, so the DOM would depend on seek history. Inside a stage, content shrinks to fit the box down to the type
  * floor, and what still overflows there throws.
  */
-export function BeatFrame({ kind, children }: { kind: string; children?: ReactNode }) {
+export function BeatFrame({ kind, plate, children }: { kind: string; plate?: true; children?: ReactNode }) {
   const { phase } = useBeatTime();
   const ref = useRef<HTMLDivElement>(null);
   useStageFit(ref);
   return (
     <MotionBeatFrame kind={kind}>
-      <div ref={ref} className="beat-frame" data-beat={kind} style={{ visibility: phase === "during" ? "visible" : "hidden" }}>
+      <div ref={ref} className="beat-frame" data-beat={kind} data-plate={plate} style={{ visibility: phase === "during" ? "visible" : "hidden" }}>
         {children}
       </div>
     </MotionBeatFrame>

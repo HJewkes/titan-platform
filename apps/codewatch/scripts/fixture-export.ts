@@ -70,7 +70,7 @@ function pinTakenAt(value: unknown, dates: ReadonlyMap<string, string>): unknown
   return out;
 }
 
-export interface FixtureFile extends Snapshot {
+interface FixtureFile extends Snapshot {
   provenance: SourceState;
 }
 

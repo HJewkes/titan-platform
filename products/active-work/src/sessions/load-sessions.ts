@@ -3,6 +3,9 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { SessionFrontmatterSchema, type SessionFrontmatter } from '../schemas/session.js';
 
+import { mapConcurrent } from '../utils/map-concurrent.js';
+
+const SESSION_READ_CONCURRENCY = 16;
 const FRONTMATTER_DELIM = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 /** A file under `sessions/` that could not be parsed as a session. */
@@ -60,7 +63,7 @@ async function loadSession(fullPath: string, sessionFile: string): Promise<LoadR
   if (!match) return fail('no frontmatter block');
   let parsed: unknown;
   try {
-    parsed = YAML.parse(match[1]);
+    parsed = YAML.parse(match.at(1) ?? '');
   } catch (err) {
     return fail(`invalid YAML: ${describe(err)}`);
   }
@@ -68,7 +71,7 @@ async function loadSession(fullPath: string, sessionFile: string): Promise<LoadR
   if (!result.success) return fail(`invalid frontmatter: ${summarizeIssues(result.error)}`);
   return {
     ok: true,
-    session: toLoadedSession(sessionFile, result.data, match[2]),
+    session: toLoadedSession(sessionFile, result.data, match.at(2) ?? ''),
   };
 }
 
@@ -112,13 +115,13 @@ export async function loadSessionsFromDir(initiativeDir: string): Promise<Loaded
   } catch {
     return { sessions: [], malformed: [] };
   }
+  const filenames = entries.filter((n) => n.endsWith('.md')).sort();
+  const results = await mapConcurrent(filenames, SESSION_READ_CONCURRENCY, (filename) =>
+    loadSession(path.join(sessionsDir, filename), filename.slice(0, -'.md'.length)),
+  );
   const sessions: LoadedSession[] = [];
   const malformed: MalformedSession[] = [];
-  for (const filename of entries.filter((n) => n.endsWith('.md')).sort()) {
-    const result = await loadSession(
-      path.join(sessionsDir, filename),
-      filename.slice(0, -'.md'.length),
-    );
+  for (const result of results) {
     if (result.ok) sessions.push(result.session);
     else malformed.push(result.problem);
   }

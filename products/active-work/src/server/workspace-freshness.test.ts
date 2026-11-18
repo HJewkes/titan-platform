@@ -11,6 +11,7 @@ import { openGraph } from '../session-index/graph.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { installFreshness } from './session-index-watch.js';
 import { createWorkspaceFreshness, type WorkspaceFreshness } from './workspace-freshness.js';
+import { writeCharter } from '../test-support/visibility.js';
 
 let dir: string;
 let root: string;
@@ -39,6 +40,7 @@ beforeEach(async () => {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-workspace-freshness-'));
   root = path.join(dir, 'active');
   dbPath = path.join(dir, 'graph.sqlite3');
+  writeCharter(root);
   writeFile(
     'alpha/brief.md',
     '---\nschema_version: 5\ntitle: alpha initiative\nupdated: 2026-09-01\nstate: backburner\ntask_prefix: AL\nvisibility: agent-visible\n---\n\nThe alpha initiative.\n',
@@ -189,6 +191,83 @@ describe('createWorkspaceFreshness', () => {
 
     expect([first, second]).toEqual(['stale', 'fresh']);
     expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  describe('refresh log', () => {
+    function recordingLogger(): {
+      info: ReturnType<typeof vi.fn<(obj: object, msg: string) => void>>;
+    } {
+      return { info: vi.fn<(obj: object, msg: string) => void>() };
+    }
+
+    it('a successful refresh logs ok with its duration, files and indexed count', async () => {
+      const log = recordingLogger();
+      const times = [1_000, 1_250];
+      const workspace = createWorkspaceFreshness(async () => ({ files: 7, indexed: 3 }), {
+        log,
+        now: () => times.shift() ?? 0,
+      });
+      workspace.markDirty();
+
+      await workspace.ensure(1_000);
+
+      expect(log.info).toHaveBeenCalledWith(
+        { ms: 250, files: 7, indexed: 3, outcome: 'ok' },
+        'workspace refresh',
+      );
+    });
+
+    it('a refresh rejected by a held lock logs lock-held', async () => {
+      const log = recordingLogger();
+      const workspace = createWorkspaceFreshness(
+        async () => {
+          throw Object.assign(new Error('held'), { code: 'ELOCKED' });
+        },
+        { log, now: () => 0 },
+      );
+      workspace.markDirty();
+
+      await workspace.ensure(1_000);
+
+      expect(log.info).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: 'lock-held' }),
+        'workspace refresh',
+      );
+    });
+
+    it('any other refresh error logs failed', async () => {
+      const log = recordingLogger();
+      const workspace = createWorkspaceFreshness(
+        async () => {
+          throw new Error('disk full');
+        },
+        { log, now: () => 0 },
+      );
+      workspace.markDirty();
+
+      await workspace.ensure(1_000);
+
+      expect(log.info).toHaveBeenCalledWith(
+        expect.objectContaining({ outcome: 'failed' }),
+        'workspace refresh',
+      );
+    });
+
+    it('an expired budget logs stale with the budget', async () => {
+      const log = recordingLogger();
+      let finish!: () => void;
+      const workspace = createWorkspaceFreshness(
+        () => new Promise<void>((resolve) => (finish = resolve)),
+        { log, now: () => 0 },
+      );
+      workspace.markDirty();
+
+      const freshness = await workspace.ensure(5);
+      finish();
+
+      expect(freshness).toBe('stale');
+      expect(log.info).toHaveBeenCalledWith({ budgetMs: 5 }, 'workspace freshness stale: budget expired');
+    });
   });
 
   it('a change during a refresh gets a follow-up refresh before the reader reads fresh', async () => {

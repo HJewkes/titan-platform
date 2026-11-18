@@ -108,6 +108,38 @@ describe("indexing headless sdk prompts", () => {
   });
 });
 
+const OLD_SDK_LINES = [
+  user("o1", BARE_BRIEF, { entrypoint: "sdk-cli" }),
+  user("o2", "a follow-up with the oldfollowword detail", { entrypoint: "sdk-cli" }),
+];
+
+describe("indexing an older sdk-cli transcript that lacks promptSource", () => {
+  it("treats its bare prompts as sdk prompts by the entrypoint", async () => {
+    await indexClaudeFixture(OLD_SDK_LINES);
+
+    expect(promptHits("barebriefword")).toHaveLength(0);
+    expect(promptHits("oldfollowword")).toHaveLength(0);
+  });
+
+  it("indexes them when the caller opts in", async () => {
+    await indexClaudeFixture(OLD_SDK_LINES, { indexSdkPrompts: true });
+
+    expect(promptHits("barebriefword")).toHaveLength(1);
+  });
+
+  it("keeps a typed promptSource on an sdk-cli line indexed", async () => {
+    await indexClaudeFixture([user("o3", "typed under sdk entry typedsdkword", { entrypoint: "sdk-cli", promptSource: "typed" })]);
+
+    expect(promptHits("typedsdkword")).toHaveLength(1);
+  });
+
+  it("indexes a promptSource-less line from an interactive entrypoint", async () => {
+    await indexClaudeFixture([user("o4", "interactive cliword prompt", { entrypoint: "cli" })]);
+
+    expect(promptHits("cliword")).toHaveLength(1);
+  });
+});
+
 const codexLine = (type: string, payload: unknown) => JSON.stringify({ type, timestamp: "2026-09-11T12:00:00Z", payload }) + "\n";
 const codexUser = (text: string) => codexLine("response_item", { type: "message", role: "user", content: [{ type: "input_text", text }] });
 

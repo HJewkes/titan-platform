@@ -75,7 +75,8 @@ function* deltaSteps(graph: SessionGraph, transcriptId: number, delta: Transcrip
   for (const key of LINKED_KEYS) {
     for (const rows of slices<unknown>(delta[key])) yield () => applyLinkedRows(graph, transcriptId, { ...NO_LINKED_ROWS, [key]: rows });
   }
-  const injectedLines = new Set(delta.inbound.filter(i => isUntypedPrompt(i, source.indexSdkPrompts ?? false)).map(i => i.byteOffset));
+  const entrypoints = new Map(delta.sessions.map(s => [s.sessionId, s.startType]));
+  const injectedLines = new Set(delta.inbound.filter(i => isUntypedPrompt(i, source.indexSdkPrompts ?? false, entrypoints.get(i.sessionId) ?? null)).map(i => i.byteOffset));
   for (const spans of slices(delta.spans)) yield () => applySpans(graph, transcriptId, spans, injectedLines);
   yield () => {
     applyReviewVerdicts(db, transcriptId, delta);
@@ -160,9 +161,11 @@ const ASSET_UPSERTS = {
         ON CONFLICT (task_ref) DO UPDATE SET status = COALESCE(excluded.status, status)`,
   prMerges: `INSERT INTO pr_merge_observation (number, repo_hint, merged_at) VALUES (@number, @repoHint, @ts)
         ON CONFLICT (number, repo_hint, merged_at) DO NOTHING`,
-  prCreates: `INSERT INTO pr_create_observation (tool_use_id, title, number, repo, url) VALUES (@toolUseId, @title, @number, @repo, @url)
+  prCreates: `INSERT INTO pr_create_observation (tool_use_id, title, number, repo, url, head_ref, base, created_at)
+        VALUES (@toolUseId, @title, @number, @repo, @url, @headRef, @base, @ts)
         ON CONFLICT (tool_use_id) DO UPDATE SET title = COALESCE(title, excluded.title), number = COALESCE(number, excluded.number),
-          repo = COALESCE(repo, excluded.repo), url = COALESCE(url, excluded.url)`,
+          repo = COALESCE(repo, excluded.repo), url = COALESCE(url, excluded.url), head_ref = COALESCE(head_ref, excluded.head_ref),
+          base = COALESCE(base, excluded.base), created_at = COALESCE(created_at, excluded.created_at)`,
 } as const;
 
 const ASSET_KINDS = ["prs", "branches", "files", "tasks", "prMerges", "prCreates"] as const satisfies readonly (keyof typeof ASSET_UPSERTS)[];

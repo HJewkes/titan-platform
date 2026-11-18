@@ -4,6 +4,7 @@ import openCommand, { sessionAbout } from '../commands/open.js';
 import type { LoadedFacet } from './facet-file.js';
 import type { CommandContext } from '../registry/index.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { writeCharter } from '../test-support/visibility.js';
 import { SAMPLE_SLUG, writeFacet } from '../test-support/facets/fixtures.js';
 
 function makeCtx(activeRoot: string): CommandContext {
@@ -40,6 +41,7 @@ async function openAlias(activeRoot: string, about?: string): Promise<OpenEnvelo
 describe('open through a facet alias', () => {
   it('opens the owning initiative and carries the facet on the envelope', async () => {
     await withTempActiveRoot(async (activeRoot) => {
+      writeCharter(activeRoot);
       const result = await openAlias(activeRoot);
 
       expect(result.slug).toBe(SAMPLE_SLUG);

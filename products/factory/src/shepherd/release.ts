@@ -21,7 +21,7 @@ import { readPath } from "../narrow.js";
 export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
 /** The registration's implementer: no agent writes this PR, so a wake for it is never handled. */
 export const RELEASE_IMPLEMENTER = "changesets";
-export const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
+const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
 export const RELEASE_STEPS: readonly StepDeclaration[] = [
   { id: RELEASE_PREFLIGHT_STEP, kind: "dispatch" },
   { id: RELEASE_FOLLOW_STEP, kind: "dispatch" },
@@ -103,7 +103,7 @@ export function nonReleaseFiles(files: readonly PrFile[]): PrFile[] {
   return files.filter((file) => !isReleaseFile(file, bumped));
 }
 
-export interface ReleaseTarget {
+interface ReleaseTarget {
   repo: RepoSlug;
   pr: number;
   head: string;
@@ -340,6 +340,8 @@ export function releaseGuard(registrations: () => ShepherdStore, now: () => numb
       const ready = release?.releaseReady;
       if (!release || release.pr === null || release.pr === pr || !ready) return undefined;
       if (now() - Date.parse(ready.at) > RELEASE_FREEZE_MS) return undefined;
+      // A held release cannot land first, so freezing the repo behind it only stalls every other merge until the freeze runs out.
+      if (registrations().heldReason(repo, release.pr, VERSION_PACKAGES_BRANCH, ready.head) !== undefined) return undefined;
       const live = await port.getPr(repo, release.pr);
       if (live.state !== "open" || live.headSha !== ready.head) return undefined;
       return `the Version Packages PR #${release.pr} is ready at ${ready.head} and lands first`;

@@ -1,7 +1,7 @@
 import { parseMemoryFile } from "./parse.js";
 import type { MemoryFactType, ParsedFact } from "./types.js";
 
-export interface FactSpec {
+interface FactSpec {
   name?: string;
   description?: string;
   body?: string;

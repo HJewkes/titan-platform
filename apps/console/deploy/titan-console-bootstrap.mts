@@ -41,14 +41,14 @@ export interface BootstrapOptions {
 }
 
 export const EXIT = { OK: 0, FAILED: 1, LOCKED: 75, CONFIG: 78 } as const;
-export const RELEASE_CLI = "apps/console/dist/cli.js";
+const RELEASE_CLI = "apps/console/dist/cli.js";
 /** `build` writes it last, so a release whose stamp names its sha finished building; a power loss can leave it empty (TP-4638). */
 const BUILT_MARKER = "apps/console/dist/build-info.json";
 const BUILD_STEPS: readonly (readonly string[])[] = [["install", "--frozen-lockfile"], ["--filter", "titan-console...", "build"]];
 const DETAIL_LINES = 20;
 
-export const applyArgs = (sha: string): string[] => ["self-update", "--apply", sha];
-export const REPORT_ARGS: readonly string[] = ["self-update", "--report"];
+const applyArgs = (sha: string): string[] => ["self-update", "--apply", sha];
+const REPORT_ARGS: readonly string[] = ["self-update", "--report"];
 export const recordFile = (stateDir: string): string => path.join(stateDir, "self-update.json");
 const lockFile = (stateDir: string): string => path.join(stateDir, "self-update-bootstrap.lock");
 
@@ -228,7 +228,7 @@ function nodePorts(): BootstrapPorts {
 const expandHome = (value: string): string => (value.startsWith("~/") ? path.join(homedir(), value.slice(2)) : value);
 
 /** The same defaults and overrides the console and its updater read. */
-export function optionsFrom(env: NodeJS.ProcessEnv): BootstrapOptions {
+function optionsFrom(env: NodeJS.ProcessEnv): BootstrapOptions {
   return {
     root: expandHome(env.TITAN_CONSOLE_UPDATE_ROOT || "~/.local/share/titan-console"),
     stateDir: expandHome(env.TITAN_CONSOLE_STATE || "~/.local/state/titan-console"),

@@ -7,7 +7,7 @@ import { registry } from '../registry/index.js';
 import type { CommandContext } from '../registry/types.js';
 import { ValidationError } from '../errors.js';
 import {
-  agentCaller,
+  cliCaller,
   DONE_WHEN_MIN_CHARS,
   doneWhenProblem,
 } from './_done-when-gate.js';
@@ -206,10 +206,10 @@ describe('task.add --draft', () => {
   });
 });
 
-describe('agentCaller', () => {
+describe('cliCaller', () => {
   it('reads AGENT_CHAT_NAME and CLAUDECODE, and nothing else', () => {
-    expect(agentCaller({ AGENT_CHAT_NAME: 'x' })).toBe('agent');
-    expect(agentCaller({ CLAUDECODE: '1' })).toBe('agent');
-    expect(agentCaller({ HOME: '/h' })).toBeUndefined();
+    expect(cliCaller({ AGENT_CHAT_NAME: 'x' })).toBe('agent');
+    expect(cliCaller({ CLAUDECODE: '1' })).toBe('agent');
+    expect(cliCaller({ HOME: '/h' })).toBe('owner');
   });
 });

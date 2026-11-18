@@ -1,4 +1,4 @@
-import type { AdversaryHoldContext, OVERLAY_SHAPES, ReviewTarget } from "@titan-design/review-panel";
+import type { AdversaryHoldContext, OVERLAY_SHAPES, ReviewTarget, ReviewerDispatch } from "@titan-design/review-panel";
 import { join } from "node:path";
 import type { ShepherdDeps } from "./phases.js";
 import { removeReviewCheckout, reviewCheckoutRoot } from "./review-checkout.js";
@@ -36,3 +36,7 @@ export async function thenDropCheckout<T>(deps: ShepherdDeps, target: ReviewTarg
   if (finished(result)) await dropCheckout(deps, target, shape);
   return result;
 }
+
+/** An adversary member runs under `review.adversaryConfigDir` when one is set; every other reviewer under the intent's account. */
+export const memberDispatch = (wired: { adversaryDispatch?: ReviewerDispatch }, shape: string | undefined): ReviewerDispatch | undefined =>
+  shape === "adversary" ? wired.adversaryDispatch : undefined;

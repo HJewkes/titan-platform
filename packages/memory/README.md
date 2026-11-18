@@ -109,8 +109,10 @@ filesystem access and no model call; the caller reads the files.
   are exported as `DEFAULT_GROUP_THRESHOLD` and `MAX_GROUP_SIZE`.
 - `proposeDestination(group, skills, { now, staleDays = 30 })` takes the first rule that fits: a
   skill whose description reaches Jaccard 0.25 (`skill:<name>`), coordination feedback
-  (`charter`), feedback or user facts across two or more projects (`claude-md:global`), project
-  facts untouched for `staleDays` (`delete`), feedback or user facts from one project
+  (`charter`), project facts untouched for `staleDays` (`delete`), a group of only reference facts
+  (`reference:<project>`, the alphabetically first project when the group spans several), text
+  naming a setting, permission, hook or environment variable (`config`), feedback or user facts
+  across two or more projects (`claude-md:global`), feedback or user facts from one project
   (`claude-md:<project>`), otherwise `new-skill:<label>`.
 
 Every output is sorted, so the same files give the same groups in any input order.

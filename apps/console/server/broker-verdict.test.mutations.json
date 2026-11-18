@@ -4,7 +4,7 @@
     {
       "name": "drop the X-Owner-Channel header",
       "file": "apps/console/server/broker-verdict.ts",
-      "find": "[OWNER_CHANNEL_HEADER]: \"console\", ",
+      "find": "headers: OWNER_CHANNEL,",
       "replace": "",
       "kills": [
         "brokerVerdicter posts one permission verdict to the encoded queue route with the token, owner channel and client headers"

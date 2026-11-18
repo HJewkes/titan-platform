@@ -17,7 +17,7 @@ export function transcriptTurnSince(readWarmth: (transcriptPath: string) => Prom
   };
 }
 
-export interface TurnWatch {
+interface TurnWatch {
   now: () => number;
   sleep: (ms: number, signal: AbortSignal) => Promise<void>;
   pollMs: number;

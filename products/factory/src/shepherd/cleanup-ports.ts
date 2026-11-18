@@ -1,13 +1,13 @@
 import { listAgents, retire } from "@titan-design/agent-dispatch";
 import { createRpcClient, liveSource, RpcError, type RpcClient } from "@titan-design/rpc-client";
-import type { FollowUpFields, FollowUpTasks } from "./follow-ups-file.js";
+import { TASK_CLASSES, type FollowUpFields, type FollowUpTasks } from "./follow-ups-file.js";
+import { isOneOf } from "../narrow.js";
 import { FixTaskRefused, type FixTaskFields, type FixTasks, type FlakeFields } from "./main-red.js";
 import { toPresence } from "./presence.js";
 import { createRosterReader, mutating } from "./roster.js";
 import type { CleanupAgents, CleanupTasks, RosterReader, TaskState } from "./ports.js";
 
-export const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
-export const DEFAULT_ACTIVE_WORK_PORT = 7400;
+const DEFAULT_AGENT_CHAT_TIMEOUT_MS = 30_000;
 
 export interface AgentChatCalls {
   listAgents: typeof listAgents;
@@ -28,7 +28,7 @@ export function agentChatCleanupAgents(
   };
 }
 
-type ListedTask = { id: string; title?: string; status: string; done_when?: string; notes?: string; tags?: string[] };
+type ListedTask = { id: string; title?: string; status: string; done_when?: string; notes?: string; tags?: string[]; class?: string };
 
 type ActiveWorkCommands = {
   "task.list": { args: { slug: string; status: "all" | "open"; tag?: string }; result: { tasks: ListedTask[] } };
@@ -38,12 +38,6 @@ type ActiveWorkCommands = {
   "task.edit": { args: { slug: string; id: string; field: "notes" | "done_when" | "status"; value: string; force?: boolean } | { slug: string; id: string; add_tag: string }; result: unknown };
   "task.done": { args: { slug: string; id: string }; result: unknown };
 };
-
-/** The active-work daemon's own port rule: `AW_PORT` when it parses, else 7400. */
-export function activeWorkOrigin(env: NodeJS.ProcessEnv): string {
-  const port = Number.parseInt(env.AW_PORT ?? "", 10);
-  return `http://127.0.0.1:${Number.isFinite(port) ? port : DEFAULT_ACTIVE_WORK_PORT}`;
-}
 
 /** Tasks over the active-work daemon's loopback rpc; it has no `task.show`, so a task's state is read from its initiative's list. */
 export function activeWorkTasks(options: { origin: string; fetch?: typeof fetch }): CleanupTasks {
@@ -97,6 +91,11 @@ export function activeWorkFollowUpTasks(options: { origin: string; fetch?: typeo
   return {
     openTasks: (slug) =>
       refusalsFinal(async () => (await client.call("task.list", { slug, status: "open" })).tasks.map((task) => ({ id: task.id, title: task.title ?? "" }))),
+    classOf: (slug, id) =>
+      refusalsFinal(async () => {
+        const found = (await client.call("task.list", { slug, status: "all" })).tasks.find((task) => task.id === id)?.class;
+        return found !== undefined && isOneOf(TASK_CLASSES, found) ? found : undefined;
+      }),
     add: (slug, fields) => refusalsFinal(async () => (await client.call("task.add", { slug, ...fields })).id),
     appendNote: (slug, id, line) => refusalsFinal(() => appendTaskNote(client, slug, id, line)),
   };

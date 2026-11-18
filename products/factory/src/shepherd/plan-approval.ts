@@ -95,7 +95,7 @@ export interface PlanApprovals {
   record(input: PlanApprovalInput, resolver: GateResolver, claimRun?: string): boolean;
   /** The console-written approvals of `task` in `repo` that `runId` claimed, oldest first; a row that no longer parses reads as none. */
   forRun(runId: string, task: string, repo: string): PlanApproval[];
-  /** The latest console-written `task` row for `taskKey`, in any repo and claimed by no run; only `ownerTaskApproval` reads it. */
+  /** The latest console-written `task` row for `taskKey`, in any repo and claimed by no run; only owner-task-approval.ts reads it. */
   forTask(taskKey: string): TaskApproval | undefined;
 }
 

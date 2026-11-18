@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
+import lockfile from 'proper-lockfile';
+import { LockCompromisedError } from '../errors.js';
 import { PRICE_TABLE, PRICE_TABLE_VERSION } from '@titan-design/session-analytics';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -435,6 +437,34 @@ describe('withRefreshLock', () => {
     await inside;
     return { release: () => (letGo(), done) };
   }
+
+  it('fails the holder with LockCompromisedError when the lock is compromised, without crashing', async () => {
+    let compromise: ((err: Error) => void) | undefined;
+    const lockSpy = vi.spyOn(lockfile, 'lock').mockImplementation(async (_file, options) => {
+      compromise = options?.onCompromised;
+      return async () => {
+        throw new Error('Lock is already released');
+      };
+    });
+    const uncaught = vi.fn();
+    process.on('uncaughtException', uncaught);
+
+    try {
+      const held = withRefreshLock(() => new Promise<string>(() => {}));
+      await vi.waitFor(() => expect(compromise).toBeTypeOf('function'));
+      const ecompromised = Object.assign(new Error('Unable to update lock within the stale threshold'), {
+        code: 'ECOMPROMISED',
+      });
+      compromise?.(ecompromised);
+
+      await expect(held).rejects.toBeInstanceOf(LockCompromisedError);
+      await expect(held).rejects.toMatchObject({ cause: ecompromised });
+      expect(uncaught).not.toHaveBeenCalled();
+    } finally {
+      process.off('uncaughtException', uncaught);
+      lockSpy.mockRestore();
+    }
+  });
 
   it('fails a caller that will not wait with ELOCKED naming the current holder', async () => {
     const first = await holdLock();

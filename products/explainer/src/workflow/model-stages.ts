@@ -70,7 +70,7 @@ export function scriptPrompt(spine: string, facts: string): string {
   return promptFor(promptSections(spine, facts, scriptPlan(parseSpine(spine))));
 }
 
-export interface ScriptStageDeps {
+interface ScriptStageDeps {
   model: string;
   /** The run's video type, stamped on the script; a run with no profile keeps the reply's, checked against the registry. */
   profile?: string;
@@ -273,7 +273,7 @@ function companionOutputs(input: ModelStageInput, script: ScriptV1, spine: Spine
   return { outputs: { companion, "chapter-links": putJson(input, record, "chapter-links") }, notes };
 }
 
-export interface RewriteStageDeps {
+interface RewriteStageDeps {
   judge: JudgeConfig;
   rounds: number;
   harnessFor?: HarnessFor;
@@ -294,7 +294,7 @@ export async function runRewriteStage(input: ModelStageInput, deps: RewriteStage
 
 const verdict = (name: string, rows: readonly L0Result[]): Check => ({ name, gate: true, pass: l0HardPass(rows), detail: `${rows.length} checks; failed: ${failedChecks(rows).join(", ") || "none"}` });
 
-export interface EvalStageDeps {
+interface EvalStageDeps {
   judge: JudgeConfig;
   harnessFor?: HarnessFor;
 }

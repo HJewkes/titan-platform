@@ -6,7 +6,7 @@ import { writeFrontmatter } from '../utils/gray-matter-io.js';
 import { today } from '../utils/today.js';
 import { NotFoundError, UsageError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
-import { loadAllBriefs, sortSlugs, type InitiativeBrief } from './_focus-helpers.js';
+import { loadAllBriefs, movesForCaller, sortSlugs, type InitiativeBrief } from './_focus-helpers.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -62,7 +62,7 @@ export default defineCommand<Args, Result>({
     },
     usage: 'active-work focus <slug> [--rank N]',
   },
-  async run({ slug, rank }) {
+  async run({ slug, rank }, ctx) {
     const briefs = await loadAllBriefs();
     const target = briefs.find((b) => b.slug === slug);
     if (!target) {
@@ -141,7 +141,7 @@ export default defineCommand<Args, Result>({
       .map(([s, c]) => ({ slug: s, from: c.from, to: c.to }))
       .sort((a, b) => a.to - b.to);
 
-    return { slug, rank: desired, shifted };
+    return { slug, rank: desired, shifted: await movesForCaller(shifted, ctx) };
   },
 });
 
@@ -149,11 +149,12 @@ async function applyLocked(slugs: string[], fn: () => Promise<void>): Promise<vo
   // Acquire all locks in deterministic order. Nest withFileLock calls so
   // releases happen in reverse order.
   const recurse = async (index: number): Promise<void> => {
-    if (index === slugs.length) {
+    const slug = slugs.at(index);
+    if (slug === undefined) {
       await fn();
       return;
     }
-    await withFileLock(getLockPath(slugs[index]), () => recurse(index + 1));
+    await withFileLock(getLockPath(slug), () => recurse(index + 1));
   };
   await recurse(0);
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { failingRubric, fakeRubricJudge, throwingRubric } from "../cold-rubric-fakes.test-helpers.js";
 import type { L0Check } from "../eval-l0.js";
+import { JudgeConfigSchema } from "../eval-harness.js";
 import { flowCheck } from "../lint-flow.js";
 import { choppy } from "../rewrite-fixtures.test-helpers.js";
 import { ArtifactStore, sha256 } from "./artifacts.js";
@@ -268,7 +269,7 @@ describe("the cold rubric on every run", () => {
     const evalRow = row(result, "eval");
     expect(host.rubric.calls).toHaveLength(1);
     expect(evalRow.outputs["cold-rubric"]).toMatch(/^[0-9a-f]{64}$/);
-    expect(evalRow.notes[0]).toMatch(/^cold rubric \(reported only\): J8 \d, J9 \d, J10 \d, J11 \d, J12 \d; canary held$/);
+    expect(evalRow.notes[0]).toMatch(/^cold rubric \(reported only\): J8 \d, J9 \d, J10 \d, J11 \d, J12 \d, J13 \d; canary held$/);
     expect(evalRow.checks).toBe("2 pass, 0 gate fail, 0 reported fail");
   });
 
@@ -461,7 +462,7 @@ describe("the render stage", () => {
     const { fx: seed, result } = await seededRun();
 
     expect(Object.keys(row(result, "render").outputs).sort()).toEqual(["mp4", "page", "render-manifest", "timeline", "vtt"]);
-    expect(row(result, "render")).toMatchObject({ checks: "27 pass, 0 gate fail, 1 reported fail" });
+    expect(row(result, "render")).toMatchObject({ checks: "28 pass, 0 gate fail, 2 reported fail" });
     expect(existsSync(path.join(seed.theater, "demo.mp4"))).toBe(true);
   });
 });
@@ -509,8 +510,11 @@ describe("run report", () => {
     const { report } = result;
     const rewrite = row(result, "rewrite");
     // One clock read for the body's start and one each for its end and the checks step's end; export has no checks step.
-    expect(report.rows.filter((r) => r.status !== "not run").map((r) => r.wallMs)).toEqual([...Array(8).fill(2000), 1000]);
-    expect(report.totals.wallMs).toBe(17000);
+    // Render reads it twice more to time its own StepUsage row in the manifest.
+    const ran = report.rows.filter((r) => r.status !== "not run");
+    expect(ran).toHaveLength(9);
+    expect(ran.map((r) => [r.stage, r.wallMs])).toEqual(ran.map((r) => [r.stage, r.stage === "export" ? 1000 : r.stage === "render" ? 4000 : 2000]));
+    expect(report.totals.wallMs).toBe(19000);
     expect(row(result, "script")).toMatchObject({ usd: 0.05, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, calls: 1 });
     expect(rewrite.usd).toBeGreaterThan(0);
     expect(row(result, "eval")).toMatchObject({ usd: 0.01, calls: 1 });
@@ -527,5 +531,45 @@ describe("run report", () => {
     expect(md).toContain(`mp4 ${row(result, "render").outputs.mp4!.slice(0, 12)}`);
     expect(md).toContain("qa PASS: 0 held errors");
     expect(existsSync(result.reportPath.replace(/\.md$/, ".json"))).toBe(true);
+  });
+});
+
+describe("the judge differs from the script model", () => {
+  const sonnetJudge = JudgeConfigSchema.parse({ provider: "claude-print", model: "sonnet" });
+  const codexJudge = JudgeConfigSchema.parse({ provider: "codex", model: "gpt-x" });
+
+  it("refuses a sonnet script model with a sonnet judge before any stage runs, naming both", async () => {
+    fx = fixture();
+    const model = fakeScriptModel();
+
+    await expect(runVideo({ spine: fx.spine, facts: fx.facts, scriptModel: "sonnet", judge: sonnetJudge }, fakeHost(fx, model, fakeRender()))).rejects.toThrow(/script model "sonnet".*judge "sonnet"/);
+    expect(model.prompts).toHaveLength(0);
+  });
+
+  it("passes on the defaults alone", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    expect(result.status).toBe("completed");
+  });
+
+  it("passes a codex judge with a sonnet writer", async () => {
+    fx = fixture();
+
+    const result = await runVideo({ spine: fx.spine, facts: fx.facts, scriptModel: "sonnet", judge: codexJudge }, fakeHost(fx, fakeScriptModel(), fakeRender()));
+
+    expect(result.status).toBe("completed");
+  });
+
+  it("keeps the plan's distinct judge when a stopped run resumes", async () => {
+    fx = fixture();
+    const model = fakeScriptModel(undefined, { usd: 0.05 });
+    const render = fakeRender();
+    const stopped = await runVideo({ spine: fx.spine, facts: fx.facts, judge: codexJudge, budgetUsd: 0.05 }, fakeHost(fx, model, render));
+
+    const resumed = await resumeVideo(stopped.runId, fakeHost(fx, model, render), { budgetUsd: 5 });
+
+    expect(resumed.status, resumed.error).toBe("completed");
   });
 });

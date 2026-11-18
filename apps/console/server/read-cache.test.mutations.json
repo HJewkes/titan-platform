@@ -4,7 +4,7 @@
     {
       "name": "a stale value is served with no refresh behind it",
       "file": "apps/console/server/read-cache.ts",
-      "find": "if (kept.stale || age >= freshMs) refresh(state, load, now, onRefreshed).catch(() => undefined);",
+      "find": "if (kept.stale || age >= times.freshMs) refresh(state, load, now, onRefreshed).catch(() => undefined);",
       "replace": "if (kept.stale) refresh(state, load, now, onRefreshed).catch(() => undefined);",
       "kills": [
         "cachedRead serves a stale value at once and refreshes it behind the read"
@@ -13,7 +13,7 @@
     {
       "name": "a value of any age is served while it refreshes",
       "file": "apps/console/server/read-cache.ts",
-      "find": "if (kept === undefined || age >= staleMs) return refresh(state, load, now, onRefreshed);",
+      "find": "if (kept === undefined || age >= servedMs(state, times)) return refresh(state, load, now, onRefreshed);",
       "replace": "if (kept === undefined) return refresh(state, load, now, onRefreshed);",
       "kills": [
         "cachedRead waits for a fresh read once the kept value is too old to serve"
@@ -39,12 +39,12 @@
       ]
     },
     {
-      "name": "a re-read key is not moved to the newest place",
+      "name": "a read that arrives during a refresh after a failure joins it",
       "file": "apps/console/server/read-cache.ts",
-      "find": "      entries.delete(key);\n      entries.set(key, entry);",
-      "replace": "      entries.set(key, entry);",
+      "find": "(state.failed && state.running === undefined)",
+      "replace": "state.failed",
       "kills": [
-        "cachedReads drops the least recently read key once more than maxKeys are kept"
+        "cachedRead serves the kept value to a read that arrives while a refresh after a failure runs, so only the read that started it waits"
       ]
     }
   ]

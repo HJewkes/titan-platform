@@ -1,0 +1,45 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "short-register fails on either measure alone",
+      "file": "products/explainer/src/writing-gate.ts",
+      "find": "shape.mean < row.meanBelow && shape.longShare < row.longShareBelow",
+      "replace": "shape.mean < row.meanBelow || shape.longShare < row.longShareBelow",
+      "kills": [
+        "writing:short-register passes 190 words with a 19-word mean and no sentence over 30 words: the short mean is needed too",
+        "writing:short-register passes 8-word sentences once enough of them run past 30 words: the missing long sentences are needed too"
+      ]
+    },
+    {
+      "name": "short-register reads its mean floor from code",
+      "file": "products/explainer/src/writing-gate.ts",
+      "find": "shape.mean < row.meanBelow &&",
+      "replace": "shape.mean < 12 &&",
+      "kills": [
+        "writing:short-register reads its thresholds from the policy, so a raised floor fails the 19-word text"
+      ]
+    },
+    {
+      "name": "gate rows judge under the minimum words",
+      "file": "products/explainer/src/writing-gate.ts",
+      "find": "(words < minWords ? \"report-only\" : severity)",
+      "replace": "(severity)",
+      "kills": [
+        "writing gate rows under 150 words are all report-only and pass, however short the register",
+        "writing:long-share reports only under 600 words and warns at 600",
+        "Q-V16 at L0 is a passing warning on a 120-word tour"
+      ]
+    },
+    {
+      "name": "the calibrated status wins over the owner's override",
+      "file": "products/explainer/src/writing-gate-policy.ts",
+      "find": "writingGatePolicy().overrides[\"writing-check\"][row] ?? calibrated",
+      "replace": "calibrated ?? writingGatePolicy().overrides[\"writing-check\"][row]",
+      "kills": [
+        "the owner's report-only overrides make phrases report-only in eval writing though the calibrated table says warning",
+        "the owner's report-only overrides keep register:phrases passing at L0, with its value"
+      ]
+    }
+  ]
+}

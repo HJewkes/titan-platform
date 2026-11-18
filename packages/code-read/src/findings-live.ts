@@ -38,7 +38,7 @@ export function specifierLines(lines: readonly string[], specifier: string): Spa
   return out;
 }
 
-export interface FindingInputs {
+interface FindingInputs {
   snapshotId: number;
   edges: readonly ModelEdge[];
   read?: SourceReader;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PhaseWeek, Provenance, TaskRow, WeekMetrics } from "@titan-design/session-analytics";
+import type { FactoryHealth, PhaseWeek, Provenance, TaskRow, WeekMetrics } from "@titan-design/session-analytics";
 
 /**
  * The ticket scorecard's answers (TP-5446 S6). Each schema is pinned to session-analytics' own type, so a field the
@@ -44,8 +44,31 @@ const phaseCell = z.object({
   p90Minutes: z.number(),
 }) satisfies z.ZodType<PhaseWeek>;
 
-/** `frozen` when the job wrote `weeks/<week>.json`; `drift` when a later run computed it differently and wrote `<week>.drift.json`. */
-const scorecardWeek = z.object({ isoWeek: z.string(), frozen: z.boolean(), drift: z.boolean(), cells: z.array(weekCell), phases: z.array(phaseCell) });
+const count = z.number();
+
+/** The "Factory health" group (TP-5446 S18); the always-null fields are figures with no source yet. */
+const factoryHealth = z.object({
+  isoWeek: z.string(),
+  covered: z.object({ upkeepShare: measured, reviewRoundsMedian: measured, merged: count, usd: z.number() }),
+  selfGenerated: z.object({ agentFiled: count, agentFiledInferred: count, unlabelled: count, closed: count, mergedPrs: count, perClosed: measured, perMergedPr: measured }),
+  fenceStops: z.object({ dispatched: count, spawnRefusals: count, gateHolds: count, refusalsPer100: measured, holdsPer100: measured, guardDenials: z.null() }),
+  codeSize: z.null(),
+  modelTiers: z.array(z.object({ model: z.string(), dispatched: count, merged: count, mergeRate: measured, fixRoundsMean: measured })),
+  wakes: z.array(z.object({ seat: z.string(), timer: count, event: count, typed: count, timerNoActionShare: z.null() })).nullable(),
+}) satisfies z.ZodType<FactoryHealth>;
+
+/**
+ * `frozen` when the job wrote `weeks/<week>.json`; `drift` when a later run computed it differently and wrote `<week>.drift.json`.
+ * `factoryHealth` is null for a week the job has not scored the group for.
+ */
+const scorecardWeek = z.object({
+  isoWeek: z.string(),
+  frozen: z.boolean(),
+  drift: z.boolean(),
+  cells: z.array(weekCell),
+  phases: z.array(phaseCell),
+  factoryHealth: factoryHealth.nullable(),
+});
 
 /** `missing` is a host with no store yet; `unreadable` a store that would not open, with why. */
 const storeState = z.discriminatedUnion("state", [z.object({ state: z.literal("ok") }), z.object({ state: z.enum(["missing", "unreadable"]), detail: z.string() })]);
@@ -93,5 +116,6 @@ export const taskResult = z.object({ store: storeState, row: taskRowSchema.nulla
 
 export type ScorecardWeek = z.infer<typeof scorecardWeek>;
 export type ScorecardCell = z.infer<typeof weekCell>;
+export type ScorecardFactoryHealth = z.infer<typeof factoryHealth>;
 export type ScorecardTaskRow = z.infer<typeof taskRowSchema>;
 export type ScorecardStoreState = z.infer<typeof storeState>;

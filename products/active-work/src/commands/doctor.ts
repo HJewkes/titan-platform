@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { defineCommand } from '../registry/index.js';
 import { runDoctor, type CheckStatus } from '../doctor/index.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import { color } from '../utils/color.js';
 
 /**
@@ -38,7 +39,7 @@ export default defineCommand<Args, Result>({
   args: ArgsSchema,
   result: ResultSchema,
   async run(_args, ctx) {
-    const report = await runDoctor();
+    const report = await runDoctor({ activeRoot: ctx.activeRoot, shown: await visibilityFor(ctx) });
     if (ctx.format !== 'json') {
       process.stderr.write(color.bold('active-work doctor') + '\n');
       for (const check of report.checks) {

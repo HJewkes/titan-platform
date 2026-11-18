@@ -51,8 +51,13 @@ When you wrap up a session, capture it:
 active-work wrap my-feature --session-id <id> \
   --started 2026-05-12T09:00:00Z --ended 2026-05-12T11:30:00Z \
   --track canonical --body "Wired up the OAuth flow; tests still pending." \
-  --next-steps '[{"id":"n1","text":"Finish the OAuth tests","kind":"task","ref":"MF-4"}]'
+  --next-steps '[{"id":"n1","text":"Finish the OAuth tests","kind":"task","ref":"MF-4"}]' \
+  --no-notes --no-tasks \
+  --reports '[{"ref":"msg-0042","answer":"MF-4"}]'
 ```
+
+`--reports` names each report this session received (a sources path or a message id) and
+what became of it: a task id, a seat name or `none`. Pass `--no-reports` when it received none.
 
 `wrap` writes the session, files the ledger, and bumps `brief.updated` in one
 locked operation. It records what this session left hanging (`--next-steps`) and
@@ -156,7 +161,9 @@ The most-used surface, grouped by purpose. Run `active-work <command> --help` fo
 | Discover | `active-work discover` | Scan gh / git / projects / Claude sessions for untracked work |
 | Discover | `active-work audit` | Cross-initiative health summary |
 | Discover | `active-work context graph <id> [--slug S]` | Trace every exact-ID reference to a task id, session, or loop ref |
+| Discover | `active-work why <path>:<line>[-<end>] [--cwd D]` | Blame the lines at HEAD and map each commit to its PR, tasks and sessions, with the rung that found each; owner-only rows are counted, not shown, for agents |
 | Discover | `active-work context related --for <text> [--initiative S]` | Rank notes, sources, tasks and session records against a text; empty rather than failing without an index |
+| Discover | `active-work context brief --for <text> [--initiative S] [--budget-bytes N]` | Render the related-context section of a spawn brief within a UTF-8 byte budget, agent view only |
 
 ## Configuration
 
@@ -178,7 +185,7 @@ The active root itself is not in this file — it follows the XDG spec and can b
 
 ### Timing an `open`
 
-`active-work open` and `aw` put per-phase wall time in the result's `metadata.timings_ms` (`load`, `archive`, `live_status`, `rank_notes`, `loop_retrieval`, `loop_queries`, `total`, in milliseconds; `live_status` is how long the gh/git lookup took, which overlaps the phases after it). The numbers are never part of the prompt text. Set `AW_TIMING=1` to also print them as one line on stderr, e.g. `AW_TIMING=1 aw my-initiative`.
+`active-work open` and `aw` put per-phase wall time in the result's `metadata.timings_ms` (`load`, `archive`, `live_status`, `rank_notes`, `loop_retrieval`, `loop_queries`, `total`, in milliseconds; `live_status` is how long the gh/git lookup took, which overlaps the phases after it). The numbers are never part of the prompt text. Set `AW_TIMING=1` to also print them as one line on stderr, e.g. `AW_TIMING=1 aw my-initiative`. `aw` also appends an `aw.open` line (with those timings) and an `aw.launch` line to `usage.jsonl` in the state directory; `aw.launch`'s `duration_ms` is the time from process start to just before `claude` is spawned.
 
 ### Using `active-work` from Claude Code via MCP
 

@@ -49,7 +49,7 @@ const EDGE_KIND_ALIASES: ReadonlyMap<string, string> = new Map([
 ]);
 
 /** Canonical name for a deprecated alias, or `undefined` if `name` is not aliased. */
-export function deprecatedTarget<T extends string>(
+function deprecatedTarget<T extends string>(
   map: ReadonlyMap<string, T>,
   name: string,
 ): T | undefined {

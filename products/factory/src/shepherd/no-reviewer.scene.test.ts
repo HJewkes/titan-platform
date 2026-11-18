@@ -13,6 +13,7 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
 import type { ReviewerAgent, ReviewerDispatch, ReviewerMessage } from "@titan-design/review-panel";
 import { ReviewerBrokerBusy, reviewPhase } from "./review.js";
+import { MAX_NOT_STARTED_REVIEWS } from "./review-steps.js";
 import { agentChatReviewerDispatch } from "./reviewer-dispatch.js";
 import { createRosterReader } from "./roster.js";
 import { shepherdStoreRef } from "./store.js";
@@ -86,8 +87,17 @@ function reviewers(binding: Binding, clock: () => number) {
   return { dispatch, accounts, reader: { read }, spawnedAt, alerts };
 }
 
-/** One shepherd-pr run of relay#69 over the real review phase; every sleep moves the clock and yields once. */
-function relay69(binding: Binding) {
+const reviewSteps = (stepIds: readonly string[]) => stepIds.filter((id) => id.startsWith("sh-review:")).length;
+
+const untilAborted = (signal: AbortSignal) =>
+  new Promise<void>((resolve) => (signal.aborted ? resolve() : signal.addEventListener("abort", () => resolve(), { once: true })));
+
+/**
+ * One shepherd-pr run of relay#69 over the real review phase; every sleep moves the clock and yields once. With `freezeAfterReviews`,
+ * the clock stops once that many review steps have ended, because the real-time `vi.waitFor` poll otherwise lets the run race
+ * past the state a test reads.
+ */
+function relay69(binding: Binding, freezeAfterReviews = Infinity) {
   const fake = fakeGitHub();
   fake.addPr({ number: PR, headSha: HEAD, mergeSha: fakeSha("relay-merge") });
   fake.setRuns(HEAD, [successRun("validate", 1), successRun("dag-check", 2)]);
@@ -96,7 +106,9 @@ function relay69(binding: Binding) {
   const store = shepherdStoreRef(() => clock);
   const holds = new Set<string>();
   let runId = "";
+  let stepIds = (): string[] => [];
   const tick = async (ms: number, signal: AbortSignal) => {
+    if (reviewSteps(stepIds()) >= freezeAfterReviews) await untilAborted(signal);
     clock += ms;
     const reason = runId === "" ? undefined : store.get().byRun(runId)?.holdReason;
     if (reason) holds.add(reason);
@@ -110,7 +122,7 @@ function relay69(binding: Binding) {
   hosts.push(host);
   runId = host.runtime.start("shepherd-pr", { repo: REPO, pr: String(PR), policy: JSON.stringify(AUTO) });
   store.get().register({ repo: REPO, pr: PR, runId, task: "relay/TP-460", implementer: "tc-tp-460-b", policy: AUTO });
-  const stepIds = () => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
+  stepIds = () => Object.values(host.runtime.status(runId)!.stepResults).map((result) => result.stepId);
   return { runId, store, host, fake, holds, team, stepIds, now: () => clock };
 }
 
@@ -144,10 +156,12 @@ describe("a reviewer dispatch refused for want of a checkout (relay#69 run 89fcb
     expect(scene.host.gates.get(gateId(scene.runId, "approve-merge"))).toBeUndefined();
   });
 
-  it("keeps a still-busy broker on the retry path, with no hold and no alert", async () => {
-    const scene = relay69({ refuse: () => new ReviewerBrokerBusy("broker busy") });
+  it("keeps a still-busy broker on the retry path, with no hold and no alert, until the not-started bound", async () => {
+    // From MAX_NOT_STARTED_REVIEWS dispatches the run takes the no-reviewer hold by design (TP-5386), so the scene reads the dispatches before it.
+    const retries = MAX_NOT_STARTED_REVIEWS - 1;
+    const scene = relay69({ refuse: () => new ReviewerBrokerBusy("broker busy") }, retries);
 
-    await vi.waitFor(() => expect(scene.stepIds().filter((id) => id.startsWith("sh-review:")).length).toBeGreaterThanOrEqual(2), { timeout: 20_000 });
+    await vi.waitFor(() => expect(reviewSteps(scene.stepIds())).toBe(retries), { timeout: 20_000 });
 
     expect(scene.stepIds().filter((id) => id.startsWith("sh-no-reviewer"))).toEqual([]);
     expect(scene.holds).toEqual(new Set());

@@ -41,7 +41,8 @@ error (exit 2) naming the flag to pass and the branch it read. The other flags:
 | Flag | Meaning |
 | --- | --- |
 | `--reviewer <name>` | the agent that reviews |
-| `--kind <kind>` | `correctness`, `security`, `feature`, `refactor`, `test-only` or `unknown`; a new registration without it stores `correctness`. `test-only` is for a PR that only adds or changes tests; see [the test-only kind](#the-test-only-kind) |
+| `--kind <kind>` | `correctness`, `security`, `feature`, `refactor`, `test-only`, `revert` or `unknown`; a new registration without it stores `correctness`. `test-only` is for a PR that only adds or changes tests; see [the test-only kind](#the-test-only-kind). `revert` is for a PR that undoes a merged one; like `security` and `unknown` it never carries a reviewed MERGE |
+| `--reverts <owner/repo#N>` | the merged PR a `revert` registration undoes; `--kind revert` requires it, and it requires `--kind revert` |
 | `--policy <json>` | narrows the seat policy; see [seat policy](#seat-policy) |
 
 Registration is idempotent (`products/factory/src/shepherd/commands.ts`). A repeat for the
@@ -69,7 +70,7 @@ A deploy can park a run as `recovery_required` with `replay diverged`. Serve's s
 A repeat without `--kind` keeps the stored kind. What the kind controls today is carry and
 these refusals: only `correctness`, `feature` and `refactor` may carry a reviewed MERGE across
 a tree-equal update (MRG-AU-RC) or across a merge of the base whose remerge-diff resolved
-nothing reviewed (MRG-AU-RM); `security` and `unknown` always get a fresh review. A tree-equal
+nothing reviewed (MRG-AU-RM); `security`, `revert` and `unknown` always get a fresh review. Authority's `CARRYING_KINDS` (`pr-kind-not-security`) is the one list of carrying kinds; Shepherd imports it. A tree-equal
 update carries only when it is a clean merge-up: its first parent is the reviewed head (or a
 head an earlier merge-up carried that MERGE to), its second parent is on the base branch, and
 its tree equals `git merge-tree --write-tree` of the two. A conflict resolution, an extra
@@ -83,9 +84,9 @@ its second parent with the reviewed head's diff against its merge base with that
 carry records no `sh-merge-up` step, so no G10 release follows it (TP-3725). The kind also
 opens the fix-proof gate described next: `correctness`,
 `security` and `test-only` runs read it. An explicit `--kind` replaces the stored kind, unless it would move a
-`correctness` or `test-only` run to `feature`, `refactor` or `unknown`, or a `security` run to
+`correctness` or `test-only` run to `feature`, `refactor`, `revert` or `unknown`, or a `security` run to
 any other kind. That repeat is refused with exit 65 and a reason naming both kinds. Moving
-`correctness` to `security`, or `feature`, `refactor` or `unknown` to any kind, still applies.
+`correctness` to `security`, or `feature`, `refactor`, `revert` or `unknown` to any kind, still applies.
 A move into `test-only` meets the diff check [below](#the-test-only-kind).
 
 On a `correctness`, `security` or `test-only` run, or any `fix/` branch, Shepherd reads the
@@ -472,10 +473,10 @@ what is on main today; the rows marked *planned* are decided but not built.
 | Ordinary change under an `auto` policy | no row below matches | a reviewer `MERGE` at the head and green required checks (`MRG-AU-RV`) |
 | Visual-path change, `shepherd.visualGate: async` | the seat's `visual_paths` globs; recorded as `visualChanged` | the same reviews and green CI; no owner sign-off; the [feedback sheet](#visual-baselines) follows the merge |
 | Authority, security or policy change | `SHEPHERD_CLASS_RULES` path tables, or a `security` kind | `g10-adversary`: two independent reviewer `MERGE`s, then the seat releases the hold |
-| Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only) | *planned*: one opus `MERGE`. The classifier is on main, and nothing calls it yet, so the row above still applies |
+| Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only, never a file in the classifier's own import closure) | Ships in shadow: stays `g10-adversary` and names the low tier. Under `shepherd.gateReset.lowTierPolicy: on`, an owner config edit, `g10-review`: one opus `MERGE` at the head releases the hold |
 | Over 400 changed lines, or a store migration | line count, path table | `g10-review`: one opus `MERGE` releases the hold |
 | `owner-gate` seat policy, visual path under `visualGate: owner`, or `gate-2-visual` | registration, seat policy | the owner's `approve-merge` answer |
-| Unknown class: unread or empty file list, unlisted path table | the read failed or no table matches | the owner's `approve-merge` answer |
+| Unknown class: unread or empty file list, unlisted path table | the read failed or no table matches | the owner's `approve-merge` answer. An unread list (an API error twice, or a list past GitHub's cap) gets two things: the `files-unread` owner gate at merge, and a `g10-adversary: changed files unread at registration` hold placed at registration, so the seat reviews it as well. An empty list gates on `files-unread` alone; registration places no hold for it |
 
 **What still raises an owner gate.** The `owner-gate` policy and a hold that names the owner.
 One-way items: money, external accounts, deletion and publishing a new package. A visual path
@@ -959,6 +960,8 @@ causes, checked in this order (`products/factory/src/shepherd/view.ts`):
    when it recorded none.
 2. `MAX_NOT_STARTED_REVIEWS` (3) review dispatches in a row started no reviewer, because the
    broker kept refusing. The reason reads `3 review dispatches in a row started no reviewer`.
+   The run bounds this itself too: from the third dispatch at one head that starts no reviewer,
+   it takes the `no-reviewer` hold and alerts the seat instead of retrying (TP-5386).
 3. The run has sat in one phase past its `PHASE_STALL_LIMIT_MS` limit. The reason reads, for
    example, `75 min in ci, over the 60 min limit`.
 
@@ -1081,9 +1084,9 @@ Reads the store read-only, so it is safe beside a running `serve`. Two reports, 
   `sh-reverted` (see resync above). A run that read main CI more than once counts its last read.
 
 - With `--failures`, per repo and ISO week: failed runs counted by failure class (`ci-timeout`,
-  `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch`, `other`). Shepherd writes the
-  class as the error's `[<class>] ` prefix; an older error without one is classified from its
-  text. A `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. A
+  `gh-api-5xx`, `gh-rate-limit`, `land-rules`, `update-branch`, `other`). Shepherd records the
+  class in `workflow_run.error_class` where the run failed. Only a row written before that
+  column existed is classified from its text. A run parked for recovery counts as `other`. A `gh-api-5xx` is GitHub's side giving out: a 5xx, no connection, or an empty body. A
   `gh-rate-limit` is an answer `classifyGitHubFailure` called a limit: a primary limit, a
   secondary limit or a 429. The transport marks it `[gh-rate-limit …]`. JSON adds
   `"failures": [{ repo, week, failures, byClass }]`.
@@ -1464,6 +1467,9 @@ reads the answered `feedback` rounds in `shepherd.visualDelivery.roundsDir` and 
 active-work task per non-blank note, from the round's PR and frame. The initiative is the
 prefix of the PR's task, else `--initiative`. A ledger of round id and note index in the
 factory state dir makes a re-run file nothing already filed; an unanswered round files nothing.
+A sweep holds `visual-feedback-notes.lock` in the state dir, so a second one started meanwhile
+exits 75. A note's key is written to the ledger before its task is added and removed again if
+the add fails, so a failed ledger write never files a note twice.
 
 ### Visual tiers {#visual-tiers}
 
@@ -1690,6 +1696,34 @@ path of a file GitHub reports as renamed or copied, is matched against `SHEPHERD
 policy, authority or security path, or a `security` kind, takes `g10-adversary`. More than 400
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
+
+A policy touch that is low tier by its paths can take `g10-review` instead (TP-5403), so one opus
+`MERGE` at its head with green checks releases it and no owner gate is raised. This ships in shadow:
+`shepherd.gateReset.lowTierPolicy` absent means `shadow`, which keeps the adversary hold and only
+names the review the run would have had. `on` places the review hold; setting it is an owner config
+edit that follows the owner's decision on which gate code may go low. `off` keeps the adversary hold
+and names nothing. It is a live editable row.
+
+Low tier means no authority or security path, a risk tier that is low once the policy touch is set
+aside (no `.github` path, no publish or settings file, no owner gate or gate-resolve file, no
+visual path, no owner hold, 800 changed lines or fewer), and every policy path in an allowed table: the default policy
+globs, the signoff policy files or the hold closure (`lowTierPolicyTouch` in `g10-low-tier.ts`).
+The classifier's own definition never goes low: `g10-low-tier-closure.json` lists the import closure
+of `g10-low-tier.ts` and `registration-hold.ts`, into workspace package sources too (the adversary
+touches, the class globs and their matchers, the file and line-count readers, the visual gate), and
+a path on it keeps `g10-adversary` with `kept: gate input <path>`. `g10-low-tier-closure.test.ts`
+recomputes the walk and fails until the list matches (`vitest -u` rewrites it). That closure is all
+that is kept: code that calls the rule or writes the verdicts the release reads sits in the signoff
+policy or hold closure tables, and whether it may go low under `on` is the owner's call. Anything
+the classifier cannot judge keeps `g10-adversary`. The hold reason names the tables, as
+`g10-review: low-tier policy touch (hold-closure)` under `on` or
+`g10-adversary: policy touch (shadow: low tier hold-closure)` under `shadow`, or the fact that kept
+the run adversary, as `g10-adversary: policy touch (kept: owner-skill-guard)`, or the risk tier
+reason that kept it, as
+`g10-adversary: policy touch (kept: high: gate-resolve file packages/workflow/src/runtime.ts)`.
+The release records
+the rule `g10-review/low-tier`, which `shepherd timeline` shows as a `decision` entry, and the merge
+evidence records `lowTier` beside `riskTier`.
 
 Policy paths also cover who may resolve a gate, not only the owner's rule file. The list is
 `GATE_RESOLVE_ACTOR_FILES` in `products/factory/src/shepherd/g10-class-rules.ts`: hitl's whole
@@ -2291,6 +2325,41 @@ an untagged, stale-tagged, task-less or task-unreadable head gates at this row (
 `deliberate`). A head whose files are unread gates only as `files-unread`. Tagging the task does
 not clear a gate at the same head: the owner decides it, or a new head re-judges.
 
+**`owner-tier` (gate model S2, TP-5406).** The owner's merge stop list: the risk tier's high rows,
+less visual, decide at merge. A head gates at this row (class `deliberate`, decision class D4) when
+a changed path, case folded, sits in one of the named policy tables `merge-policy`,
+`hold-command`, `owner-action`, `gate-resolve-actor` or `gate-resolve-check`; or is a CI workflow
+file (`.github/workflows/`, `.github/codeowners`, `.codewatch/`); or a publish file; or a
+settings file. A policy path that no named table covers gates too, as `unnamed policy path`, so an
+unknown class keeps the owner gate. Test files stay exempt, as they are in the policy class. A
+measured budget-class CI change, the one a coordinator may accept under the `ci-policy-budget`
+row (owner decision 552 (2)), skips the CI workflow row. The row has no stamped rule, so the
+coordinator delegate never resolves it: only the owner does.
+
+The adversary's `Authority:` line joins the row (gate model S3b, TP-5407). When the run owes an
+adversary `MERGE`, because the panel planned an adversary or the registration holds a
+`g10-adversary` hold, the evidence step stamps `authorityLine` with the adversary's value, or
+`missing` when no adversary `MERGE` carried one or the registration could not be read. `widened`
+adds the row `Authority widened` and `missing` adds `Authority line missing`; `unchanged` and
+`tightened` add nothing. A run that owes no adversary stamps nothing, since it is never asked for
+the line. Decide time reads the stamp, and a stamped value it does not know reads as `missing`.
+
+`shepherd.gateReset.ownerTier` switches it, and it is a live editable row:
+
+- `on` gates the merge on the row.
+- `shadow`, and an absent key, change no outcome: the evidence record stores
+  `ownerTier: { mode: "shadow", rows }` and an allow's reason ends `owner tier would gate: <rows>`.
+- `off` stamps nothing.
+
+The evidence step stamps the mode it read, and decide time recomputes the rows from the head's
+changed paths, so a stored record decides the same way at the same head. A record from before the
+row decides as `off`, and a stamp whose mode is not `shadow` reads as `on`.
+
+The gate guards its own code. `owner-tier.ts` and `merge-facts.ts`, which call and decide the row,
+sit in the `merge-policy` table, so a change to either gates on the owner under `on` and never goes
+low tier. The config reader turns an absent key into `shadow`; the evidence step reads a mode that
+never arrived, as from a route that lost its wiring, as `on`.
+
 The CI-policy rule checks content, not lines. Everything the PR merges must be byte-identical
 to what the owner approved, so a weakening anywhere in the PR, inside `.github/` or not, was in
 front of the owner. A PR that mixes code with an approved policy edit still gates. The visual
@@ -2373,9 +2442,46 @@ The approve pick records a `task` row in `shepherd_plan_approval`, keyed by the 
 holding the done_when text itself, not a digest of it. No run
 claims it, so it covers every PR of the task, and only the console's owner-remote writes it. Code
 reads it only through `ownerTaskApproval` (`products/factory/src/shepherd/owner-task-approval.ts`),
-which reads none when the done_when differs in any word from the text the owner approved. Nothing at dispatch
-or merge reads it yet; S8b adds the check and the merge backstop. A refusal exits 65 and an
-unreachable active-work exits 69, each with no round printed.
+which reads none when the done_when differs in any word from the text the owner approved, and
+`latestTaskApproval` beside it, for the readers below that tell a changed done_when from no
+approval. A refusal exits 65 and an unreachable active-work exits 69, each with no round printed.
+
+**Refusing an unvalidated task (gate model S8b, TP-5411).** Before an implementer is spawned for a
+task, the dispatcher (a seat, the burndown tick, or later the planner) runs:
+
+```
+titan-factory shepherd task-approval check <initiative>/<ID>
+```
+
+It exits 0, printing `dispatchable: <key>`, when the task is not tagged `owner-validate` or the
+owner approved its current done_when. Otherwise it exits 3 and prints one refusal code:
+`no-approval`, `done-when-changed` (the approval binds an older done_when), or `task-unread`
+(active-work did not answer, or holds no such task). On exit 3, file the task's plan round
+instead. A key that is not `<initiative>/<ID>` exits 2 and reads nothing; an unreadable store exits
+69. The rule is `ownerValidateRefusal` in `g10-owner-validate.ts`, whose `g10-` prefix keeps it in
+the `merge-policy` table, so a change to it stops for the owner.
+
+The check is advisory; the merge backstop holds whether or not a dispatcher ran it. The evidence
+step reads the run's registered task from active-work and stamps
+`ownerValidate: { mode, task, tagged: true, doneWhen }` for a tagged task, or `tagged: "unread"`
+when the task cannot be read, the registered key is not the canonical `<initiative>/<ID>`, or the
+registration itself is unreadable. A run with no task, or an untagged one, is stamped nothing.
+Before each decision, `sh-policy` adds the owner's latest task approval for the registered task
+key to the run's approvals, and decide time runs the same rule against the stamp. Under `on` a
+refusal gates at the `owner-validate` row (class `deliberate`, decision class D19), and only the
+owner resolves it.
+
+`shepherd.gateReset.ownerValidate` switches it, and it is a live editable row:
+
+- `on` gates the merge on the row. An unread task gates too, so with active-work down every PR
+  whose run names a task stops for the owner (Q-S8b's fail-closed rule).
+- `shadow`, and an absent key, change no outcome: an allow's reason ends
+  `owner validate would gate: <why>`.
+- `off` stamps nothing.
+
+An approval recorded before the PR's review clears the row at its decide. An approve-merge gate
+already open is re-decided only by a new head or base, as with a drift, so the owner answers that
+gate as well, or the next push clears it.
 
 **Content drift.** A `ci-policy` approval holds only while every byte the PR merges matches its
 pin, so a policy plan carries the final content of every file in its PR, and the implementer

@@ -39,8 +39,8 @@
     {
       "name": "a roster read timing out after the ask reads as not started in time",
       "file": "products/factory/src/shepherd/review.ts",
-      "find": "return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent, rosterError);",
-      "replace": "return notStartedInTime(intent, rosterError);",
+      "find": "return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent.reviewer, rosterError);",
+      "replace": "return notStartedInTime(intent.reviewer, rosterError);",
       "kills": [
         "sh-review answers not-started, naming the timeout and the wait, when every roster read after a successful ask timed out"
       ]

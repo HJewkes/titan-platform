@@ -73,7 +73,7 @@ describe("a configured factory", () => {
     const routes = withAutoresearch([], arConfigFixture(root, { fixture: { clone } }));
     const host = openFactoryHost({ dbPath: ":memory:", workflows: [], routes, gatePollMs: 5 });
     hosts.push(host);
-    const call = inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes));
+    const call = inProcessCaller(createFactoryRegistry(), () => factoryContext(host, routes, "agent"));
 
     const started = await call("autoresearch.start", { target: "fixture", pin: side });
     const run = await host.runtime.wait(z.object({ runId: z.string() }).parse(started.ok && started.data).runId);

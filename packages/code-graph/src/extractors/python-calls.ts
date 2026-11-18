@@ -9,7 +9,7 @@ import { symbolId } from "./ids.js";
 import { invokedCommands } from "./python-invoke.js";
 
 /** Resolves a dotted module name, relative or absolute, from this file to an in-repo file id. */
-export type ResolveModule = (specifier: string) => string | null;
+type ResolveModule = (specifier: string) => string | null;
 
 interface PyCallContext {
   fileId: string;

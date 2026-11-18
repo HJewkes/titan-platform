@@ -84,6 +84,12 @@ export interface FactoryRouteDeps extends Omit<LandPrDeps, "gitCache" | keyof Po
   gateway?: GhGateway;
   /** `on` lets a g10 hold gate only the merge, so a held run repairs as usual; absent means `off`. A getter is read per check. */
   heldRepair?: Live<"off" | "on" | undefined>;
+  /** Whether a low-tier policy touch is held `g10-review` (TP-5403); absent means `shadow`. A getter is read per registration. */
+  lowTierPolicy?: Live<"off" | "shadow" | "on" | undefined>;
+  /** Whether an owner-tier row gates the merge (TP-5406); absent means `shadow`. A getter is read per merge-evidence step. */
+  ownerTier?: Live<"off" | "shadow" | "on" | undefined>;
+  /** Whether a task tagged owner-validate gates the merge without the owner's task approval (TP-5411); absent means `shadow`. A getter is read per merge-evidence step. */
+  ownerValidate?: Live<"off" | "shadow" | "on" | undefined>;
   /** `on` lets a vacuous fix-proof on a test-only PR with a tests-only diff proceed to review; absent means `off`. A getter is read per check. */
   noReproProceed?: Live<"off" | "on" | undefined>;
   /** `record-fact` sends a NO_REPRO on a diff with no source path on to review; absent means `keep-owner`. A getter is read per check. */

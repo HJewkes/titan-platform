@@ -2,12 +2,6 @@ import { readCallSites, readParamShape, type CallSite, type ParamShape } from ".
 import { parseSymbolId } from "../extractors/ids.js";
 import type { GraphEdge, GraphMetric, GraphNode } from "../types.js";
 
-export const CALL_METRIC_NAMES: ReadonlySet<string> = new Set([
-  "symbol_caller_count",
-  "symbol_single_caller_helper",
-  "symbol_constant_params",
-]);
-
 /** Placeholder for a parameter a site does not pass; no literal's source text can equal it. */
 const ABSENT = "<absent>";
 

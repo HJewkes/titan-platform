@@ -1,6 +1,8 @@
 import type { Band } from "./lint-register.js";
 import type { WritingMetric } from "./lint-writing.js";
 import type { HumanStanding, WritingDimension, WritingReport, WritingRow } from "./writing-check.js";
+import type { GateRow } from "./writing-gate.js";
+import type { GateSeverity } from "./writing-gate-policy.js";
 import type { WritingStatus } from "./writing-status.js";
 
 const NONE = "—";
@@ -26,6 +28,8 @@ function verdictText(row: WritingRow): string {
   return row.verdict === "unmeasured" ? "n/a" : NONE;
 }
 
+const quoted = (spans: readonly { beat: string; text: string }[]): string => spans.map((span) => `"${span.text}" (${span.beat})`).join(", ");
+
 function rowLine(row: WritingRow, label: string): string {
   const head = label.padEnd(WIDTHS.dimension) + row.metric.padEnd(WIDTHS.metric);
   if (row.status === "drop") return `${head}${"".padEnd(WIDTHS.value + WIDTHS.band + WIDTHS.human)}${STATUS_LABEL.drop}`;
@@ -33,7 +37,22 @@ function rowLine(row: WritingRow, label: string): string {
     valueText(row).padEnd(WIDTHS.value), bandText(row.band).padEnd(WIDTHS.band), humanText(row.human).padEnd(WIDTHS.human),
     STATUS_LABEL[row.status].padEnd(WIDTHS.status), verdictText(row).padEnd(WIDTHS.verdict),
   ];
-  return `${head}${cells.join("")}${row.spans.map((span) => `"${span.text}" (${span.beat})`).join(", ")}`.trimEnd();
+  return `${head}${cells.join("")}${quoted(row.spans)}`.trimEnd();
+}
+
+const GATE_SEVERITY_LABEL: Record<GateSeverity, string> = { error: "GATE", warning: "warning", "report-only": "report" };
+const GATE_WIDTHS = { id: 32, value: 10, threshold: 10 } as const;
+
+/** A writing gate or hallmark row: its value, the threshold it is held to, its severity and the beats it names. */
+function gateLine(row: GateRow): string {
+  const value = row.value === null ? NONE : String(Math.round(row.value * 100) / 100);
+  const verdict = row.value === null && row.severity === "error" ? "n/a" : row.pass ? "pass" : "FAIL";
+  const cells = [
+    row.id.padEnd(GATE_WIDTHS.id), value.padEnd(GATE_WIDTHS.value), String(row.threshold).padEnd(GATE_WIDTHS.threshold),
+    GATE_SEVERITY_LABEL[row.severity].padEnd(WIDTHS.status), verdict.padEnd(WIDTHS.verdict),
+  ];
+  const named = row.spans.length > 0 ? quoted(row.spans) : row.beats.join(", ");
+  return `${cells.join("")}${named}`.trimEnd();
 }
 
 const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
@@ -57,5 +76,5 @@ export function formatWritingReport(report: WritingReport, source: { script: str
     seen.add(row.dimension);
     return rowLine(row, label);
   });
-  return [header, ...shortNote, ...rows, verdictLine(report)].join("\n");
+  return [header, ...shortNote, ...rows, "writing gate (doctrine/writing-gate.json)", ...report.gate.map(gateLine), verdictLine(report)].join("\n");
 }

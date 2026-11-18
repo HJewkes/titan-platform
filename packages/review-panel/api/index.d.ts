@@ -372,6 +372,9 @@ interface ReviewScope {
 /** Any doubt means a full review: a scope that fails here, or has no open finding to check, leaves the brief unscoped. */
 declare function usableScope(scope: ReviewScope | undefined, openFindings: number): scope is ReviewScope;
 
+/** One shared vocabulary is what lets Shepherd count a class across PRs; reviewer free text gave a new phrasing almost every time. */
+declare const CHECK_CANDIDATES_RULE: string;
+
 type RepoSlug = string;
 /** The most of a reviewer's OWNER-BRIEF block that is read; a longer block is malformed rather than cut. */
 declare const MAX_OWNER_BRIEF_CHARS = 2000;
@@ -475,6 +478,44 @@ declare function hasProbesLine(text: string): boolean;
  */
 declare function authorityLine(text: string): AuthorityLine | "malformed" | undefined;
 
+declare const CHECK_CANDIDATES_HEADING = "Check-candidates:";
+declare const MAX_CHECK_CANDIDATES = 5;
+declare const MAX_CHECK_SKETCH_CHARS = 160;
+/** The audit's routes without `none`: a reviewer writes no line for a one-off rather than a line routed nowhere. */
+declare const CHECK_ROUTES: readonly ["lint", "type", "structure", "test", "analysis", "design", "prompt", "docs"];
+type CheckRoute = (typeof CHECK_ROUTES)[number];
+/** A standard class's default route; `none` marks the classes that never become a check. */
+type CheckClassRoute = CheckRoute | "none";
+/** The review audit's fixed vocabulary of 45 class keys, so the same class counts as one across PRs whatever the reviewer's wording. */
+declare const CHECK_CLASSES: readonly {
+    readonly key: string;
+    readonly route: CheckClassRoute;
+}[];
+/** One finding a reviewer thinks a check could have caught; it never decides the verdict. */
+interface CheckCandidate {
+    /** A standard key, or `other:<slug>` for a key the reviewer coined. */
+    classKey: string;
+    route: CheckRoute;
+    sketch: string;
+}
+declare const CHECK_CANDIDATES_WARNINGS: readonly ["multiple_blocks", "bad_item", "bad_route", "too_many", "too_long"];
+/** Why a Check-candidates block was dropped whole; a closed set, so no reviewer text travels with it. */
+type CheckCandidatesWarning = (typeof CHECK_CANDIDATES_WARNINGS)[number];
+interface ParsedCheckCandidates {
+    items: CheckCandidate[];
+    warning?: CheckCandidatesWarning;
+}
+/**
+ * The one `Check-candidates:` block anywhere in a reviewer's visible text, before or after the verdict lines. Any fault drops
+ * the whole block with one named warning rather than recording part of it, and nothing here can change the verdict.
+ */
+declare function parseCheckCandidates(text: string): ParsedCheckCandidates;
+/** The fields an accepted verdict carries: both absent when the reviewer named no candidate and wrote nothing malformed. */
+declare function checkCandidatesFields(text: string): {
+    checkCandidates?: CheckCandidate[];
+    checkCandidatesWarning?: CheckCandidatesWarning;
+};
+
 declare const FOLLOW_UPS_HEADING = "Follow-ups:";
 declare const MAX_FOLLOW_UPS = 5;
 declare const MAX_FOLLOW_UP_TITLE_CHARS = 120;
@@ -486,9 +527,9 @@ declare const FollowUpSchema: z.ZodObject<{
     title: z.ZodString;
     doneWhen: z.ZodString;
     severity: z.ZodEnum<{
+        high: "high";
         low: "low";
         medium: "medium";
-        high: "high";
     }>;
 }, z.core.$strict>;
 type FollowUp = z.infer<typeof FollowUpSchema>;
@@ -517,8 +558,8 @@ declare const OwnerBriefSchema: z.ZodObject<{
     pros: z.ZodArray<z.ZodString>;
     cons: z.ZodArray<z.ZodString>;
     doorType: z.ZodEnum<{
-        "two-way": "two-way";
         "one-way": "one-way";
+        "two-way": "two-way";
     }>;
 }, z.core.$strict>;
 type OwnerBrief = z.infer<typeof OwnerBriefSchema>;
@@ -554,6 +595,10 @@ interface AcceptedVerdict {
     followUps?: FollowUp[];
     /** Why the reviewer's Follow-ups block was dropped whole; the verdict still counts. */
     followUpsWarning?: FollowUpsWarning;
+    /** Findings the reviewer thinks a check could have caught, on MERGE and FIX_FIRST alike; never read by the verdict. */
+    checkCandidates?: CheckCandidate[];
+    /** Why the reviewer's Check-candidates block was dropped whole; the verdict still counts. */
+    checkCandidatesWarning?: CheckCandidatesWarning;
     /** The profile the accepted message's author was spawned with; absent when neither the dispatch nor the roster says. */
     reviewerProfile?: string;
 }
@@ -755,4 +800,4 @@ declare function memberName(target: ReviewTarget, shape: ReviewShape, attempt?: 
  */
 declare function reviewPullRequest(request: ReviewRequest, ports: ReviewPorts, opts?: ReviewOptions): Promise<PanelVerdict>;
 
-export { ATTESTS_HEADING, AUTHORITY_HEADING, type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AttestClaim, type AuthorityLine, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, CLASS_TAG, CONVERGENCE_HEADING, type ChangedFile, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, IMPORTANT_TAG, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_ATTEST_CLAIMS, MAX_CI_CHECK_ROWS, MAX_CLAIM_FILES, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, MAX_SCOPE_PATHS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, type NoReproProceed, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewScope, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ScopeHunk, type ScopeRefusal, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, UninstalledProfileError, type WorkflowCiInput, type WorkflowCiProof, acceptVerdict, aggregate, attestRule, attestTokens, authorityLine, boundedFindings, changedLineCount, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, fixProofNeedsTests, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, noReproProceedOf, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, usableScope, validOwnerPicks };
+export { ATTESTS_HEADING, AUTHORITY_HEADING, type AcceptedVerdict, type AdversaryHoldContext, type AggregateInput, type AttestClaim, type AuthorityLine, type AwaitVerdictInput, type AwaitVerdictResult, BLOCK_LINE, CHECK_CANDIDATES_HEADING, CHECK_CANDIDATES_RULE, CHECK_CANDIDATES_WARNINGS, CHECK_CLASSES, CHECK_ROUTES, CI_POLICY_RULE, CI_REVIEWER_TEST_RULE, CI_UNREAD_LINE, CLASS_TAG, CONVERGENCE_HEADING, type ChangedFile, type CheckCandidate, type CheckCandidatesWarning, type CheckClassRoute, type CheckRoute, type CiCheckRow, type ClassRoles, type ClassRules, DEFAULT_CLASS_ROLES, DEFAULT_CLASS_RULES, DEFAULT_MEMBER_POINTS, DEFAULT_PANEL_POLICY, DEFAULT_PANEL_TABLE, DEFAULT_SHAPE_ROLES, DEFAULT_SONNET_FOR, DEFECT_CLASS_HEADING, DEPTH_FLOOR_REASON, EARLIER_FINDINGS_END, EARLIER_FINDINGS_HEADING, EARLIER_FINDINGS_START, type EarlierFinding, FINDINGS_SEPARATOR, FIX_FIRST_TRUNCATED, FOLLOW_UPS_HEADING, FOLLOW_UPS_RULE, FOLLOW_UPS_WARNINGS, FOLLOW_UP_SEVERITIES, type FollowUp, FollowUpSchema, type FollowUpsWarning, type Headroom, IMPORTANT_TAG, INVESTIGATIVE_CALLS, MALFORMED_REFUSALS, MAX_ATTEST_CLAIMS, MAX_CHECK_CANDIDATES, MAX_CHECK_SKETCH_CHARS, MAX_CI_CHECK_ROWS, MAX_CLAIM_FILES, MAX_CORRECTION_PROMPT_CHARS, MAX_FIX_FIRST_TEXT_CHARS, MAX_FOLLOW_UPS, MAX_FOLLOW_UP_DONE_WHEN_CHARS, MAX_FOLLOW_UP_TITLE_CHARS, MAX_OWNER_BRIEF_CHARS, MAX_OWNER_PICKS, MAX_REVIEWER_QUESTIONS, MAX_SCOPE_PATHS, type Malformed, type MalformedRefusal, MalformedSchema, type MemberResult, type NoReproProceed, OVERLAY_SHAPES, OWNER_BRIEF_END, OWNER_BRIEF_START, OWNER_PICK_CONTRADICTED, type OverlayShape, type OwnerBrief, OwnerBriefSchema, type OwnerPick, PROBES_HEADING, type PanelFinding, type PanelMember, type PanelOutcome, type PanelPlan, type PanelPolicy, type PanelVerdict, type ParsedCheckCandidates, type ParsedFollowUps, type PrClass, type PrFacts, type PrTouch, type Presence, REFUSAL_SENTENCES, type ReviewClass, type ReviewClock, type ReviewOptions, type ReviewPorts, type ReviewRequest, type ReviewScope, type ReviewShape, type ReviewTarget, type ReviewerAgent, type ReviewerBriefInput, type ReviewerDispatch, type ReviewerFacts, type ReviewerMessage, type ReviewerReader, SECURITY_SLICE_LINES, SHAPE_BRIEFS, SPAWN_REFUSED_REASON, type ScopeHunk, type ScopeRefusal, type ShapeBrief, type ShapeBriefInput, type ShapeRule, type SliceFlag, type SliceInput, USAGE_LIMIT_REASON, UninstalledProfileError, type WorkflowCiInput, type WorkflowCiProof, acceptVerdict, aggregate, attestRule, attestTokens, authorityLine, boundedFindings, changedLineCount, checkCandidatesFields, ciUnreadOnly, classifyPr, contradictedPicks, correctionPrompt, findingsText, fixFirstFindings, fixProofNeedsTests, followUpsFields, hasProbesLine, isInvestigativeCall, isUsageLimit, memberName, namesPr, namesTarget, noReproProceedOf, parseCheckCandidates, parseFollowUps, parseOwnerBrief, pathTouches, planPanel, readMalformed, reviewCheckoutName, reviewPullRequest, reviewerBrief, securitySliceFlag, shapeBrief, touchesDependency, usableScope, validOwnerPicks };

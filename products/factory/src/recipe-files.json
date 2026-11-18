@@ -30,6 +30,7 @@
   "shepherd/observe.ts",
   "shepherd/outcome.ts",
   "shepherd/owner-send-back.ts",
+  "shepherd/own-diff.ts",
   "shepherd/own-merge-up.ts",
   "shepherd/park.ts",
   "shepherd/policy.ts",

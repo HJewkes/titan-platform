@@ -1,5 +1,5 @@
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright-core'
-import type { TitanMotionApi } from './protocol.js'
+import { MARK_KINDS, type MarkKind, type PageMark, type TitanMotionApi } from './protocol.js'
 import { VIRTUAL_TIME_SCRIPT, type VirtualTimeApi } from './virtual-time.js'
 
 declare global {
@@ -17,6 +17,8 @@ export interface Viewport {
 export interface PageOptions extends Viewport {
   /** Load every declared FontFace before frame 0. Off only to measure what it prevents. */
   preloadFonts?: boolean
+  /** Leave pixels the page does not paint at alpha 0 instead of Chromium's white default. */
+  transparent?: boolean
 }
 
 export interface FontState {
@@ -73,6 +75,27 @@ function validDuration(duration: unknown): number {
   throw new Error(`window.__titanMotion.duration must be a positive number of seconds, got ${String(duration)}`)
 }
 
+/** The page is untrusted: its declared `PageMark` is checked at runtime. */
+function validMark(mark: PageMark | null | undefined, index: number): PageMark {
+  const { t, beat, kind } = mark ?? {}
+  const where = `window.__titanMotion.marks()[${index}] (beat ${String(beat)})`
+  if (typeof t !== 'number' || !Number.isFinite(t)) throw new Error(`${where} has an invalid t: ${String(t)}`)
+  if (typeof beat !== 'number') throw new Error(`${where} has an invalid beat: ${String(beat)}`)
+  if (!isMarkKind(kind)) throw new Error(`${where} has an unknown kind: ${JSON.stringify(kind)}`)
+  return { t, beat, kind }
+}
+
+function isMarkKind(kind: unknown): kind is MarkKind {
+  return MARK_KINDS.some((known) => known === kind)
+}
+
+/** Read once: the page's marks are part of its timeline, not of any frame. */
+async function readMarks(page: Page): Promise<PageMark[]> {
+  const raw = await page.evaluate(() => window.__titanMotion?.marks?.() ?? [])
+  if (!Array.isArray(raw)) throw new Error(`window.__titanMotion.marks() must return an array, got ${typeof raw}`)
+  return raw.map(validMark).sort((a, b) => a.t - b.t)
+}
+
 async function waitForMotionApi(page: Page, errors: readonly Error[]): Promise<number> {
   const deadline = Date.now() + API_TIMEOUT_MS
   while (Date.now() < deadline) {
@@ -103,6 +126,8 @@ export interface CapturePage {
   /** `__titanMotion.duration` in seconds. */
   duration: number
   fonts: FontState[]
+  /** `__titanMotion.marks()`, validated and sorted by t; empty when the page has none. */
+  marks: PageMark[]
   /** Every uncaught page error, collected from before navigation; empty when the open succeeds. */
   errors: readonly Error[]
 }
@@ -159,13 +184,15 @@ async function loadCapturePage(context: BrowserContext, url: string, options: Pa
   page.on('pageerror', (e) => errors.push(e))
   const failedFonts = watchFontRequests(page)
   await page.goto(url, { waitUntil: 'load' })
+  if (options.transparent) await makeBackgroundTransparent(page)
   const duration = await waitForMotionApi(page, errors)
+  const marks = await readMarks(page)
   const fonts = await settleFonts(page, options.preloadFonts ?? true)
   // Anchors the animations the page started while loading at virtual 0, so a chunk that jumps ahead agrees with a sweep.
   await page.evaluate(() => window.__virtualTime.syncAnimations())
   if (options.preloadFonts !== false) assertFontsLoaded(fonts, failedFonts)
   throwIfPageErrored(errors, 'while loading')
-  return { page, duration, fonts, errors }
+  return { page, duration, fonts, marks, errors }
 }
 
 /** One frame: advance virtual time, seek (commits through flushSync), await ready(), sync the animations the seek started, screenshot. */
@@ -190,6 +217,12 @@ function cdpSession(page: Page): Promise<CDPSession> {
     sessions.set(page, session)
   }
   return session
+}
+
+/** Chromium paints white under a page that paints nothing; screenshots keep alpha only where this override is clear. */
+async function makeBackgroundTransparent(page: Page): Promise<void> {
+  const session = await cdpSession(page)
+  await session.send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } })
 }
 
 /** An immediate second ask hit the same busy compositor in CI (TP-4615); a short wait lets it drain. */

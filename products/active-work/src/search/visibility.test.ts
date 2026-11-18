@@ -11,6 +11,7 @@ import type { CommandContext } from '../registry/types.js';
 import { invokeTool } from '../server/mcp.js';
 import { defaultGraphPath, openGraph } from '../session-index/graph.js';
 import { withEmptyActiveRoot } from '../test-support/test-helpers.js';
+import { ownerShown, writeCharter } from '../test-support/visibility.js';
 import { refreshWorkspace } from '../workspace-index/refresh.js';
 import { searchWorkspace } from './index.js';
 
@@ -66,6 +67,7 @@ async function refresh(root: string): Promise<void> {
 
 /** alpha stays visible; private-notes and broken are indexed visible, then hidden without a refresh. */
 async function staleIndex(root: string): Promise<void> {
+  writeCharter(root);
   writeInitiative(root, 'alpha', 'AL');
   writeInitiative(root, 'private-notes', 'PN');
   writeInitiative(root, 'broken', 'BR');
@@ -87,7 +89,7 @@ describe('owner-only initiatives in agent-facing search', () => {
     await withEmptyActiveRoot(async (root) => {
       await staleIndex(root);
 
-      const { hits } = await searchWorkspace(QUERY, { activeRoot: root, visible: () => true });
+      const { hits } = await searchWorkspace(QUERY, { activeRoot: root, visible: await ownerShown(root) });
 
       expect(initiativesOf(hits)).toEqual(['alpha', 'broken', 'private-notes']);
     });
@@ -183,7 +185,7 @@ describe('the workspace indexer and owner-only initiatives', () => {
       const graph = openGraph(defaultGraphPath());
       try {
         const count = (sql: string) => CountSchema.parse(graph.db.prepare(sql).get()).n;
-        const { hits } = await searchWorkspace(QUERY, { graph, activeRoot: root, visible: () => true });
+        const { hits } = await searchWorkspace(QUERY, { graph, activeRoot: root, visible: await ownerShown(root) });
         expect(initiativesOf(hits)).toEqual(['alpha']);
         expect(count("SELECT count(*) AS n FROM initiative WHERE slug = 'private-notes'")).toBe(1);
         expect(count("SELECT count(*) AS n FROM note WHERE initiative = 'private-notes'")).toBe(0);

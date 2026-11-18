@@ -70,5 +70,27 @@ export function rosterTie(target: SeatTarget, rows: readonly SeatRow[], stemOf: 
   return { kind: "none", missing: `no registration's implementer or branch is ${keys.map((key) => `"${key}"`).join(" or ")}` };
 }
 
+/**
+ * How long a stopped seat reviewer that no registration ties to any PR may hold every PR's MERGE. Without a bound one stale
+ * reviewer blocks the whole queue; a reviewer tied to its own PR never ages out, so a canonical reviewer keeps its veto.
+ */
+const UNTIED_SEAT_AGE_OUT_MS = 4 * 60 * 60_000;
+
+const STOPPED: ReadonlySet<ReviewerAgent["presence"]> = new Set(["exited", "deregistered"]);
+
+/** `aged`: every row of the name has stopped and its newest write, `since`, is old enough. `held`: `hint` says when it ages out, or why it never does. */
+type AgeOut = { kind: "aged"; since: number } | { kind: "held"; hint: string };
+
+/** Whether an untied seat reviewer, given every roster row of its name, has aged out at `now`. */
+export function untiedAgeOut(rows: readonly SeatRow[], now: number): AgeOut {
+  const running = rows.find((row) => !STOPPED.has(row.presence));
+  if (running) return { kind: "held", hint: `it never ages out while a row of it is ${running.presence}` };
+  const written = rows.flatMap((row) => (row.lastWrittenAt === undefined ? [] : [row.lastWrittenAt]));
+  if (written.length === 0) return { kind: "held", hint: "it never ages out, since the roster gives no write time" };
+  const since = Math.max(...written);
+  const at = since + UNTIED_SEAT_AGE_OUT_MS;
+  return now >= at ? { kind: "aged", since } : { kind: "held", hint: `it ages out at ${new Date(at).toISOString()}` };
+}
+
 /** `registeredOwners` over a store, for a step that hands the seat check its target's owners. */
 export const ownerIn = (store: SeatStore) => (target: ReviewTarget) => registeredOwners(store, target);

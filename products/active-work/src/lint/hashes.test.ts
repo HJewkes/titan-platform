@@ -42,7 +42,7 @@ describe('lintHashes', () => {
         slug: 'sample-initiative',
         file: 'artifacts.yml',
       });
-      expect(findings[0].message).toContain('hand-edited outside active-work');
+      expect(findings.at(0)?.message).toContain('hand-edited outside active-work');
     });
   });
 

@@ -4,6 +4,8 @@ import { NotFoundError } from '../errors.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { SAMPLE_SLUG, addInitiative, writeFacet } from '../test-support/facets/fixtures.js';
 
+const OWNER = { caller: 'owner' as const, warnings: [] as string[] };
+
 describe('resolveSlugOrFacet', () => {
   it('resolves a facet alias to its owning initiative', async () => {
     await withTempActiveRoot(async (activeRoot) => {
@@ -12,7 +14,7 @@ describe('resolveSlugOrFacet', () => {
         'about: the widget area',
       ]);
 
-      const resolved = await resolveSlugOrFacet(activeRoot, 'widgets');
+      const resolved = await resolveSlugOrFacet(activeRoot, 'widgets', OWNER);
 
       expect(resolved.slug).toBe(SAMPLE_SLUG);
       expect(resolved.facet).toMatchObject({
@@ -28,7 +30,7 @@ describe('resolveSlugOrFacet', () => {
       await addInitiative(activeRoot, 'widgets');
       await writeFacet(activeRoot, SAMPLE_SLUG, 'widgets', ['tags: [ui]']);
 
-      const resolved = await resolveSlugOrFacet(activeRoot, 'widgets');
+      const resolved = await resolveSlugOrFacet(activeRoot, 'widgets', OWNER);
 
       expect(resolved).toEqual({ slug: 'widgets' });
     });
@@ -39,7 +41,7 @@ describe('resolveSlugOrFacet', () => {
       await addInitiative(activeRoot, 'widgets-v2');
       await writeFacet(activeRoot, SAMPLE_SLUG, 'widgets', ['tags: [ui]']);
 
-      const resolved = await resolveSlugOrFacet(activeRoot, 'widgets');
+      const resolved = await resolveSlugOrFacet(activeRoot, 'widgets', OWNER);
 
       expect(resolved.slug).toBe(SAMPLE_SLUG);
       expect(resolved.facet?.name).toBe('widgets');
@@ -48,7 +50,7 @@ describe('resolveSlugOrFacet', () => {
 
   it('still resolves a unique slug prefix', async () => {
     await withTempActiveRoot(async (activeRoot) => {
-      expect(await resolveSlugOrFacet(activeRoot, 'sample')).toEqual({ slug: SAMPLE_SLUG });
+      expect(await resolveSlugOrFacet(activeRoot, 'sample', OWNER)).toEqual({ slug: SAMPLE_SLUG });
     });
   });
 
@@ -56,7 +58,7 @@ describe('resolveSlugOrFacet', () => {
     await withTempActiveRoot(async (activeRoot) => {
       await writeFacet(activeRoot, SAMPLE_SLUG, 'widgets', ['tags: [ui]']);
 
-      const attempt = resolveSlugOrFacet(activeRoot, 'nope');
+      const attempt = resolveSlugOrFacet(activeRoot, 'nope', OWNER);
 
       await expect(attempt).rejects.toThrow(NotFoundError);
       await expect(attempt).rejects.toThrow(
@@ -67,7 +69,7 @@ describe('resolveSlugOrFacet', () => {
 
   it('marks a miss as no_match so aw can offer to create it (TP-356)', async () => {
     await withTempActiveRoot(async (activeRoot) => {
-      const attempt = resolveSlugOrFacet(activeRoot, 'nope');
+      const attempt = resolveSlugOrFacet(activeRoot, 'nope', OWNER);
 
       await expect(attempt).rejects.toMatchObject({ reason: 'no_match' });
     });
@@ -77,7 +79,7 @@ describe('resolveSlugOrFacet', () => {
     await withTempActiveRoot(async (activeRoot) => {
       await addInitiative(activeRoot, 'sample-other');
 
-      const attempt = resolveSlugOrFacet(activeRoot, 'sample');
+      const attempt = resolveSlugOrFacet(activeRoot, 'sample', OWNER);
 
       await expect(attempt).rejects.toThrow(/Ambiguous slug/);
       await expect(attempt).rejects.toSatisfy((err: NotFoundError) => err.reason === undefined);
@@ -88,8 +90,8 @@ describe('resolveSlugOrFacet', () => {
     await withTempActiveRoot(async (activeRoot) => {
       await writeFacet(activeRoot, SAMPLE_SLUG, 'broken', ['tags: []']);
 
-      expect(await resolveSlugOrFacet(activeRoot, SAMPLE_SLUG)).toEqual({ slug: SAMPLE_SLUG });
-      await expect(resolveSlugOrFacet(activeRoot, 'broken')).rejects.toThrow(NotFoundError);
+      expect(await resolveSlugOrFacet(activeRoot, SAMPLE_SLUG, OWNER)).toEqual({ slug: SAMPLE_SLUG });
+      await expect(resolveSlugOrFacet(activeRoot, 'broken', OWNER)).rejects.toThrow(NotFoundError);
     });
   });
 });

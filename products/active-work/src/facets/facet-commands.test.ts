@@ -8,7 +8,7 @@ import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { SAMPLE_SLUG, addInitiative, writeFacet } from '../test-support/facets/fixtures.js';
 
 function makeCtx(activeRoot: string): CommandContext {
-  return { activeRoot, warnings: [], format: 'json' };
+  return { activeRoot, warnings: [], format: 'json', caller: 'owner' };
 }
 
 describe('facet add', () => {

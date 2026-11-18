@@ -15,6 +15,7 @@ import { staleBaseWake } from "./stale-base.js";
 import { MAC_SUITE_RULES } from "./suite-host.js";
 import { failingRunsAt } from "../workflows/skip-hidden.js";
 import { ownerSendBackWake } from "./owner-send-back.js";
+import { attestDeclinedWake } from "./attest-send-back.js";
 import { CARRY_UNREADABLE, FLAKE_FIX_ASK, MUTANTS_ASK, MUTANTS_REASON, NO_REPRO_REASON, REPRO_ASK, UNCOVERED_LABEL } from "./no-repro-brief.js";
 
 /** A branch name that reaches a brief outside a fence, so it may hold nothing that could read as markup or a new line. */
@@ -34,7 +35,7 @@ export const fixFirstCount = (ctx: Pick<WorkflowContext, "iteration">): number =
 /** Recorded once per fixer wake of any kind, so the run's repair budget survives a replay and a new head. */
 export const REPAIR_STEP = "sh-repair";
 /** The FIX_FIRST at which the fixer gets a structural brief instead of another patch round. */
-export const STRUCTURAL_FIX_FIRST = 2;
+const STRUCTURAL_FIX_FIRST = 2;
 export const LOG_TAIL_LINES = 150;
 /** The most CI log the wake carries across every failing job, headers included. */
 export const LOG_BUDGET_BYTES = 8 * 1024;
@@ -50,7 +51,7 @@ const DEAD_CHECK_FINDING = /^\s*(?:NEW|GROWN)\s{2,}\S/;
  * regenerating. The per-package reference pages and .codewatch/check.json are hand-edited, so they are not listed.
  */
 const REGISTRY_FILES: ReadonlySet<string> = new Set(["CAPABILITIES.md", "site/guides/capabilities.md", "site/reference/index.md", "site/.vitepress/reference-sidebar.json"]);
-export const isRegistry = (path: string): boolean => REGISTRY_FILES.has(path);
+const isRegistry = (path: string): boolean => REGISTRY_FILES.has(path);
 
 /** What a wake is about: the brief reads nothing else. */
 export interface WakeFacts {
@@ -188,7 +189,7 @@ function earlierFence(entry: FixFirstEntry, index: number): string {
 
 /** A repeat FIX_FIRST carries every earlier round's findings and class, then the reviewer's defect class and the findings whole, so no blocking item is summarised away. */
 function reviewWake(input: WakeFacts): { reason: string; payload: string } {
-  const owner = ownerSendBackWake(input.headSha, input.payload);
+  const owner = ownerSendBackWake(input.headSha, input.payload) ?? attestDeclinedWake(input.headSha, input.payload);
   if (owner) return owner;
   const { text = "", earlier = [] } = FixFirst.parse(input.payload);
   if (findingsText(text) === "") return noFindingsWake(input, text);

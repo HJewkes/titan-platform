@@ -120,7 +120,7 @@ describe('relative paths', () => {
   it('resolves every stored path back to a file that opens', async () => {
     const { checkWorkspaceIndex } = await import('./doctor.js');
 
-    expect(await checkWorkspaceIndex(graph, root)).toEqual({
+    expect(await checkWorkspaceIndex(graph, root, () => true)).toEqual({
       checked: expect.any(Number),
       missing: [],
     });
@@ -218,7 +218,8 @@ describe('FTS spans', () => {
 
   it('resolves a span locator back to the exact bytes of the file', async () => {
     const { readFileSync } = await import('node:fs');
-    const hit = graph.workspaceSpans.search('"The indexer was written"')[0];
+    const hit = graph.workspaceSpans.search('"The indexer was written"').at(0);
+    if (hit === undefined) throw new Error('the span search found no hit');
     const relative = z
       .object({ source_key: z.string() })
       .parse(

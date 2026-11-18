@@ -6,7 +6,7 @@ import holdClosureJson from "./g10-hold-closure.json" with { type: "json" };
 const inShepherd = (name: string): string => `products/factory/src/shepherd/${name}`;
 
 /** Shepherd's merge-policy files. These tables sit apart from registration-hold.ts so risk-tier.ts can read them without an import cycle through policy.ts. */
-export const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "risk-tier.ts"].map((name) => `**/${name}`);
+export const MERGE_POLICY_FILES = ["g10-*.ts", "adversary-*.ts", "merge-evidence-gate.ts", "task-kind.ts", "registration-hold.ts", "release-head.ts", "risk-tier.ts", "owner-tier.ts", "merge-facts.ts"].map((name) => `**/${name}`);
 /** Shepherd's hold, release, seat and reviewer-choice code, matched by exact path because the names are common elsewhere. */
 export const HOLD_COMMAND_FILES = ["commands.ts", "operator-hold.ts", "seats.ts", "release.ts", "reviewer-choice.ts"].map((name) => `products/factory/src/shepherd/${name}`);
 /**
@@ -97,12 +97,13 @@ const SIGNOFF_POLICY_FILES = [
 
 /**
  * The hold table's completeness checks as one unit: the hold-closure test, its sidecar, its walk and the list it keeps,
- * and the importer check (TP-3764) with its sidecar. Test file or not, each is policy: deleting one lets an unheld module
- * through in the same pull request.
+ * the importer check (TP-3764) with its sidecar, and the same four for the low-tier refusal closure (TP-5403). Test file
+ * or not, each is policy: deleting one lets an unheld module, or a low-tier one, through in the same pull request.
  */
 const HOLD_CLOSURE_CHECK_FILES = [
   ...["g10-hold-closure.test.ts", "g10-hold-closure.test.mutations.json", "g10-hold-closure.test-helpers.ts", "g10-hold-closure.json"],
   ...["hold-table-coverage.test.ts", "hold-table-coverage.test.mutations.json"],
+  ...["g10-low-tier-closure.test.ts", "g10-low-tier-closure.test.mutations.json", "g10-low-tier-closure.test-helpers.ts", "g10-low-tier-closure.json"],
 ].map(inShepherd);
 
 const matchesHeldCheck = compileGlobs([...GATE_RESOLVE_CHECK_FILES, ...HOLD_CLOSURE_CHECK_FILES]);

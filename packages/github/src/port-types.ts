@@ -6,6 +6,7 @@ import type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
 import type { Ancestry } from "./compare.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ForcePush, ForcePushPage } from "./force-pushes.js";
+import type { PrOutcome } from "./pr-outcome.js";
 import type { BranchCommits, CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RefActivity, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
 export type { BranchCommit, BranchCommits, CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
 
@@ -169,6 +170,8 @@ export interface GitHubWire {
   dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
   /** The PR's first `FORCE_PUSHES_CAP` head force-pushes, oldest first, and whether more exist. */
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePushPage>;
+  /** One GraphQL read of the PR's state, mergedAt, closedAt, reviews' submit times and commits' committed dates. */
+  getPrOutcome(repo: RepoSlug, number: number): Promise<PrOutcome>;
 }
 
 export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "base-changed" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
@@ -278,6 +281,8 @@ export interface GitHubPort {
   dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
   /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
+  /** How the PR ended, or that it is still open: state, `mergedAt`, `closedAt`, each review's `submittedAt` and each commit's committed date, in one read. A malformed answer throws `PrOutcomeMalformed`; `truncated` is set past 100 reviews or commits. */
+  readPrOutcome(repo: RepoSlug, number: number): Promise<PrOutcome>;
 }
 
 export interface GitHubPortOptions {

@@ -119,10 +119,15 @@ describe("the run's snapshots and syncs", () => {
     const first = await screen.findByTestId("autoresearch-snapshot-1");
     const second = screen.getByTestId("autoresearch-snapshot-2");
 
-    fireEvent.click(within(first).getByText(/^#101/));
-    fireEvent.click(within(second).getByText(/^#102/));
+    const links = [within(first).getByText(/^#101/).closest("a"), within(second).getByText(/^#102/).closest("a")];
 
-    expect(opened.mock.calls.map(([url]) => url)).toEqual(["https://github.com/example-org/example-target/pull/101", "https://github.com/example-org/example-target/pull/102"]);
+    expect(links.map((link) => link?.getAttribute("href"))).toEqual(["https://github.com/example-org/example-target/pull/101", "https://github.com/example-org/example-target/pull/102"]);
+    for (const link of links) {
+      expect(link?.getAttribute("target")).toBe("_blank");
+      expect(link?.getAttribute("rel")).toContain("noopener");
+      if (link) fireEvent.click(link);
+    }
+    expect(opened).not.toHaveBeenCalled();
     expect(first.textContent).toContain("kept");
     expect(second.textContent).toContain("round 2");
     expect(second.textContent).toContain("spend");

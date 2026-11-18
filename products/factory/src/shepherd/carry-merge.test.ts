@@ -148,7 +148,7 @@ describe("carrying a MERGE to a tree-equal head", () => {
     expect(carryOf(r)).toEqual({ fromHead: REVIEWED, head: NEW_HEAD, result: EQUAL, rule: "tree-equal" });
   });
 
-  it.each([["security"], ["unknown"], [null]])("does not carry for kind %s and does not probe", async (kind) => {
+  it.each([["security"], ["revert"], ["unknown"], [null]])("does not carry for kind %s and does not probe", async (kind) => {
     const r = rig({ kind, baseRef: "main" }, { ...EQUAL, firstParent: REVIEWED });
 
     await expect(carried(r, reviews([REVIEWED, mergeAt(REVIEWED)]))).resolves.toBeUndefined();

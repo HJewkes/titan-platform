@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   SessionFrontmatterSchema,
   type NextStep,
+  type SessionReport,
   type SessionResolve,
 } from '../schemas/session.js';
 import type { WorkerRecord } from '../schemas/worker-record.js';
@@ -20,10 +21,14 @@ interface SessionWriteInput {
   next_steps?: NextStep[];
   resolves?: SessionResolve[];
   no_loops?: true;
+  reports?: SessionReport[];
+  no_reports?: true;
   parent_session_id?: string;
   /** A spawned worker's facts; also stamps `kind: worker`. */
   worker?: WorkerRecord;
   generated?: true;
+  /** A loop ledger entry, not a session; stamps `ledger: true`. */
+  ledger?: true;
   transcript?: string;
   /**
    * Override the resolved active root. Migrations are handed the root they
@@ -123,8 +128,11 @@ export async function writeSessionFile(input: SessionWriteInput): Promise<Sessio
       next_steps: input.next_steps ?? [],
       resolves: input.resolves ?? [],
       ...(input.no_loops === true ? { no_loops: true } : {}),
+      ...(input.reports === undefined ? {} : { reports: input.reports }),
+      ...(input.no_reports === true ? { no_reports: true } : {}),
       ...(input.parent_session_id ? { parent_session_id: input.parent_session_id } : {}),
       ...(input.worker === undefined ? {} : { kind: 'worker', worker: input.worker }),
+      ...(input.ledger === true ? { ledger: true } : {}),
       ...(input.generated === true ? { generated: true } : {}),
       ...(input.transcript !== undefined ? { transcript: input.transcript } : {}),
     },

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Command, CommanderError, InvalidArgumentError, Option } from "commander";
 import { z } from "zod";
+import { benchCommand } from "./bench/cli.js";
 import { buildCorpus, labelHistogram, type CorpusRow } from "./corpus/index.js";
 import { historyCommand } from "./history/command.js";
 import { defaultPolicy, selfTest } from "./private/exclusion.js";
@@ -250,7 +251,7 @@ function implementTaskCommand(onResult: (code: number) => void): Command {
   return new Command("implement-task").description("The implement-task unit's private case builder").addCommand(exportCases).exitOverride();
 }
 
-export function buildProgram(onResult: (code: number) => void = () => undefined): Command {
+function buildProgram(onResult: (code: number) => void = () => undefined): Command {
   return new Command("titan-evals")
     .description("Eval registry for units of work: specs, content hashes, and (in later slices) trials and scorecards")
     .addCommand(validateCommand(onResult))
@@ -258,6 +259,7 @@ export function buildProgram(onResult: (code: number) => void = () => undefined)
     .addCommand(historyCommand(onResult))
     .addCommand(reviewPrCommand(onResult))
     .addCommand(implementTaskCommand(onResult))
+    .addCommand(benchCommand(onResult))
     .exitOverride()
     .showHelpAfterError();
 }

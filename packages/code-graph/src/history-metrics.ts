@@ -256,7 +256,7 @@ function editsWithin(edits: readonly FileEdit[], windowDays: number, nowEpoch: n
 }
 
 /** Name per-symbol accretion for one window as `symbol_task_ids_{w}` and `symbol_edit_commits_{w}`. */
-export function symbolAccretionMetrics(
+function symbolAccretionMetrics(
   edits: readonly FileEdit[],
   spansByFile: ReadonlyMap<string, readonly SymbolSpan[]>,
   window: number,

@@ -19,10 +19,20 @@ const scopedSchema = z.object({
   severity: z.string().regex(SEVERITY).optional(),
 });
 
+// The usage API reports a window with no activity as null, and a copy of that body can reach a
+// file; a null window is a valid absence, so it is dropped instead of costing the whole reading.
+function withoutNulls(windows: Record<string, z.infer<typeof windowSchema> | null>): Record<string, z.infer<typeof windowSchema>> {
+  const kept: Record<string, z.infer<typeof windowSchema>> = {};
+  for (const [name, window] of Object.entries(windows)) if (window !== null) kept[name] = window;
+  return kept;
+}
+
+const windowsSchema = z.record(z.string(), windowSchema.nullable()).transform(withoutNulls);
+
 const usageReadingSchema = z.object({
   session_id: z.string().min(1),
   written_at: z.number().int().positive(),
-  rate_limits: z.record(z.string(), windowSchema),
+  rate_limits: windowsSchema,
   scoped: scopedSchema.optional(),
   source: z.string().min(1).optional(),
   account: z.string().min(1).optional(),
@@ -41,7 +51,7 @@ const observedReadingSchema = usageReadingSchema.extend({
 });
 
 export type UsageWindow = z.infer<typeof windowSchema>;
-export type ScopedUsage = z.infer<typeof scopedSchema>;
+type ScopedUsage = z.infer<typeof scopedSchema>;
 export type UsageReading = z.infer<typeof usageReadingSchema>;
 /** A stored reading, with the prompt-cache stamp a status line writes beside its rate_limits. */
 export type ObservedReading = z.infer<typeof observedReadingSchema>;

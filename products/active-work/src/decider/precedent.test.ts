@@ -22,9 +22,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import precedentSearch from '../commands/precedent-search.js';
 import { extractPrecedents, type ExtractResult } from './extract.js';
 import { ledgerPath, readLedgerRows } from './ledger.js';
-import { loadAgentVisibility } from '../sessions/visibility.js';
+import { visibilityFor } from '../sessions/visibility.js';
 import { searchPrecedents } from './search.js';
 import { openGraph } from '../session-index/graph.js';
 import { runRefresh } from '../session-index/refresh.js';
@@ -361,6 +362,39 @@ describe('v1 precedents.jsonl rows', () => {
   });
 });
 
+describe('an edited decision note that a v1 row also holds', () => {
+  const NOTE_KEY = 'note:sample-initiative/2026-01-01-queue.md';
+  const FRONTMATTER = "kind: decision\ntitle: Approach for the refresh is a queue\ncreated: '2026-01-01'";
+
+  async function extractEditedNote(activeRoot: string): Promise<void> {
+    writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', [
+      v1Row('Approach for the refresh is a queue', 'Cron drifts; the queue retries.', {
+        key: NOTE_KEY,
+        source: 'note',
+        session_id: null,
+        tool_use_id: null,
+        class: 'tech_design',
+        header: null,
+        options: [],
+        recommended: null,
+        pick_type: 'none',
+      }),
+    ]);
+    writeNote(activeRoot, '2026-01-01-queue.md', FRONTMATTER, 'Cron is fine after all.');
+    await run(activeRoot);
+  }
+
+  it('reads back one row under the base key, holding the edited answer', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await extractEditedNote(activeRoot);
+
+      const rows = (await ledgerRows(activeRoot)).filter((r) => r.source === 'note');
+
+      expect(rows.map((r) => [r.key, r.answer])).toEqual([[NOTE_KEY, 'Cron is fine after all.']]);
+    });
+  });
+});
+
 function markOwnerOnly(activeRoot: string): void {
   const brief = path.join(activeRoot, 'sample-initiative', 'brief.md');
   writeFileSync(brief, readFileSync(brief, 'utf8').replace('visibility: agent-visible', 'visibility: owner-only'));
@@ -379,8 +413,73 @@ describe('precedent search', () => {
         isVisible: () => true,
       });
 
-      expect(hits[0].row.locator?.toolUseId).toBe('tu-merge');
+      expect(hits.at(0)?.row.locator?.toolUseId).toBe('tu-merge');
       expect(tasteOnly).toEqual([]);
+    });
+  });
+
+  describe('owner free text', () => {
+    const NOTE = 'because the zebrafish pipeline is frozen';
+    const noteRows = () => [
+      v1Row('Cut the release now?', 'Wait a week', {
+        key: 'transcript:sess-v1:tu-note',
+        free_text: NOTE,
+        answered_at: '2026-08-01T09:05:00Z',
+      }),
+      v1Row('Publish the changelog too?', 'Wait a week', { key: 'transcript:sess-v1:tu-plain' }),
+    ];
+    const ownerCtx = (activeRoot: string) => ({
+      activeRoot,
+      warnings: [] as string[],
+      format: 'json' as const,
+      caller: 'owner' as const,
+    });
+
+    it('returns a row that matches the query only in its free_text', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', noteRows());
+        const { rows } = await readLedgerRows(activeRoot);
+
+        const hits = await searchPrecedents(rows, 'zebrafish', { isVisible: () => true });
+
+        expect(hits.map((h) => h.row.key)).toEqual(['transcript:sess-v1:tu-note']);
+      });
+    });
+
+    it('carries free_text and answered_at in the hit JSON', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', noteRows());
+
+        const result = await precedentSearch.run({ query: 'zebrafish' }, ownerCtx(activeRoot));
+
+        expect(result.hits[0]).toMatchObject({ free_text: NOTE, answered_at: '2026-08-01T09:05:00Z' });
+      });
+    });
+
+    it('ranks a row with null free_text as before', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', noteRows());
+
+        const result = await precedentSearch.run({ query: 'changelog' }, ownerCtx(activeRoot));
+
+        expect(result.hits.map((h) => h.key)).toEqual(['transcript:sess-v1:tu-plain']);
+        expect(result.hits[0]).toMatchObject({ free_text: null, answered_at: null });
+      });
+    });
+  });
+
+  it('serves unclaimed precedents to the owner when asked, but never to an agent', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await run(activeRoot);
+      const args = { query: MERGE_QUERY, include_unclaimed: true };
+      const agentCtx = { activeRoot, warnings: [] as string[], format: 'json' as const, caller: 'agent' as const };
+
+      const forAgent = await precedentSearch.run(args, agentCtx);
+      const forOwner = await precedentSearch.run(args, { activeRoot, warnings: [], format: 'json', caller: 'owner' });
+
+      expect(forAgent.hits).toEqual([]);
+      expect(agentCtx.warnings).toContain('include_unclaimed is served only to the owner: unclaimed precedents name no initiative');
+      expect(forOwner.hits[0]?.question).toBe(MERGE_Q);
     });
   });
 
@@ -398,7 +497,7 @@ describe('precedent search', () => {
       expect(summary(result, 'transcript').written).toBe(2);
       expect(rows.every((r) => r.unclaimed)).toBe(true);
       expect(hidden).toEqual([]);
-      expect(shown[0].row.question).toBe(MERGE_Q);
+      expect(shown.at(0)?.row.question).toBe(MERGE_Q);
     });
   });
 });
@@ -411,6 +510,20 @@ describe('human-only initiatives', () => {
       registerWorktree(activeRoot);
       writeNote(activeRoot, '2026-09-01-private.md', noteFrontmatter, 'Body.');
       writeCharter(activeRoot, ['sample-initiative']);
+
+      const result = await run(activeRoot);
+
+      expect(await ledgerRows(activeRoot)).toEqual([]);
+      expect(summary(result, 'transcript').excluded['human-only-initiative']).toBe(2);
+      expect(summary(result, 'note').excluded['human-only-initiative']).toBe(1);
+    });
+  });
+
+  it('extracts nothing from an initiative whose brief makes it owner-only', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      registerWorktree(activeRoot);
+      writeNote(activeRoot, '2026-09-01-private.md', noteFrontmatter, 'Body.');
+      markOwnerOnly(activeRoot);
 
       const result = await run(activeRoot);
 
@@ -449,11 +562,11 @@ describe('human-only initiatives', () => {
       const rows = await ledgerRows(activeRoot);
 
       const open = await searchPrecedents(rows, MERGE_QUERY, {
-        isVisible: await loadAgentVisibility(activeRoot),
+        isVisible: await visibilityFor({ activeRoot, caller: 'agent', warnings: [] }),
       });
       markOwnerOnly(activeRoot);
       const ownerOnly = await searchPrecedents(rows, MERGE_QUERY, {
-        isVisible: await loadAgentVisibility(activeRoot),
+        isVisible: await visibilityFor({ activeRoot, caller: 'agent', warnings: [] }),
         includeUnclaimed: true,
       });
 

@@ -178,6 +178,7 @@ function decide(configDir: string, settings: Settings): RefreshResult | { plan: 
   const state = loginStateFromCredentials(credentials, settings.now);
   if (state.status === "missing") return skipped("missing");
   if (state.status === "refused") return skipped(state.reason);
+  if (state.status === "logged-out") return failed("login-required");
   if (!needsRefresh(state, settings.now, settings.marginMs)) return { status: "fresh" };
   if (!state.canRefresh) return failed("login-required");
   return planFrom(read.text, credentials);

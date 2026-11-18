@@ -102,7 +102,7 @@ interface RefTarget {
  * transcripts witnessed and what the store says. Resolving against one table
  * would report every endpoint the other side wrote as dangling.
  */
-const REF_TABLES: Record<string, RefTarget[]> = {
+const REF_TABLES: Record<string, RefTarget[] | undefined> = {
   // `session` is the odd one out: `session` stores the bare id, every other
   // entity table stores the prefixed ref. Comparing without allowing for that
   // reports every session endpoint as dangling — a false alarm, which in a
@@ -151,13 +151,13 @@ function scanTable(db: Db, table: string): ColumnLiveness[] {
   if (columns.length === 0) return [];
   const selects = columns.map((column, index) => `COUNT("${column}") AS c${index}`).join(', ');
   const row = db
-    .prepare<[], Record<string, number>>(`SELECT COUNT(*) AS total, ${selects} FROM "${table}"`)
+    .prepare<[], Record<string, number | undefined>>(`SELECT COUNT(*) AS total, ${selects} FROM "${table}"`)
     .get();
   if (!row) return [];
   return columns.map((column, index) => ({
     table,
     column,
-    rows: row.total,
+    rows: row.total ?? 0,
     nonNull: row[`c${index}`] ?? 0,
   }));
 }

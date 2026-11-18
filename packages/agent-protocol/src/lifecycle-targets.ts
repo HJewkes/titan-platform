@@ -98,7 +98,7 @@ function validateBrief(brief: HandoffIdentity["brief"]): void {
 }
 
 /** The namespace an observed conversation must fall in; undefined for resume, which pins the whole identity. */
-export function targetNamespace(target: LifecycleExecutionTarget): string | undefined {
+function targetNamespace(target: LifecycleExecutionTarget): string | undefined {
   return target.kind === "resume" ? undefined : target.namespace;
 }
 

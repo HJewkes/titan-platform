@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { consoleAnswersPath } from '@titan-design/app-paths';
 import {
   extractSource,
   noteSource,
@@ -9,16 +10,20 @@ import {
 } from '@titan-design/decider';
 import { toAbsolutePath } from '@titan-design/session-read';
 import { resolveSlugFromCwd } from '../sessions/initiatives.js';
+import { withheldSlugs } from '../sessions/visibility.js';
 import { agentChatHome } from '../session-index/origin-agent-chat-read.js';
 import { defaultGraphPath, openGraphReadOnly } from '../session-index/graph.js';
-import { exclusionPolicy, loadHumanOnlyInitiatives } from './human-only.js';
+import { loadHumanOnlyInitiatives } from '../sessions/charter.js';
+import { exclusionPolicy } from './human-only.js';
 import { ledgerPath, openLedger, v1PrecedentSource } from './ledger.js';
+import { consoleAnswersSource } from './console-answers-source.js';
 import { queueSource } from './queue-source.js';
 
 interface ExtractOptions {
   activeRoot: string;
   graphPath?: string;
   eventsDbPath?: string;
+  consoleAnswersPath?: string;
 }
 
 export interface ExtractResult {
@@ -62,11 +67,16 @@ function askTranscripts(graphPath: string): () => Promise<TranscriptFile[]> {
 
 /**
  * Index the human's answers into the decider ledger. The charter is read first
- * and an unreadable one stops the run before anything is written.
+ * and an unreadable one stops the run before anything is written. The ledger feeds
+ * agents, so every initiative withheld from agents keeps its answers out (TP-5453 P6b, TP-5556).
  */
 export async function extractPrecedents(options: ExtractOptions): Promise<ExtractResult> {
   const { activeRoot } = options;
-  const policy = exclusionPolicy(await loadHumanOnlyInitiatives(activeRoot));
+  const [humanOnly, withheld] = await Promise.all([
+    loadHumanOnlyInitiatives(activeRoot),
+    withheldSlugs(activeRoot),
+  ]);
+  const policy = exclusionPolicy(new Set([...humanOnly, ...withheld]));
   const resolveInitiative = cachedResolver(activeRoot);
   const sources = [
     v1PrecedentSource(activeRoot),
@@ -79,6 +89,7 @@ export async function extractPrecedents(options: ExtractOptions): Promise<Extrac
       activeRoot,
       resolveInitiative,
     }),
+    consoleAnswersSource(options.consoleAnswersPath ?? consoleAnswersPath()),
   ];
   const store = openLedger(activeRoot);
   try {

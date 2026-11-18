@@ -127,7 +127,7 @@ describe('search_fts population', () => {
     expect(matched).toHaveLength(1);
     const field = graph.db
       .prepare<[number], { field: string }>('SELECT field FROM search_span WHERE span_id = ?')
-      .get(matched[0].span_id);
+      .get(matched[0]?.span_id ?? -1);
     expect(field?.field).toBe('prompt');
   });
 

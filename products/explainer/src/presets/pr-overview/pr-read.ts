@@ -26,9 +26,9 @@ export const formatPrRef = (ref: PrRef): string => `${ref.repo}#${ref.number}`;
 
 const Note = z.looseObject({ body: z.string().default(""), state: z.string().optional(), submittedAt: z.string().optional(), createdAt: z.string().optional() });
 
-export const PR_VIEW_FIELDS = "number,title,body,headRefName,headRefOid,reviews,comments";
+const PR_VIEW_FIELDS = "number,title,body,headRefName,headRefOid,reviews,comments";
 
-export const PrViewSchema = z.looseObject({
+const PrViewSchema = z.looseObject({
   number: z.number().int(),
   title: z.string(),
   body: z.string().default(""),

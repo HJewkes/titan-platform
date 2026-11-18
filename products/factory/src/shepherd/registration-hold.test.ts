@@ -87,7 +87,7 @@ describe("the G10 hold Shepherd places at registration", () => {
   it("names only the path touch of a security kind on a policy path", async () => {
     const r = rig([file("products/factory/src/shepherd/g10-release.ts", 10)], "security");
 
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: policy touch");
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: policy touch (kept: high: owner gate file products/factory/src/shepherd/g10-release.ts)");
   });
 
   it("leaves a test-only change to a Shepherd policy file unheld", async () => {
@@ -479,7 +479,7 @@ describe("an unread-files hold re-classed by Shepherd", () => {
     r.store.reclassIfHeld("run-1", UNREAD, () => undefined, { actor: "shepherd" });
 
     expect(reclassedUnread(r.store.eventsOf("run-1")).size).toBe(2);
-    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: policy touch");
+    expect(await applyRegistrationHold(r.port, r.store, "run-1")).toBe("g10-adversary: policy touch (kept: high: owner gate file products/factory/src/shepherd/g10-x.ts)");
   });
 
   it("still counts a re-classed unread hold when picking the run's reviewer", () => {

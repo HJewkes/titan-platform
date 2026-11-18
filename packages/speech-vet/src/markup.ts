@@ -12,7 +12,7 @@ export function plainText(spoken: string): string {
   return spoken.replace(LINK, (_link, word: string) => word);
 }
 
-export interface MarkupSegment {
+interface MarkupSegment {
   kind: "plain" | "link";
   text: string;
 }

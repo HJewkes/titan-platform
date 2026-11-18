@@ -36,6 +36,7 @@ import { seatCheckout } from "./shepherd/seat-checkout.js";
 import { startServeIngress, type ServeIngressOptions } from "./serve-ingress.js";
 import type { IngressListener, IngressStatus } from "./ingress/listen.js";
 import type { FactoryHost, FactoryHostOptions } from "./host.js";
+import { callerForSurface } from "./caller.js";
 import type { FactoryContext, NeedsSources } from "./context.js";
 import { loadOwnerKeys, type OwnerKeys } from "./owner-keys.js";
 import { startStandingAnswerSweep } from "./owner-ops/standing-answers.js";
@@ -77,7 +78,7 @@ const CHECKOUT_SWEEP_MS = 3_600_000;
 const DEFAULT_SOURCES: SourcesReader = () => resolveSources({});
 const FACTORY_VERSION = String(readPath(createRequire(import.meta.url)("../package.json"), "version"));
 
-export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, PackageSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions {
+export interface FactoryServerOptions extends FactoryHostOptions, HeadMovedSweepOptions, PackageSweepOptions, FramedHostOptions, ConsoleAnswersServeOptions, Pick<FactoryContext, "needsAllowed"> {
   /** Holds the daemon pid file, the one-server-per-directory lock; defaults to the database's directory. */
   stateDir?: string;
   /** Defaults to 7410; 0 binds an ephemeral port. */
@@ -271,7 +272,7 @@ function daemonOptions(host: FactoryHost, options: FactoryServerOptions, github:
   const needsSources = options.needsSources ?? keptNeedsSources(process.env, host.gates);
   return {
     registry: createFactoryRegistry(log),
-    createContext: () => factoryContext(host, options.routes, proofs.aud, needsSources),
+    createContext: (surface) => factoryContext(host, options.routes, callerForSurface(surface), { aud: proofs.aud, needsSources, needsAllowed: options.needsAllowed }),
     version: FACTORY_VERSION,
     stateDir: stateDirOf(options),
     port: options.port ?? FACTORY_PORT,

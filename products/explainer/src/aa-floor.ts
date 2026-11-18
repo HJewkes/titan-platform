@@ -26,7 +26,7 @@ export const AaFloorSchema = z.object({
 });
 export type AaFloor = z.infer<typeof AaFloorSchema>;
 
-export interface AaFloorRequest {
+interface AaFloorRequest {
   stage: SampledStage;
   cases: readonly SampleCase[];
   samplesPerArm: number;
@@ -37,7 +37,7 @@ export interface AaFloorRequest {
 const armed = (inputs: readonly MeasureInput[], arm: string): MeasureInput[] => inputs.map((input) => ({ ...input, name: `${input.name}/${arm}` }));
 
 /** σ per row pooled within each arm, never across them, so the floor is the noise of one arm's samples. */
-export function floorSigma(a: readonly MeasureInput[], b: readonly MeasureInput[]): NoiseFloor {
+function floorSigma(a: readonly MeasureInput[], b: readonly MeasureInput[]): NoiseFloor {
   const rows = summarizeMeasure([...armed(a, "a"), ...armed(b, "b")]).rows;
   return Object.fromEntries(rows.flatMap((row) => (row.sigma === undefined ? [] : [[row.row, row.sigma]])));
 }

@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "registration always holds a policy touch adversary",
+      "file": "products/factory/src/shepherd/registration-hold.ts",
+      "find": "  const low = lowTierOf(files, facts, registered);\n",
+      "replace": "  const low = undefined as LowTierPolicy | undefined;\n",
+      "kills": [
+        "a low-tier policy touch merges on the seat opus MERGE at its head with green CI and no approve-merge gate"
+      ]
+    },
+    {
+      "name": "an authority touch no longer keeps the gate by itself",
+      "file": "products/factory/src/shepherd/g10-low-tier.ts",
+      "find": "(touch) => touch === \"authority\" || touch === \"security\"",
+      "replace": "(touch) => touch === \"security\"",
+      "kills": [
+        "a policy touch kept from low tier an authority touch is still held for the adversary and the owner"
+      ]
+    },
+    {
+      "name": "a security touch no longer keeps the gate by itself",
+      "file": "products/factory/src/shepherd/g10-low-tier.ts",
+      "find": "(touch) => touch === \"authority\" || touch === \"security\"",
+      "replace": "(touch) => touch === \"authority\"",
+      "kills": [
+        "a policy touch kept from low tier a security touch is still held for the adversary and the owner"
+      ]
+    },
+    {
+      "name": "the publish row is dropped",
+      "file": "products/factory/src/shepherd/risk-tier.ts",
+      "find": "    pathReason(\"publish file\", matching(facts.paths, PUBLISH_FILES)),\n",
+      "replace": "",
+      "kills": [
+        "a policy touch kept from low tier a publish touch is still held for the adversary and the owner"
+      ]
+    },
+    {
+      "name": "the .github medium row is dropped",
+      "file": "products/factory/src/shepherd/risk-tier.ts",
+      "find": "    pathReason(\".github path\", matching(facts.paths, [\".github/**\"])),\n",
+      "replace": "",
+      "kills": [
+        "a policy touch kept from low tier a settings touch is still held for the adversary and the owner"
+      ]
+    }
+  ]
+}

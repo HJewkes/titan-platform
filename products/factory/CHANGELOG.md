@@ -1,5 +1,133 @@
 # @titan-design/factory
 
+## 0.28.0
+
+### Minor Changes
+
+- f55f84a: Under `shepherd.visualGate: async`, a run whose task the owner approved with visual sign-off still decides visual as `owner`; an unreadable approval store does too (TP-5411 S8c).
+- 7984521: Needs reads now name their caller and filter by initiative in one place (TP-5556 S3). `collectNeeds` and `factoryContext` take a required `caller` (`owner` | `agent`) from `caller.ts`: serve's HTTP route is the owner and MCP an agent, and the `needs` and `digest run` verbs are the owner only when none of `AGENT_CHAT_NAME`, `AGENT_CHAT_AGENT_ID` or `CLAUDECODE` is set, so `digest run --dry-run` in an agent shell no longer prints owner-only asks. For an agent, every needs item whose initiative is not on active-work inventory's `withheld_from_agents: false` allow list is dropped, whatever its source (tasks, agent-chat asks, Morning items); untagged items stay, and an unreachable inventory withholds every tagged item and adds a gap line. `runNeeds` takes a `NeedsView` as its fourth argument.
+- 943ad9d: Add `titan-factory dispatch shadow-tick [--rule-file <path>]` (TP-5760, TP-5755 S2). It reads the dispatcher rule file (`titan-dispatcher/v1`, default `dispatcher.json` beside the factory `config.json`; `mode` admits only `shadow`). With the file absent or `shadow.enabled` not true it prints `dispatcher shadow disabled` and writes nothing. Enabled, it judges each configured lane with the same eligibility and back-pressure `dispatch eligible` uses and appends one wake row, would-dispatch rows up to the lane's free slots, and a refused row per refused or held task to `<shadow.dir>/<UTC date>.jsonl`. It dispatches nothing; a fence test proves no launch path is imported or called.
+- be7a99f: `dispatch shadow-tick` judges the stop rules: `task-fix-cap` (with `next: planner-once` or `park`), `task-spend-cap`, `bet-parked` (with `would_ask`), `bet-followups` and `programme-checkpoint`, as `stage: "stop"` rows. The rule file's `stop` thresholds take their starting values when absent. Stop marks are read from `state/stops.json` beside the shadow dir and never written.
+- fbaf5e6: Add `titan-factory dispatch shadow-compare --day <YYYY-MM-DD>`: scores one day of dispatcher shadow rows against the operator seat's real spawns (read-only from the agent-chat events database, plus dispatch-ledger lane claims) and writes `compare/<day>.json` and the day's `COMPARE.md` section. The rule file gains optional `compare.operator` and `compare.prefixes` keys.
+
+### Patch Changes
+
+- ba90ff4: Document the dispatcher shadow tick and its systemd timer units.
+- e58686b: Add the `owner-validate` merge guard row and the `shepherd task-approval check <initiative>/<ID>` verb (TP-5411, gate model S8b). A task tagged `owner-validate` is dispatchable, and its PRs merge, only under the owner's console task approval of its current done_when; a task that cannot be read from active-work is refused too. The check exits 0 when the task may be dispatched and 3 with `no-approval`, `done-when-changed` or `task-unread` otherwise. The live switch `shepherd.gateReset.ownerValidate` (off, shadow, on; absent means shadow) is a new editable factory row; under shadow the merge evidence records the would-gate and no outcome changes.
+- 889a810: Stop exporting factory symbols nothing outside their own file uses, and drop their dead-export baseline entries. No behaviour change (TP-5792).
+- Updated dependencies [e58686b]
+  - @titan-design/coordinator@0.7.3
+
+## 0.27.9
+
+### Patch Changes
+
+- Updated dependencies [d025aac]
+- Updated dependencies [ce68429]
+  - @titan-design/pm@0.11.0
+  - @titan-design/owner-queue@0.8.2
+
+## 0.27.8
+
+### Patch Changes
+
+- 52f7275: Wire the adversary's `Authority:` line into the `owner-tier` merge guard row (TP-5407, gate model S3b). The panel carries the adversary member's accepted Authority value onto its MERGE, and when the run owes an adversary (the panel planned one, or the registration holds a `g10-adversary` hold) the merge evidence stamps `authorityLine`: the value, or `missing` when none was carried or the registration was unreadable. `widened` and `missing` add the owner-tier rows `Authority widened` and `Authority line missing`, which gate under `shepherd.gateReset.ownerTier: on` and are only recorded under shadow; `unchanged` and `tightened` add nothing. The risk tier records `Authority line missing` as high beside `Authority widened`.
+
+## 0.27.7
+
+### Patch Changes
+
+- ec9f171: Add the `owner-tier` merge guard row (TP-5406, gate model S2). A reviewed head that changes a merge-policy, hold-command, owner-action, gate-resolve-actor or gate-resolve-check file, a CI workflow file (unless the change is a measured CI budget), a publish file, a settings file, or a policy path no named table covers raises the owner gate at merge. The live switch `shepherd.gateReset.ownerTier` (off, shadow, on; absent means shadow) is a new editable factory row; under shadow the merge evidence records the rows it would have gated on and no outcome changes.
+- Updated dependencies [ec9f171]
+  - @titan-design/coordinator@0.7.2
+
+## 0.27.6
+
+### Patch Changes
+
+- 2eeb2eb: The reviewer brief now asks for checkout cleanup before the final message, and says the final message is the whole review
+  and verdict, including any `Attests:` and `Follow-ups:` lines. A brief with claimed attestations adds that an `Attests:`
+  line counts only in the final message. Attests are still read from the final message alone, so a bare repeat of the
+  verdict block after a full verdict attests nothing. Factory bumps ci-wait to 7 and sh-await-verdict to 3 for the new
+  brief text in their closures.
+- Updated dependencies [2eeb2eb]
+  - @titan-design/review-panel@0.9.1
+
+## 0.27.5
+
+### Patch Changes
+
+- 7f6fc30: A MERGE whose only unmet attestation rows are `no-meeter` (the correctness reviewer declined to attest) now goes back to
+  the implementer once, asking it to replace the claim with a step version bump, instead of opening the owner's
+  approve-merge gate; any other unmet reason, an unhandled wake, or a second decline asks the owner as before.
+- a136f65: A fact step's version bump can be recorded per PR in `src/registry/bumps/<pr>.json` (`{ step, pr }` rows), and the registry adds one per distinct PR to the step's declared `version.bump`. Two concurrent PRs bumping the same step each write their own file, so landing one no longer makes the other re-bump. `pnpm registry:closure` fails a bump row naming another PR, a row naming no fact step, and a removed base row.
+
+## 0.27.4
+
+### Patch Changes
+
+- caa5937: Add a low-tier policy hold (TP-5403 slice B) that ships in shadow. Under `shepherd.gateReset.lowTierPolicy: on`, a low-tier policy touch is held `g10-review` instead of `g10-adversary`, so it lands on one opus MERGE at its head with green CI and no owner gate; the release records the rule `g10-review/low-tier`, the timeline shows it as a `decision` entry, and the merge evidence records `lowTier`. The switch (off, shadow, on) is a new editable factory row. Absent means `shadow`: the run keeps its `g10-adversary` hold and the reason names the low tier it would have had. Setting `on` is an owner config edit that follows the owner's decision on which gate code may go low.
+
+  No file in the classifier's own import closure (`g10-low-tier-closure.json`: the classifier, the registration hold, their file and line-count readers and the workspace package sources they import) goes low; a test recomputes the closure and fails when the list falls behind. Code that calls the rule or writes the verdicts the release reads is not in that closure.
+
+- 9778eb4: `GhError` carries a closed `transport` kind (`server-5xx`, `no-connection`, `empty-or-cut-body`, `read-timeout` or `none`), set where the error is raised: from the HTTP status, Octokit's failed connection, the deadline that fired (a read only; a timed-out write is `none`), or, for `gh api` failing before any answer, from its output at one boundary inside the package. Shepherd's `gh-api-5xx` class now reads that field instead of matching `gh`'s stderr; rows written before TP-5446 S11b still read their text.
+- Updated dependencies [caa5937]
+- Updated dependencies [9778eb4]
+  - @titan-design/coordinator@0.7.1
+  - @titan-design/github@0.13.0
+  - @titan-design/review-workflow@0.1.2
+
+## 0.27.3
+
+### Patch Changes
+
+- a24b050: Add a "Factory health" group to the ticket scorecard (TP-5446 S18). `factoryHealthWeeks` computes, per ISO week, tasks filed by agents per task closed and per merged PR (recorded `source` or `filed_by`, else the inferred source label, marked inferred), spawn refusals and gate holds per 100 dispatched tasks, merge rate and mean fix rounds per dispatch model, and each seat's timer, event and typed wakes. Guard denials, the factory-to-product code size and the share of timer wakes with no action have no source yet and read as not measured. The store gains a `factory_health_week` table (migration 3) with `readFactoryHealth` and `upsertFactoryHealth`. The scorecard job stores the group, freezes it into each closed week's file (a week frozen before the group is not drift) and prints the last two weeks on `run`. The digest's weekly slot prints it as one line, and the console's scorecard page shows it as one more section.
+- Updated dependencies [a24b050]
+  - @titan-design/session-analytics@0.19.0
+
+## 0.27.2
+
+### Patch Changes
+
+- f0c6bea: Shepherd records provenance where it files and registers (TP-5446 S11). Each reviewer follow-up it files passes `source: follow-up`, `from_pr` and `from_task`, plus the parent task's `class` when the parent has one. `shepherd register` adds the `revert` kind, which never carries a reviewed MERGE and must name the merged PR it reverts with `--reverts owner/repo#N`, stored in `shepherd_registration.reverts`. A registration from a terminal with no agent-chat name now records `owner` as its registrant, and an agent's later registration still replaces it. Shepherd now takes its carrying kinds from `@titan-design/authority` instead of its own copy.
+- 8485c89: A failed Shepherd run records its failure class in `workflow_run.error_class`, set where it failed, so nothing classifies the error text afterwards. Each `ci-wait` timeout throws a `ShepherdFailure` carrying `ci-timeout`. Every land and Shepherd code route records the class of its own failure: a GitHub rate limit, `land-rules`, a GitHub server-side failure, `update-branch`, or `other`, ranked as before. gh-retry reads the recorded class. `shepherd stats --failures` reads it too, and falls back to the old text rules only for rows written before the column existed. Which failures are retried, and how, is unchanged.
+- 04aea95: `titan-factory dispatch eligible` now opens with the lane's back-pressure admission (TP-5453 P4b, PROPOSAL 2.3): admit or hold, with closed hold codes (`lane-open-prs`, `merged-not-deployed`, `owner-queue`, `reviewer-limit`, `dependency-stalled`, `signal-unreadable`) and the numbers behind each, the task that would go first, and the lane's task inflow against outflow. It reads only. The limits are `shepherd.backPressure.laneOpenPrs` (3), `ownerQueue` (10, counted over the Shepherd gates `shepherd waiting` lists as waiting on the owner) and `inflowWeeks` (2); an absent key means that starting value. The coordinator adds the three as live editable factory rows.
+- f5b43ee: Shepherd records an `sh-own-diff` id for each reviewed head: the patch id of the head's diff against its merge base with the base branch, leaving out generated paths, the registry lock and attestation rows. It is measurement only; nothing reads it to decide (TP-5592 A1).
+- 9e170f6: review-stats schema v4 stores each round's own-diff id and whether a MERGE or FIX_FIRST pass re-read an own diff unchanged since the run's previous verdict head. The `pr_review` view and `titan-factory stats --reviews` add passes, unchanged passes and their cost per PR, plus totals, medians and the top 10 PRs by unchanged passes (TP-5592 A2).
+- 71da228: `shepherd stats --reviews` reads an own-diff id from the git-cache for a round whose run recorded none, counting the heads the cache lacks, and a daily systemd timer refreshes the store.
+- b46a861: `dispatch eligible` holds a lane on a deploy stall or red main only when the lane depends on the failing component: the factory deploy, or main CI of a named repo. A checked-in table maps each lane (initiative plus tag) to its components; a lane without an entry still depends on everything, and a named component whose health cannot be read counts as stalled.
+- Updated dependencies [f0c6bea]
+- Updated dependencies [8485c89]
+- Updated dependencies [04aea95]
+  - @titan-design/authority@0.7.0
+  - @titan-design/workflow@0.15.0
+  - @titan-design/coordinator@0.7.0
+  - @titan-design/hitl@0.10.1
+  - @titan-design/autoresearch@0.1.1
+  - @titan-design/review-workflow@0.1.1
+
+## 0.27.1
+
+### Patch Changes
+
+- 5e97f01: Add `titan-factory dispatch eligible`, the dispatcher's read-only eligibility reader: it judges an initiative's open tasks against the week's selected bets, freezes and out-of-scope records over active-work's rpc, lists the eligible ones in bet order and every refused one with its reason codes (TP-5453 P4).
+- 239d96b: One canonical task key, `<initiative>/<TASK-ID>` (TP-5453 P5). `pm` exports `resolveTaskKey`, which turns a bare id, a prefixed key or a repo-qualified key into the canonical key, or refuses it as malformed, not found, ambiguous or wrong-initiative; an id two initiatives hold goes to the one whose `task_prefix` issued it. active-work's new `task.keys` command lists each initiative's `task_prefix`, `agent_visible` and the ids of its task files, open and archived, read from file names (MCP tool `active__task__keys`). `titan-factory shepherd register` stores the canonical key and exits 65 on a key that resolves to no one task. On an active-work daemon older than `task.keys` it resolves through `task.list` plus the archive file names; when no complete index can be read it refuses only a malformed key, stores the rest as given with a warning, and marks the run `taskVerified=false` in its params; build-surface resolves its spec's tasks before any agent is spawned under them. `titan-factory shepherd task-key-report` lists the registrations whose key is not canonical, with a proposed mapping or no match, through a read-only store connection.
+- Updated dependencies [239d96b]
+  - @titan-design/pm@0.10.0
+  - @titan-design/owner-queue@0.8.1
+
+## 0.27.0
+
+### Minor Changes
+
+- 5346139: Add the owner's planning ops (TP-5453 P3b): `plan-bet-select`, `plan-outcome-edit` and `plan-freeze-set` join the owner-queue op schema. The console offers each as an owner-op tap. Its read-back comes from the factory's `owner-op.preview`: each bet's outcome, prediction and tasks, an outcome's before and after, and what a freeze stops and when it ends. The factory gates the ops to owner-remote under HV-OR and applies them through pm's plan store under the initiative's plan lock. pm's `FreezeSchema` gains an optional `ended_on`. active-work's `plan freeze add` now records `set_by: decider` and refuses `--set-by owner`. No CLI, RPC or MCP verb selects a bet, edits an outcome or ends a freeze.
+
+### Patch Changes
+
+- Updated dependencies [5346139]
+  - @titan-design/owner-queue@0.8.0
+  - @titan-design/pm@0.9.0
+
 ## 0.26.2
 
 ### Patch Changes

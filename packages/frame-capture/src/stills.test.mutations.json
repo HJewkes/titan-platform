@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "stills seeks in the order asked",
+      "file": "packages/frame-capture/src/stills.ts",
+      "find": "const order = atS.map((t, index) => ({ t, index })).sort((a, b) => a.t - b.t)",
+      "replace": "const order = atS.map((t, index) => ({ t, index }))",
+      "kills": [
+        "stills takes moments asked out of order and returns each where it was asked, as a lone seek draws it"
+      ]
+    },
+    {
+      "name": "stills returns the shots in time order",
+      "file": "packages/frame-capture/src/stills.ts",
+      "find": "shots[index] = await captureFrame(page, t)",
+      "replace": "shots.push(await captureFrame(page, t))",
+      "kills": [
+        "stills takes moments asked out of order and returns each where it was asked, as a lone seek draws it"
+      ]
+    }
+  ]
+}

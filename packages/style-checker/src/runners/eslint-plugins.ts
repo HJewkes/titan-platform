@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export interface ModuleSource {
+interface ModuleSource {
   specifier: string;
   member?: "plugin" | "parser";
 }

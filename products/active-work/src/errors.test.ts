@@ -9,7 +9,6 @@ import {
   ConfigError,
   SoftwareError,
   formatError,
-  isActiveWorkError,
 } from './errors.js';
 
 describe('EXIT constants', () => {
@@ -120,27 +119,5 @@ describe('formatError', () => {
       message: 'undefined',
       code: EXIT.GENERIC,
     });
-  });
-});
-
-describe('isActiveWorkError', () => {
-  it('narrows to ActiveWorkError for the hierarchy', () => {
-    const err: unknown = new ValidationError('bad');
-    expect(isActiveWorkError(err)).toBe(true);
-    if (isActiveWorkError(err)) {
-      // type narrowed — should access .code without `any`
-      expect(err.code).toBe(EXIT.DATAERR);
-    }
-  });
-
-  it('returns false for generic Error', () => {
-    expect(isActiveWorkError(new Error('x'))).toBe(false);
-  });
-
-  it('returns false for non-Error values', () => {
-    expect(isActiveWorkError('string')).toBe(false);
-    expect(isActiveWorkError(undefined)).toBe(false);
-    expect(isActiveWorkError(null)).toBe(false);
-    expect(isActiveWorkError({ code: 1, message: 'fake' })).toBe(false);
   });
 });

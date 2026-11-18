@@ -1,0 +1,5 @@
+---
+"@titan-design/factory": minor
+---
+
+Read phase-2 bet sheets in the shadow dispatcher (TP-5765, TP-5755 S7). `dispatch sheets check` parses each `titan-bet-sheet/v1` file in the sheet dir (front matter, one `outcome` block, `bet` blocks in proposed order), checks each bet's cites against its intent digest, and prints one line per sheet, exiting non-zero on any error. `dispatch sheets import --dry-run` prints the `plan.outcome.add` and `plan.bet.add` calls a sheet would make; `--apply` makes them over active-work rpc, which write a draft outcome and proposed bets only, and exits 69 when the daemon has no plan commands. The rule file's new `bets` key (`source`: `selected` or `selected-then-sheet`, `sheetDir`, `digestDir`, `sheetWeek`) lets `dispatch shadow-tick` judge a lane with no selected bet this week against its sheet's proposed bets, labelled `basis: "proposed-sheet"` (and `sheet_week` when the week is pinned). A sheet that does not parse refuses its lane with one `sheet-unreadable` row.

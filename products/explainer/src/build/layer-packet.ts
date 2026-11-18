@@ -30,7 +30,7 @@ export interface BuiltLayerPacket {
   bytes: number;
 }
 
-export interface LayerPacketInput {
+interface LayerPacketInput {
   beat: ScriptBeat;
   resolved: Pick<ResolvedBeat, "id" | "layer" | "framing" | "anchors" | "band">;
   facts: ReadonlyMap<string, ResolvedSource>;

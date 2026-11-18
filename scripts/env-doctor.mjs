@@ -55,7 +55,7 @@ export function hostReport(canonical, host) {
   };
 }
 
-export const realProbes = {
+const realProbes = {
   node: () => process.versions.node,
   pnpm: () => execFileSync("pnpm", ["--version"], { encoding: "utf8" }).trim(),
 };

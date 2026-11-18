@@ -21,7 +21,7 @@ function loop(ref: string, fields: Partial<OpenLoop> = {}): OpenLoop {
     ref,
     text: `loop ${ref}`,
     kind: 'prose',
-    sessionFile: ref.split('#')[0],
+    sessionFile: ref.split('#').at(0) ?? ref,
     sessionId: `sid-${ref}`,
     openedAt: '2026-09-10T00:00:00Z',
     ageDays: 1,
@@ -76,7 +76,7 @@ describe('relatedForLoops', () => {
 
     expect([...context.hits.keys()]).toEqual(['s#a', 's#b', 's#c', 's#d', 's#e', 's#f']);
     expect([...context.hits.values()].every((hits) => hits.length === 1)).toBe(true);
-    expect(context.hits.get('s#a')![0].ref).toBe('note:alpha/loop s#a-1.md');
+    expect(context.hits.get('s#a')?.at(0)?.ref).toBe('note:alpha/loop s#a-1.md');
   });
 
   it('stops at 1,200 rendered characters across every loop', async () => {
@@ -98,13 +98,13 @@ describe('relatedForLoops', () => {
 
     await run([target], retrieverOf(pool(2), calls), ['note:alpha/shown.md']);
 
-    expect(calls[0].exclude).toEqual(
+    expect(calls.at(0)?.exclude).toEqual(
       expect.arrayContaining(['note:alpha/shown.md', 'session:sess-1', 'task:TP-27']),
     );
     expect(calls[0]).toMatchObject({
       text: 'loop s#a',
       initiative: 'alpha',
-      classes: ['notes', 'sources', 'tasks', 'sessions'],
+      classes: ['notes', 'sources', 'tasks', 'sessions', 'plans', 'decisions'],
     });
   });
 
@@ -113,7 +113,7 @@ describe('relatedForLoops', () => {
 
     await run([loop('s#a', { kind: 'pr', targetRef: '57' })], retrieverOf([], calls));
 
-    expect(calls[0].exclude).not.toContain('task:57');
+    expect(calls.at(0)?.exclude).not.toContain('task:57');
   });
 
   it('queries only the loops the allocation reaches and keeps the eager hits', async () => {

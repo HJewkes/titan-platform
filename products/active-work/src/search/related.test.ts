@@ -1,13 +1,14 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import { estimateTokens } from '@titan-design/retrieval';
+import { DF_CAP_FLOOR, estimateTokens } from '@titan-design/retrieval';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { graphNoteRelevance } from '../bootstrap/rank-notes.js';
-import { DF_CAP_FLOOR } from './derive-query.js';
 import { searchWorkspace } from './index.js';
+import { ownerShown, writeCharter } from '../test-support/visibility.js';
+import { writeUnrelatedPrecedent } from '../test-support/related-fixture.js';
 import { relatedContext, withinBudget, type RelatedInput } from './related.js';
 import { openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import { demoteToLegacy, refreshInto, removeFile, scaffold, writeFile } from '../test-support/workspace-index/fixture.js';
@@ -29,6 +30,8 @@ beforeEach(async () => {
   root = path.join(dir, 'active');
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
+  writeCharter(root);
+  writeUnrelatedPrecedent(root);
   (await refreshInto(dbPath, root)).db.close();
 });
 
@@ -40,31 +43,6 @@ const related = (input: Partial<RelatedInput> & { text: string }) =>
   relatedContext({ dbPath, activeRoot: root, ...input });
 
 describe('relatedContext', () => {
-  it('returns openable hits and the query that found them', async () => {
-    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
-
-    expect(result.degraded).toEqual([]);
-    expect(result.query.terms).toEqual(['alpha', 'lesson']);
-    expect(result.hits[0]).toMatchObject({
-      ref: 'note:alpha/2026-09-02-alpha-lesson.md',
-      class: 'notes',
-      initiative: 'alpha',
-      title: 'The alpha lesson',
-      path: 'alpha/sources/notes/2026-09-02-alpha-lesson.md',
-    });
-    expect(result.hits[0].excerpt).toBeTruthy();
-  });
-
-  it('never returns an excluded ref, and fills its place from further down', async () => {
-    const top = await related({ text: 'indexer converges', limit: 6 });
-    const [first, second] = top.hits.map((hit) => hit.ref);
-
-    const result = await related({ text: 'indexer converges', limit: 3, exclude: [first] });
-
-    expect(result.hits.map((hit) => hit.ref)).not.toContain(first);
-    expect(result.hits[0].ref).toBe(second);
-  });
-
   it('searches only the classes asked for', async () => {
     const result = await related({ text: 'indexer converges', classes: ['tasks'] });
 
@@ -88,7 +66,7 @@ describe('relatedContext', () => {
     const archive = 'beta/sources/handoff-archive-2026-07.md';
     writeFile(root, archive, '# Handoff archive\n\nThe zeppelin rollout stalled twice.\n');
     const graph = await refreshInto(dbPath, root);
-    const searched = await searchWorkspace('zeppelin', { graph, activeRoot: root });
+    const searched = await searchWorkspace('zeppelin', { graph, activeRoot: root, visible: await ownerShown(root) });
     graph.db.close();
 
     const result = await related({ text: 'zeppelin rollout', classes: ['sources'] });
@@ -121,16 +99,6 @@ describe('relatedContext', () => {
     const hit = result.hits.find((h) => h.ref === 'note:alpha/2026-09-02-alpha-lesson.md');
     expect(hit).toMatchObject(expected);
     expect('readIf' in hit!).toBe('readIf' in expected);
-  });
-
-  it('carries the winning span as a byte range into the file', async () => {
-    const result = await related({ text: 'the alpha lesson', initiative: 'alpha' });
-    const [top] = result.hits;
-    const file = readFileSync(path.join(root, top.path!));
-
-    expect(top.byteOffset).toBeGreaterThanOrEqual(0);
-    expect(top.byteLength).toBeGreaterThan(0);
-    expect(top.byteOffset! + top.byteLength!).toBeLessThanOrEqual(file.length);
   });
 
   it('degrades to no hits when the index is missing, without creating it', async () => {
@@ -351,5 +319,50 @@ describe('relatedContext in context mode', () => {
     expect(result.degraded).toEqual([
       expect.objectContaining({ source: 'index', reason: 'missing' }),
     ]);
+  });
+});
+
+describe('relatedContext with tasks named in the query', () => {
+  const taskRefs = (hits: { ref: string }[]) => hits.filter((hit) => hit.ref.startsWith('task:')).map((hit) => hit.ref);
+
+  beforeEach(async () => {
+    writeFile(root, 'alpha/tasks/AL-12.yml', 'id: AL-12\ntitle: Extend the indexer\npriority: 1\ndone_when: the indexer converges\nstatus: open\ncreated: 2026-09-01\nupdated: 2026-09-02\ndone_at: null\n');
+    writeFile(
+      root,
+      'alpha/sources/notes/2026-09-03-al-12-lesson.md',
+      '---\nkind: process\ntitle: Indexer lesson\ncreated: 2026-09-03\n---\n\nThe indexer converges, see AL-12.\n',
+    );
+    (await refreshInto(dbPath, root)).db.close();
+  });
+
+  it('drops a task the text names and backfills the slot from further down', async () => {
+    const unnamed = await related({ text: 'indexer converges', limit: 3 });
+    expect(taskRefs(unnamed.hits)).toContain('task:AL-12');
+    expect(unnamed.hits).toHaveLength(3);
+
+    const named = await related({ text: 'indexer converges (al-12)', limit: 3 });
+
+    expect(named.hits.map((hit) => hit.ref)).not.toContain('task:AL-12');
+    expect(named.hits).toHaveLength(3);
+  });
+
+  it('keeps a task whose id only prefixes the one in the text', async () => {
+    const result = await related({ text: 'indexer converges AL-1', limit: 6 });
+
+    expect(result.hits.map((hit) => hit.ref)).toContain('task:AL-12');
+    expect(result.hits.map((hit) => hit.ref)).not.toContain('task:AL-1');
+  });
+
+  it('keeps a note that mentions the named task', async () => {
+    const result = await related({ text: 'indexer converges AL-12', limit: 6 });
+
+    expect(result.hits.map((hit) => hit.ref)).toContain('note:alpha/2026-09-03-al-12-lesson.md');
+  });
+
+  it('context mode has no named task among its entries', async () => {
+    const result = await related({ text: 'indexer converges AL-12', mode: 'context', tokens: 2000 });
+
+    expect(result.entries!.length).toBeGreaterThan(0);
+    expect(result.entries!.map((entry) => entry.ref)).not.toContain('task:AL-12');
   });
 });

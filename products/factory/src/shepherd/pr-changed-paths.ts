@@ -7,6 +7,13 @@ function changedPaths(files: readonly PrFile[]): string[] {
   return files.flatMap((file) => (file.previousPath === undefined ? [file.path] : [file.path, file.previousPath]));
 }
 
+const READ_FAILED = "are unknown: the read failed: ";
+
+/** A read that threw, such as a rate limit or a 5xx, which a later read at the same head may get past; a truncated list is never one. */
+export function isFailedFilesRead(reason: string): boolean {
+  return reason.includes(READ_FAILED);
+}
+
 interface PathsRead {
   paths: string[];
   /** The files `paths` came from, with their statuses; empty when unread. */
@@ -23,7 +30,7 @@ interface PathsRead {
  * and after it is read. The compare endpoint would pin the sha itself, but it drops rename sources and stops at 300 files.
  */
 export async function pinnedPaths(port: GitHubPort, { repo, pr, head }: { repo: RepoSlug; pr: number; head: string }, readHead: string): Promise<PathsRead> {
-  const unread = (why: string): PathsRead => ({ paths: [], files: [], unread: `the changed files of ${repo}#${pr} are unknown: ${why}` });
+  const unread = (why: string, prefix = "are unknown: "): PathsRead => ({ paths: [], files: [], unread: `the changed files of ${repo}#${pr} ${prefix}${why}` });
   if (readHead !== head) return unread(`the PR is at ${readHead}, not ${head}`);
   try {
     const files = await port.listPrFiles(repo, pr);
@@ -32,6 +39,6 @@ export async function pinnedPaths(port: GitHubPort, { repo, pr, head }: { repo: 
     const changedLines = prChangedLines(files);
     return { paths: changedPaths(files), files, ...(changedLines !== undefined && { changedLines }) };
   } catch (error) {
-    return unread(error instanceof FileListTruncatedError ? "the list is truncated" : `the read failed: ${statusOf(error)}`);
+    return error instanceof FileListTruncatedError ? unread("the list is truncated") : unread(statusOf(error), READ_FAILED);
   }
 }

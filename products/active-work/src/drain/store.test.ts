@@ -7,7 +7,6 @@ import {
   appendOccurrence,
   loadTemplates,
   readOccurrences,
-  rewriteOccurrences,
   saveTemplates,
 } from './store.js';
 import type { Occurrence, Template } from '../schemas/template.js';
@@ -70,31 +69,12 @@ describe('occurrences.jsonl', () => {
     for await (const occ of readOccurrences(dir)) results.push(occ);
 
     expect(results).toHaveLength(2);
-    expect(results[0].sessionId).toBe('session-1');
-    expect(results[1].sessionId).toBe('session-2');
+    expect(results[0]?.sessionId).toBe('session-1');
+    expect(results[1]?.sessionId).toBe('session-2');
   });
 
   it('rejects an invalid occurrence before appending', async () => {
     // @ts-expect-error – exercising runtime guard
     await expect(appendOccurrence({ templateId: 'tpl-1' }, dir)).rejects.toThrow();
-  });
-
-  it('rewrites the log wholesale via rewriteOccurrences', async () => {
-    await appendOccurrence(sampleOccurrence, dir);
-    await appendOccurrence(sampleOccurrence, dir);
-    await rewriteOccurrences([sampleOccurrence], dir);
-
-    const results: Occurrence[] = [];
-    for await (const occ of readOccurrences(dir)) results.push(occ);
-    expect(results).toHaveLength(1);
-  });
-
-  it('rewriting to an empty list leaves an empty, readable log', async () => {
-    await appendOccurrence(sampleOccurrence, dir);
-    await rewriteOccurrences([], dir);
-
-    const results: Occurrence[] = [];
-    for await (const occ of readOccurrences(dir)) results.push(occ);
-    expect(results).toEqual([]);
   });
 });

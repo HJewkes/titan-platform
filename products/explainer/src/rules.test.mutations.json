@@ -16,7 +16,7 @@
       "find": "l0: { severity: error, status: implemented, checks: [\"Q-D20\"]",
       "replace": "l0: { severity: warning, status: implemented, checks: [\"Q-D20\"]",
       "kills": [
-        "the shipped Q-rule registry holds the 85 rules: 65 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1 and the pace rates as L0 warnings"
+        "the shipped Q-rule registry holds the 90 rules: 70 L0, 13 L0+J and 7 judge-only, with Q-F14, Q-F15, Q-D1, Q-V19 and the pace rates as L0 warnings"
       ]
     }
   ]

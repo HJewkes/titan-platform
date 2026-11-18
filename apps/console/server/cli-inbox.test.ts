@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EXIT } from "@titan-design/registry";
 import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
-import { writeDeposit } from "@titan-design/owner-queue/spool";
+import { writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import { readWithdrawal, WITHDRAW_LOG } from "@titan-design/owner-queue/withdraw";
 import { inboxWithdrawArgs, inboxWithdrawCli } from "./cli-inbox.js";
 import { resolveConfig, type ConsoleConfig } from "./config.js";
@@ -157,6 +157,77 @@ describe("titan-console inbox withdraw and restore", () => {
       'refused: reason "stale" is not obsolete, resolved or superseded:<id>',
     ]);
     expect(await readWithdrawal(config.inboxDir, ID)).toBeUndefined();
+  });
+});
+
+describe("titan-console inbox answer", () => {
+  const owner = { class: "owner", id: "owner", channel: "console" };
+  const at = "2026-11-14T10:00:00.000Z";
+
+  it("prints the chosen option, who answered and when, and exits 0", async () => {
+    await writeDeposit(config.inboxDir, deposit());
+    await writeAnswer(config.inboxDir, ID, { optionId: "ship", by: owner, at });
+
+    await run(["inbox", "answer", ID, "--as", ASKER]);
+
+    expect(process.exitCode).toBeUndefined();
+    expect(out).toEqual(["ship\nby owner:owner (console)\nat 2026-11-14T10:00:00.000Z"]);
+  });
+
+  it("prints a free-text answer when no option was chosen", async () => {
+    await writeDeposit(config.inboxDir, deposit());
+    await writeAnswer(config.inboxDir, ID, { text: "use the second approach", by: owner, at });
+
+    await run(["inbox", "answer", ID, "--as", ASKER]);
+
+    expect(out).toEqual(["use the second approach\nby owner:owner (console)\nat 2026-11-14T10:00:00.000Z"]);
+  });
+
+  it("exits non-zero saying not answered yet when no answer file exists", async () => {
+    await writeDeposit(config.inboxDir, deposit());
+
+    await run(["inbox", "answer", ID, "--as", ASKER]);
+
+    expect(process.exitCode).toBe(EXIT.TEMPFAIL);
+    expect(err).toEqual([`not answered yet: ${ID}`]);
+    expect(out).toEqual([]);
+  });
+
+  it("refuses when the deposit was filed by another seat", async () => {
+    await writeDeposit(config.inboxDir, deposit());
+    await writeAnswer(config.inboxDir, ID, { optionId: "ship", by: owner, at });
+
+    await run(["inbox", "answer", ID, "--as", "seat-b"]);
+
+    expect(process.exitCode).toBe(EXIT.DATAERR);
+    expect(err).toEqual([`refused: ${ID} was filed by ${ASKER}, not seat-b`]);
+    expect(out).toEqual([]);
+  });
+
+  it("resolves a short id like withdraw and prints the full id with --json", async () => {
+    await writeDeposit(config.inboxDir, deposit());
+    await writeAnswer(config.inboxDir, ID, { optionId: "ship", by: owner, at });
+    const hex = ID.slice("deposit:".length, "deposit:".length + 8);
+
+    await run(["inbox", "answer", hex, "--as", ASKER, "--json"]);
+
+    expect(JSON.parse(out[0]!)).toEqual({ id: ID, optionId: "ship", by: owner, at });
+  });
+
+  it("exits 66 for an id no deposit has", async () => {
+    await run(["inbox", "answer", depositItemId(ASKER, "never-filed"), "--as", ASKER]);
+
+    expect(process.exitCode).toBe(EXIT.NOINPUT);
+    expect(err).toEqual([`not found: unknown id ${depositItemId(ASKER, "never-filed")}; full form is deposit:<32 hex>`]);
+  });
+
+  it.each([
+    ["no --as", ["inbox", "answer", "deposit:x"]],
+    ["no id", ["inbox", "answer", "--as", "s"]],
+    ["an --actor", ["inbox", "answer", "deposit:x", "--as", "s", "--actor", "o"]],
+    ["a --reason", ["inbox", "answer", "deposit:x", "--as", "s", "--reason", "resolved"]],
+  ])("refuses to parse %s", (_, argv) => {
+    expect(inboxWithdrawArgs(argv)).toBeNull();
   });
 });
 

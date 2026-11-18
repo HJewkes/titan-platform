@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "chapter ends at the video end instead of the next chapter's start",
+      "file": "products/explainer/src/render/chapters.ts",
+      "find": "endS: opens[i + 1]?.startS ?? endS",
+      "replace": "endS",
+      "kills": [
+        "layoutChapters ends each chapter where the next one opens, and the last at the video's end"
+      ]
+    },
+    {
+      "name": "first chapter opens at its first beat instead of 0",
+      "file": "products/explainer/src/render/chapters.ts",
+      "find": "startS: i === 0 ? 0 : chapter.startS",
+      "replace": "startS: chapter.startS",
+      "kills": [
+        "layoutChapters opens the first chapter at 0 when a page extra with no chapter plays first"
+      ]
+    },
+    {
+      "name": "a split chapter is not refused",
+      "file": "products/explainer/src/render/chapters.ts",
+      "find": "if (opens.has(beat.chapter)) throw",
+      "replace": "if (false) throw",
+      "kills": [
+        "layoutChapters refuses a chapter whose beats play on either side of another chapter"
+      ]
+    }
+  ]
+}

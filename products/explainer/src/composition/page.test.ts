@@ -13,7 +13,7 @@ import { timelineFromArtifact } from "../qa/qa-timeline.js";
 import { buildPage, fixtureDurationS, kindsTimeline, renderFrames, servePage, STAGE, type PageServer, type Render } from "./page.test-helpers.js";
 import { sheetKind, writeParitySheet } from "./parity-sheet.js";
 import { resolveBeat } from "./registry.js";
-import type { TimelineBeat } from "./timeline.js";
+import { parseTimeline, type TimelineBeat } from "./timeline.js";
 
 const BROWSER_TIMEOUT_MS = 240_000;
 /** Longer than a capture takes to open the page and read frame 0, so a page that does not wait for its timeline shows it. */
@@ -151,6 +151,37 @@ describe("the composition page", { timeout: BROWSER_TIMEOUT_MS }, () => {
     const open = openCapturePage(browser, server.url("index.html", "/timelines/branching-map.timeline.json"), STAGE);
 
     await assert.rejects(open, /page error while loading: arch-map draws only the path nodes-1 -> nodes-2; the map's edges are \[\]/);
+  });
+
+  test("a timeline beat without the plate field parses unchanged", () => {
+    const parsed = parseTimeline({ durationS: 1, beats: [{ id: "a", kind: "hook", startS: 0, durationS: 1, slots: {} }] });
+
+    assert.equal("plate" in (parsed.beats[0] ?? {}), false);
+  });
+
+  test("a plate beat leaves its frame and the page root transparent while every other beat keeps its background", async () => {
+    const { page } = await openCapturePage(browser, server.url("index.html", "/timelines/plate.timeline.json"), STAGE);
+    const backgroundsAt = (t: number) =>
+      page.evaluate(async (seconds) => {
+        window.__titanMotion?.seek(seconds);
+        await window.__titanMotion?.ready();
+        const bg = (el: Element | null) => (el ? getComputedStyle(el).backgroundColor : null);
+        return {
+          opaqueFrame: bg(document.querySelector('[data-stage="opaque"] .beat-frame')),
+          platedFrame: bg(document.querySelector('[data-stage="plated"] .beat-frame')),
+          body: bg(document.body),
+          root: bg(document.documentElement),
+        };
+      }, t);
+
+    const first = await backgroundsAt(1);
+    const second = await backgroundsAt(3);
+
+    assert.notEqual(first.opaqueFrame, "rgba(0, 0, 0, 0)");
+    assert.notEqual(first.body, "rgba(0, 0, 0, 0)");
+    assert.equal(second.platedFrame, "rgba(0, 0, 0, 0)");
+    assert.equal(second.body, "rgba(0, 0, 0, 0)");
+    assert.equal(second.root, "rgba(0, 0, 0, 0)");
   });
 
   test("a provisional timeline is stamped DRAFT and a spoken one is not", async () => {

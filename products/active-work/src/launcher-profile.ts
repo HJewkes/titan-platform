@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { UsageError } from './errors.js';
-import { profileRoot, resolveProfileDir } from './utils/profile-dir.js';
+import { profilesRoot } from '@titan-design/anthropic-account/node';
+import { resolveProfileDir } from './utils/profile-dir.js';
 
 export const CONFIG_DIR_ENV = 'CLAUDE_CONFIG_DIR';
 
@@ -51,7 +52,7 @@ export function launchProfileEnv(
 
 /** Names of the profile directories under the profile root, sorted; empty when the root is absent. */
 export function listProfiles(env: NodeJS.ProcessEnv = process.env): string[] {
-  const root = profileRoot(env);
+  const root = profilesRoot(env);
   if (!existsSync(root)) return [];
   return readdirSync(root)
     .filter((name) => isDirectory(join(root, name)))
@@ -77,6 +78,6 @@ export function requireProfileDir(name: string, env: NodeJS.ProcessEnv = process
   if (known.includes(name)) return resolveProfileDir(name, env);
   const available = known.length > 0 ? known.join(', ') : '(none)';
   throw new UsageError(
-    `unknown profile "${name}": no directory ${resolveProfileDir(name, env)}. Available profiles in ${profileRoot(env)}: ${available}`,
+    `unknown profile "${name}": no directory ${resolveProfileDir(name, env)}. Available profiles in ${profilesRoot(env)}: ${available}`,
   );
 }

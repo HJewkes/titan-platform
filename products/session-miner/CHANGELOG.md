@@ -1,5 +1,61 @@
 # @titan-design/session-miner
 
+## 0.11.9
+
+### Patch Changes
+
+- Updated dependencies [d025aac]
+- Updated dependencies [ce68429]
+  - @titan-design/pm@0.11.0
+  - @titan-design/owner-queue@0.8.2
+
+## 0.11.8
+
+### Patch Changes
+
+- Updated dependencies [9778eb4]
+  - @titan-design/github@0.13.0
+
+## 0.11.7
+
+### Patch Changes
+
+- a24b050: Add a "Factory health" group to the ticket scorecard (TP-5446 S18). `factoryHealthWeeks` computes, per ISO week, tasks filed by agents per task closed and per merged PR (recorded `source` or `filed_by`, else the inferred source label, marked inferred), spawn refusals and gate holds per 100 dispatched tasks, merge rate and mean fix rounds per dispatch model, and each seat's timer, event and typed wakes. Guard denials, the factory-to-product code size and the share of timer wakes with no action have no source yet and read as not measured. The store gains a `factory_health_week` table (migration 3) with `readFactoryHealth` and `upsertFactoryHealth`. The scorecard job stores the group, freezes it into each closed week's file (a week frozen before the group is not drift) and prints the last two weeks on `run`. The digest's weekly slot prints it as one line, and the console's scorecard page shows it as one more section.
+- Updated dependencies [a24b050]
+  - @titan-design/session-analytics@0.19.0
+
+## 0.11.6
+
+### Patch Changes
+
+- Updated dependencies [8485c89]
+  - @titan-design/workflow@0.15.0
+  - @titan-design/hitl@0.10.1
+
+## 0.11.5
+
+### Patch Changes
+
+- Updated dependencies [239d96b]
+  - @titan-design/pm@0.10.0
+  - @titan-design/owner-queue@0.8.1
+
+## 0.11.4
+
+### Patch Changes
+
+- Updated dependencies [5346139]
+  - @titan-design/owner-queue@0.8.0
+  - @titan-design/pm@0.9.0
+
+## 0.11.3
+
+### Patch Changes
+
+- Updated dependencies [fc303a7]
+- Updated dependencies [d497596]
+  - @titan-design/pm@0.8.0
+
 ## 0.11.2
 
 ### Patch Changes

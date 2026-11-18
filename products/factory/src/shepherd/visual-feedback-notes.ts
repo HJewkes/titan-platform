@@ -25,7 +25,7 @@ export interface NoteTask {
 export interface NotesPorts {
   rounds: () => Promise<StoredRound[]>;
   filed: () => Promise<ReadonlySet<string>>;
-  /** Files one task, then records its key; a failure throws and records nothing. */
+  /** Records the key and files one task; a failure throws, and the key stays recorded only when the task may exist. */
   file: (task: NoteTask) => Promise<void>;
 }
 

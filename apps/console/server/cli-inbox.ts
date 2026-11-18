@@ -1,4 +1,5 @@
 /**
+ * `titan-console inbox answer <id> --as <seat>`: the asking seat reads the owner's answer to its own deposit.
  * `titan-console inbox withdraw|restore|withdraw-matching`: a seat takes back its own deposits. Like
  * `rounds withdraw`, these are local verbs and never `/rpc`, so nothing that reaches the daemon can take
  * an item away from the owner. Each writes the spool directly; owner-queue's withdraw module does the
@@ -6,6 +7,8 @@
  * verb, so the log can tell a seat closing a retired automation's items from the automation itself.
  */
 import { EXIT } from "@titan-design/registry";
+import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
+import type { OwnerAnswer } from "@titan-design/owner-queue";
 import {
   restoreDeposit,
   withdrawDeposit,
@@ -22,6 +25,7 @@ import type { ConsoleConfig } from "./config.js";
 type InboxWithdrawArgs = { actor: string | null } & (
   | { verb: "withdraw"; id: string; reason: string; as: string; json: boolean }
   | { verb: "restore"; id: string; as: string; json: boolean }
+  | { verb: "answer"; id: string; as: string; json: boolean }
   | { verb: "withdraw-matching"; as: string; keys: string[]; reason: string; dryRun: boolean; json: boolean }
 );
 
@@ -60,13 +64,14 @@ const single = (parts: Split, flag: string): string | undefined => {
 /** Null when `--actor` is missing, undefined when it is repeated. */
 const actorOf = (parts: Split): string | null | undefined => (parts.values.has("--actor") ? single(parts, "--actor") : null);
 
-function itemVerb(verb: "withdraw" | "restore", parts: Split): InboxWithdrawArgs | null {
+function itemVerb(verb: "withdraw" | "restore" | "answer", parts: Split): InboxWithdrawArgs | null {
   const [id] = parts.positional;
   const as = single(parts, "--as");
   const actor = actorOf(parts);
   const reason = single(parts, "--reason");
   if (id === undefined || parts.positional.length !== 1 || as === undefined || actor === undefined || parts.values.has("--key") || parts.flags.has("--dry-run")) return null;
   const json = parts.flags.has("--json");
+  if (verb === "answer") return parts.values.has("--reason") || parts.values.has("--actor") ? null : { verb, id, as, actor, json };
   if (verb === "restore") return parts.values.has("--reason") ? null : { verb, id, as, actor, json };
   return reason === undefined ? null : { verb, id, reason, as, actor, json };
 }
@@ -86,7 +91,7 @@ export function inboxWithdrawArgs(argv: readonly string[]): InboxWithdrawArgs | 
   if (noun !== "inbox") return null;
   const parts = split(rest);
   if (parts === null) return null;
-  if (verb === "withdraw" || verb === "restore") return itemVerb(verb, parts);
+  if (verb === "withdraw" || verb === "restore" || verb === "answer") return itemVerb(verb, parts);
   return verb === "withdraw-matching" ? matchingVerb(parts) : null;
 }
 
@@ -100,9 +105,34 @@ interface MatchReport {
   outcome: "would-withdraw" | "withdrawn";
   items: { id: string; summary: string }[];
 }
-type Report = WithdrawResult | RestoreResult | MatchReport;
+type AnswerReport = OwnerAnswer & { id: string };
+type Report = WithdrawResult | RestoreResult | MatchReport | AnswerReport;
+
+const DEPOSIT_PREFIX = "deposit:";
+
+/** The deposit `ref` names, by full id or a hex prefix of at least 8 digits, with or without `deposit:`. */
+async function findDeposit(dir: string, ref: string): Promise<{ id: string; asker?: string | undefined }> {
+  const hex = ref.startsWith(DEPOSIT_PREFIX) ? ref.slice(DEPOSIT_PREFIX.length) : ref;
+  const unknown = new WithdrawRefusedError(`unknown id ${ref}; full form is deposit:<32 hex>`, "unknown");
+  if (!/^[0-9a-f]{8,32}$/i.test(hex)) throw unknown;
+  const prefix = `${DEPOSIT_PREFIX}${hex.toLowerCase()}`;
+  const matches = (await readSpool(dir)).items.filter((item) => item.id.startsWith(prefix));
+  const [only] = matches;
+  if (only === undefined) throw unknown;
+  if (matches.length > 1) throw new WithdrawRefusedError(`ambiguous id ${ref} matches ${matches.map((item) => item.id).sort().join(", ")}`, "refused");
+  return only;
+}
+
+async function answerOf(dir: string, ref: string, as: string): Promise<AnswerReport> {
+  const deposit = await findDeposit(dir, ref);
+  if (deposit.asker !== as) throw new WithdrawRefusedError(`${deposit.id} was filed by ${deposit.asker ?? "no asker"}, not ${as}`, "refused");
+  const answer = await readAnswer(dir, deposit.id);
+  if (answer === undefined) throw failure(`not answered yet: ${deposit.id}`, EXIT.TEMPFAIL);
+  return { id: deposit.id, ...answer };
+}
 
 async function run(dir: string, args: InboxWithdrawArgs): Promise<Report> {
+  if (args.verb === "answer") return answerOf(dir, args.id, args.as);
   const { actor } = args;
   if (actor === null) throw failure("refused: --actor <seat> is required: name the seat running this", EXIT.DATAERR);
   if (args.verb === "withdraw") return withdrawDeposit(dir, args.id, { reason: args.reason, as: args.as, actor });
@@ -112,6 +142,7 @@ async function run(dir: string, args: InboxWithdrawArgs): Promise<Report> {
 }
 
 function text(report: Report): string {
+  if ("by" in report) return [report.optionId ?? report.optionIds?.join(", ") ?? report.text ?? "", `by ${report.by.class}:${report.by.id} (${report.by.channel})`, `at ${report.at}`].join("\n");
   if ("items" in report) return [...report.items.map((item) => `${item.id}  ${item.summary}`), `${report.outcome}: ${report.items.length}`].join("\n");
   return `${report.id}\n${report.outcome}`;
 }

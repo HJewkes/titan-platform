@@ -73,6 +73,7 @@ export function githubPort(wire: GitHubWire, options: GitHubPortOptions = {}): G
     createReview: async (repo, number, request) => wire.createReview(repoOf(repo), pr(number), { ...request, commitId: checkSha("commitId", request.commitId) }),
     dismissReview: async (repo, number, reviewId, message) => wire.dismissReview(repoOf(repo), pr(number), checkPositiveInt("reviewId", reviewId), checkNonEmpty("message", message)),
     listForcePushes: async (repo, number) => wholeForcePushes(await wire.listForcePushes(repoOf(repo), pr(number))),
+    readPrOutcome: async (repo, number) => wire.getPrOutcome(repoOf(repo), pr(number)),
   };
 }
 

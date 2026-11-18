@@ -9,6 +9,7 @@ export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "home", hash: "#/" },
   { name: "inbox", hash: "#/inbox" },
   { name: "inbox-focused", hash: "#/inbox/gate-12" },
+  { name: "inbox-plan-focused", hash: "#/inbox/plan-bets" },
   { name: "initiatives", hash: "#/initiatives" },
   { name: "initiative-detail", hash: "#/initiatives/orbit-relay" },
   { name: "tasks", hash: "#/tasks" },

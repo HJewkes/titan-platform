@@ -124,7 +124,7 @@ const REVIEWS_AGAIN: ReadonlySet<Route> = new Set(["fresh-reviewer", "retry-revi
  * `throttled` is a reviewer that went silent while the machine stop held; on a route that reviews again it is neither stuck nor
  * progress until its cap, and on any other route it counts as a timeout would.
  */
-export type RoundKind = "stuck" | "fix-first" | "progress" | "not-started" | "throttled";
+type RoundKind = "stuck" | "fix-first" | "progress" | "not-started" | "throttled";
 
 export function roundKind(route: Route, outcome: ReviewOutcome): RoundKind {
   if (outcome === "not-started") return outcome;

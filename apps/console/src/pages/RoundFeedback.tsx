@@ -3,7 +3,6 @@ import { Alert, Button, ButtonText, HStack, Link, Pill, Section, SectionContent,
 import type { RoundDetail } from "../../server/rounds.js";
 import type { Question, Section as RoundSection } from "../../server/round-schema.js";
 import { refToRoute } from "../refs.js";
-import { openExternal } from "./homeLinks.js";
 import { inOrder, submittedAnswers } from "./RoundAnswers.js";
 import { LockedQuestion, unlessLocked } from "./RoundLock.js";
 import { RoundNote } from "./RoundNote.js";
@@ -58,7 +57,7 @@ function PrFacts({ group }: { group: PrGroup }): ReactNode {
   const url = target?.kind === "github" ? target.url : undefined;
   return (
     <HStack gap={2} align="center" wrap>
-      {url === undefined ? <Typography variant="body2">{group.pr}</Typography> : <Link color="primary" href={url} isExternal onPress={() => openExternal(url)} testID={`round-feedback-link-${group.pr}`}>{group.pr}</Link>}
+      {url === undefined ? <Typography variant="body2">{group.pr}</Typography> : <Link color="primary" href={url} isExternal testID={`round-feedback-link-${group.pr}`}>{group.pr}</Link>}
       <Pill variant="subtle" size="xs">{`head ${group.headSha.slice(0, SHORT_SHA)}`}</Pill>
       {group.task === undefined ? null : <Pill variant="subtle" size="xs">{`task ${group.task.id}`}</Pill>}
     </HStack>

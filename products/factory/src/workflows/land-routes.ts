@@ -4,6 +4,7 @@ import type { z } from "zod";
 import { evidenceRecord } from "../evidence.js";
 import { requireBaseRequiredChecks } from "../required-checks.js";
 import { redactForEvidence } from "../redact.js";
+import { stepFailureClass } from "../shepherd/failure-class.js";
 import { checkBase, mergeOnAllowedBase, waitForRetarget, type BaseCheckInput, type BaseWaitInput } from "./land-base.js";
 import type { MergeInput } from "./land-merge-message.js";
 import type { CiInput } from "./land-ci.js";
@@ -12,7 +13,7 @@ import type { FirstReads } from "./land-budget.js";
 import { flakyState, type FlakyChecks } from "./land-flaky.js";
 import { rerunOrphans, type OrphanRerunInput } from "./land-orphan.js";
 import { settleRun, type MergeTreeProbe, type SettleInput } from "./land-settle.js";
-import { updateBranch, type UpdateInput } from "./land-update.js";
+import { updateBranch, type MergeUpTree, type UpdateInput } from "./land-update.js";
 import { portReads, type PrSnapshot } from "./pr-snapshot.js";
 import { sleep, stepClock, type StepClock } from "./deadline.js";
 import { baseMovedOrThrow, mergePolicyRecord, type LandRulesResult, type MergePolicyInput } from "./land-steps.js";
@@ -31,6 +32,8 @@ export interface LandDeps {
   snapshot?: PrSnapshot;
   /** Probes the local merge-tree when an unsettled merge outlasts its bound; absent means the gate says it was not run. */
   mergeTree?: MergeTreeProbe;
+  /** Proves a head update-branch moved to is a clean merge-up of the approved head; absent, approve-merge asks again at every moved head. */
+  mergeUpTree?: MergeUpTree;
 }
 
 
@@ -59,7 +62,7 @@ export function landRoutes(deps: LandDeps): StepRoute[] {
 
 function updateRun(deps: LandDeps, timing: Omit<Timing, "timeoutMs">, now: () => number) {
   const updateTiming = { ...timing, timeoutMs: deps.updateTimeoutMs ?? 5 * 60_000 };
-  return async (input: UpdateInput, signal: AbortSignal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, updateTiming, signal))), at: now() });
+  return async (input: UpdateInput, signal: AbortSignal) => ({ ...(await afterWrite(deps, input, updateBranch(deps.port, input, updateTiming, signal, deps.mergeUpTree))), at: now() });
 }
 
 /** `clock` carries the step's first start across a restart, so a wait that reads it resumes its deadline rather than restarting it. */
@@ -82,6 +85,7 @@ function landEvidence(match: string, now: () => number): CodeRouteOptions {
   return {
     envelope: (record, step) => evidenceRecord(`land.${match}`, step, new Date(now()).toISOString(), record),
     errorText: redactForEvidence,
+    errorClass: (error) => stepFailureClass(match, error),
   };
 }
 

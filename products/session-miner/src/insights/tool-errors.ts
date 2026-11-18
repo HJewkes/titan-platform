@@ -1,15 +1,13 @@
 import os from "node:os";
 import { readLocatorText } from "@titan-design/locator";
 import { EXIT } from "@titan-design/registry";
-import { ERROR_CLASSES, LIST_PRICE_CAVEAT, classifyError, scopeFilter, type CostReportOptions, type DenialRecord, type ErrorClass } from "@titan-design/session-analytics";
+import { ERROR_CLASSES, LIST_PRICE_CAVEAT, classifyError, denialOf, scopeFilter, type CostReportOptions, type DenialRecord, type ErrorClass } from "@titan-design/session-analytics";
 import { expandHome } from "@titan-design/session-read";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import { readDenials } from "./blocked-flow-sources.js";
 import { defineInsight, localDay } from "./define.js";
 import { readAgentNames } from "./tool-gaps-sources.js";
-
-const DENIAL_REASON = /classifier\. Reason: \[([^\]]+)\]/;
 
 /** An error tool result in the graph, located in its transcript; the graph keeps no result text. */
 const errorResultRows = z.array(
@@ -104,7 +102,7 @@ async function classifyGraphErrors(db: Db, report: CostReportOptions): Promise<C
       tool: shortTool(r.tool ?? "unknown"),
       sessionId: r.sessionId,
       agent: agents.get(r.sessionId) ?? null,
-      reason: text === null ? null : (DENIAL_REASON.exec(text)?.[1] ?? null),
+      reason: text === null ? null : (denialOf(text)?.reason ?? null),
     };
   });
 }

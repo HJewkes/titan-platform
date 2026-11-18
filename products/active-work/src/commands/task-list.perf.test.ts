@@ -18,7 +18,7 @@ const INITIATIVES = 45;
 const TASKS_PER_INITIATIVE = 200;
 
 function ctx(activeRoot: string): CommandContext {
-  return { activeRoot, warnings: [], format: 'json' };
+  return { activeRoot, warnings: [], format: 'json', caller: 'owner' };
 }
 
 function taskYaml(id: string, priority: number): string {

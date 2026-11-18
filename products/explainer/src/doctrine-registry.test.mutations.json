@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the B2 rule cites a ref the checklist does not list",
+      "file": "products/explainer/doctrine/craft/talks-and-slides.yaml",
+      "find": "source: { doc: talks-and-slides, ref: B2 }",
+      "replace": "source: { doc: talks-and-slides, ref: B2x }",
+      "kills": [
+        "the VT §4 id checklist is covered by a rule with the same ref and layer for every source that has a craft file"
+      ]
+    },
+    {
+      "name": "the arch-map half of the split B4 row has the wrong layer",
+      "file": "products/explainer/doctrine/craft/talks-and-slides.yaml",
+      "find": "scope: { layer: B, beats: [arch-map] }",
+      "replace": "scope: { layer: T, types: [repo-tour] }",
+      "kills": [
+        "the VT §4 id checklist is covered by a rule with the same ref and layer for every source that has a craft file"
+      ]
+    }
+  ]
+}

@@ -23,7 +23,7 @@ import { withTempActiveRoot } from '../test-support/test-helpers.js';
 
 const SLUG = 'sample-initiative';
 
-const ctx = { activeRoot: '', warnings: [], format: 'json' as const };
+const ctx = { activeRoot: '', warnings: [], format: 'json' as const, caller: 'owner' as const };
 
 function initiativeDir(root: string): string {
   return path.join(root, SLUG);
@@ -224,7 +224,7 @@ describe('artifact.add-branch', () => {
       );
       const data = await readArtifacts(root);
       expect(data.branches).toHaveLength(1);
-      expect(data.branches[0].note).toBe('rewritten note');
+      expect(data.branches.at(0)?.note).toBe('rewritten note');
 
       await artifactAddBranchCmd.run(
         { slug: SLUG, repo: '~/code/sample', name: 'feat/another' },
@@ -242,7 +242,7 @@ describe('artifact.add-branch', () => {
         ctx,
       );
       const data = await readArtifacts(root);
-      expect(data.branches[0].note).toBe('scaffolding for sample initiative');
+      expect(data.branches.at(0)?.note).toBe('scaffolding for sample initiative');
     });
   });
 });
@@ -258,7 +258,7 @@ describe('artifact.add-stash', () => {
       const data = await readArtifacts(root);
       expect(data.stashes).toHaveLength(2);
       expect(data.stashes.every((s) => s.label === 'WIP')).toBe(true);
-      expect(data.stashes[1].sha).toBe('abc123');
+      expect(data.stashes.at(1)?.sha).toBe('abc123');
     });
   });
 });
@@ -268,8 +268,8 @@ describe('artifact.list', () => {
     await withTempActiveRoot(async () => {
       const res = await artifactListCmd.run({ slug: SLUG }, ctx);
       expect(res.items).toHaveLength(1);
-      expect(res.items[0].slug).toBe(SLUG);
-      expect(res.items[0].artifacts.branches).toHaveLength(1);
+      expect(res.items.at(0)?.slug).toBe(SLUG);
+      expect(res.items.at(0)?.artifacts.branches).toHaveLength(1);
     });
   });
 
@@ -310,7 +310,7 @@ describe('artifact.note', () => {
       );
       expect(res.branch.note).toBe('updated context');
       const data = await readArtifacts(root);
-      expect(data.branches[0].note).toBe('updated context');
+      expect(data.branches.at(0)?.note).toBe('updated context');
     });
   });
 
@@ -377,7 +377,7 @@ describe('artifact.status', () => {
         ]),
       );
       const res = await artifactStatusCmd.run({ slug: SLUG }, ctx);
-      expect(res.branches[0].pr).toMatchObject({ number: 18, checks: 'pending (1/2)' });
+      expect(res.branches.at(0)?.pr).toMatchObject({ number: 18, checks: 'pending (1/2)' });
     });
   });
 
@@ -386,8 +386,8 @@ describe('artifact.status', () => {
       setGitRunner(gitRunner);
       setGhRunner(ghAnswering([{ number: 19, title: 'Odd', statusCheckRollup: 'not-a-list' }]));
       const res = await artifactStatusCmd.run({ slug: SLUG }, ctx);
-      expect(res.branches[0].present).toBe(true);
-      expect(res.branches[0].pr).toBeNull();
+      expect(res.branches.at(0)?.present).toBe(true);
+      expect(res.branches.at(0)?.pr).toBeNull();
     });
   });
 
@@ -410,12 +410,12 @@ describe('artifact.status', () => {
       setGhRunner(ghRunner);
       const res = await artifactStatusCmd.run({ slug: SLUG }, ctx);
       expect(res.branches).toHaveLength(1);
-      const b = res.branches[0];
-      expect(b.present).toBe(true);
-      expect(b.ahead).toBe(4);
-      expect(b.behind).toBe(1);
-      expect(b.pr?.number).toBe(17);
-      expect(b.pr?.checks).toMatch(/pass/);
+      const b = res.branches.at(0);
+      expect(b?.present).toBe(true);
+      expect(b?.ahead).toBe(4);
+      expect(b?.behind).toBe(1);
+      expect(b?.pr?.number).toBe(17);
+      expect(b?.pr?.checks).toMatch(/pass/);
     });
   });
 
@@ -430,8 +430,8 @@ describe('artifact.status', () => {
       setGhRunner(failing);
       const res = await artifactStatusCmd.run({ slug: SLUG }, ctx);
       expect(res.branches).toHaveLength(1);
-      expect(res.branches[0].present).toBe(false);
-      expect(res.branches[0].pr).toBeNull();
+      expect(res.branches.at(0)?.present).toBe(false);
+      expect(res.branches.at(0)?.pr).toBeNull();
     });
   });
 
@@ -501,7 +501,7 @@ describe('artifact.prune', () => {
       const res = await artifactPruneCmd.run({ slug: SLUG }, ctx);
       expect(res.applied).toBe(false);
       expect(res.pruned).toHaveLength(1);
-      expect(res.pruned[0].name).toBe('feat/sample');
+      expect(res.pruned.at(0)?.name).toBe('feat/sample');
       const after = await readArtifacts(root);
       expect(after.branches.length).toBe(before.branches.length);
     });
@@ -534,7 +534,7 @@ describe('command metadata', () => {
   it('source.add positional and required option flags', () => {
     expect(sourceAddCmd.name).toBe('source.add');
     expect(sourceAddCmd.cli?.positional).toEqual(['slug', 'file']);
-    expect(sourceAddCmd.cli?.options?.type.required).toBe(true);
+    expect(new Map(Object.entries(sourceAddCmd.cli?.options ?? {})).get('type')?.required).toBe(true);
   });
 
   it('artifact CRUD command names are namespaced', () => {

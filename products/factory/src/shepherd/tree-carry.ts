@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
+import type { CleanMergeTree } from "@titan-design/github";
 import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { CLOSURE_LOCK_DRIVER, type GitConfigEntry } from "../merge-drivers.js";
@@ -41,7 +42,7 @@ export interface CacheHandle {
 const Sha = z.string().regex(HEAD, "must be 40 lowercase hex characters");
 export const BranchName = z.string().regex(/^[A-Za-z0-9._/-]+$/).refine((name) => !name.startsWith("-") && !name.includes(".."), "must be a plain branch name");
 const CarryInputSchema = z.object({ repo: z.string().refine(isRepoKey, "must be owner/repo"), baseRef: BranchName, fromHead: Sha, head: Sha });
-export const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), firstParent: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), patchEqual: z.boolean().optional(), reason: z.string().optional() });
+const CarryResultSchema = z.object({ equal: z.boolean(), base: z.string().optional(), firstParent: z.string().optional(), headTree: z.string().optional(), mergeTree: z.string().optional(), patchEqual: z.boolean().optional(), reason: z.string().optional() });
 
 /** Fails the probe with a reason; never leaves `carry`. */
 /** A git command that exited non-zero; only the subcommand and exit code are kept, since stderr can echo a remote URL or credential. */
@@ -138,12 +139,12 @@ async function compareTrees(git: Git, dir: string, input: CarryInput, base: stri
  * A patch id in the manner of `git patch-id`: the diff with its blob ids, hunk line numbers and whitespace dropped, so the
  * same change read against a moved base hashes the same.
  */
-function patchIdOf(diff: string): string {
+export function patchIdOf(diff: string): string {
   const lines = diff.split("\n").filter((line) => !line.startsWith("index ")).map((line) => (line.startsWith("@@") ? "@@" : line.replace(/\s+/g, "")));
   return createHash("sha256").update(lines.join("\n")).digest("hex");
 }
 
-const DIFF_ARGS = ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "--full-index"];
+export const DIFF_ARGS = ["diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "--full-index"];
 
 /**
  * Whether the head's diff against the base it merged equals the reviewed head's diff against its merge base with that base.
@@ -221,6 +222,26 @@ export async function localMergeTree(raw: unknown, options: CarryOptions): Promi
     return merged.code === 0 ? "clean" : "conflict";
   };
   return inCache(repo, options, merge, (reason) => `unread: ${reason}`);
+}
+
+/**
+ * The tree of git's clean merge of two commits in `repo`'s cache, fetched by sha, or null when they conflict; land's
+ * update-branch compares it with the tree of the head GitHub built (TP-6006). A failed fetch or merge-tree throws.
+ */
+export function cacheMergeUpTree(repo: string, options: CarryOptions): CleanMergeTree {
+  return async (baseParent, reviewed) => {
+    const shas = z.tuple([Sha, Sha]).parse([baseParent, reviewed]);
+    const cache = cacheFor(repo, options);
+    return serialized(cache.dir, async () => {
+      const { git, dir, url } = cache;
+      await ensureCache(cache, options.signal);
+      await must(git, dir, ["fetch", "--no-tags", "--no-write-fetch-head", "--quiet", url, ...shas], options.signal);
+      const merged = await git(dir, ["merge-tree", "--write-tree", "--no-messages", ...shas], options.signal);
+      if (merged.code === 1) return null;
+      if (merged.code !== 0) throw new CarryRefusal("merge-tree", merged.code);
+      return firstLine(merged.stdout);
+    });
+  };
 }
 
 export function carryRoute(now: () => number, options: Omit<CarryOptions, "signal">): StepRoute {

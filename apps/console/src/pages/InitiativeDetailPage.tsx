@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from "react";
-import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, HStack, InitiativeBrief, InitiativeHeader, OpenLoops, Pill, SessionList, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, TaskTable, Typography, VStack, sessionLinkers } from "@titan-design/react-ui";
+import { Alert, BreadcrumbItem, Breadcrumbs, Card, CardContent, DateTime, HStack, InitiativeBrief, InitiativeHeader, Link, OpenLoops, Pill, SessionList, Tab, TabList, Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow, Tabs, TaskTable, Typography, VStack, sessionLinkers } from "@titan-design/react-ui";
 import { Spinner } from "../shell/Loading.js";
 import type { ConsoleCommands } from "../../server/commands.js";
 import { useQuery } from "../data/rpc.js";
 import { open } from "../router.js";
 import { PersonalBadge } from "./PersonalBadge.js";
-import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_ID_LINK } from "./phone.js";
+import { openRef } from "./KnowledgeTable.js";
+import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_ID_LINK, PHONE_TAP_LINK } from "./phone.js";
+import { WeeklySheetPanel } from "./WeeklySheetPanel.js";
 
 type Detail = ConsoleCommands["work.initiative"]["result"];
 
@@ -28,6 +30,9 @@ export function InitiativeDetailPage({ slug }: { slug: string }): ReactNode {
       <Panel>
         <InitiativeBrief className={PHONE_TAP_BUTTONS} brief={{ ...initiative, body: brief.body }} linkers={LINKERS} />
         {brief.truncated ? <Alert status="info" size="compact" message="The brief is longer than active-work's read cap; this is its head." /> : null}
+      </Panel>
+      <Panel>
+        <WeeklySheetPanel slug={slug} />
       </Panel>
       <Panel>
         <Records detail={detail.data} now={now} />
@@ -85,25 +90,32 @@ function Records({ detail, now }: { detail: Detail; now: number }): ReactNode {
           ))}
         </TabList>
       </Tabs>
-      <RecordsPanel tab={tab} detail={detail} now={now} />
+      <RecordsPanel tab={tab} detail={detail} now={now} slug={detail.initiative.slug} />
     </VStack>
   );
 }
 
-function RecordsPanel({ tab, detail, now }: { tab: number; detail: Detail; now: number }): ReactNode {
+function RecordsPanel({ tab, detail, now, slug }: { tab: number; detail: Detail; now: number; slug: string }): ReactNode {
   const { tasks, sessions, notes, sources } = detail;
   if (tab === 0) {
     const label = tasks.length < detail.openTasks ? `showing first ${tasks.length} of ${detail.openTasks} open` : `${tasks.length} open`;
-    return <TaskTable tasks={tasks} now={now} hideLegend hideColumns={["slug"]} label={label} />;
+    return (
+      <VStack gap={2}>
+        <Link color="primary" className={PHONE_TAP_LINK} onPress={() => open({ view: "tasks", query: `initiative=${encodeURIComponent(slug)}` })}>
+          {tasks.length < detail.openTasks ? `Open in Tasks (${detail.openTasks})` : "Open in Tasks"}
+        </Link>
+        <TaskTable tasks={tasks} now={now} hideLegend hideColumns={["slug"]} label={label} />
+      </VStack>
+    );
   }
   if (tab === 1) {
     const summaries = sessions.map((session) => ({ ...session, id: session.filename, body: "" }));
     return <SessionList sessions={summaries} now={now} label={`${sessions.length} most recent`} />;
   }
-  if (tab === 2) return <FileTable rows={notes.map((note) => ({ id: note.id, title: note.title, tag: note.kind, file: note.filename, changed: note.mtime }))} tagLabel="Kind" />;
+  if (tab === 2) return <FileTable rows={notes.map((note) => ({ id: note.id, ref: `note:${slug}/${note.filename}`, title: note.title, tag: note.kind, file: note.filename, changed: note.mtime }))} tagLabel="Kind" />;
   return (
     <VStack gap={2}>
-      <FileTable rows={sources.map((source) => ({ id: source.id, title: source.title, tag: source.type, file: source.filename, changed: source.mtime }))} tagLabel="Type" />
+      <FileTable rows={sources.map((source) => ({ id: source.id, ref: `source:${slug}/${source.filename}`, title: source.title, tag: source.type, file: source.filename, changed: source.mtime }))} tagLabel="Type" />
       {detail.nestedSources > 0 ? (
         <Typography variant="caption" color="secondary">
           {`${detail.nestedSources} nested ${detail.nestedSources === 1 ? "file" : "files"} under sources/ ${detail.nestedSources === 1 ? "is" : "are"} counted here and not listed.`}
@@ -115,6 +127,8 @@ function RecordsPanel({ tab, detail, now }: { tab: number; detail: Detail; now: 
 
 interface FileRow {
   id: string;
+  /** The knowledge ref the title opens: `note:<slug>/<file>` or `source:<slug>/<file>`. */
+  ref: string;
   title: string;
   /** A note's kind or a source's type. */
   tag: string;
@@ -147,7 +161,11 @@ function FileTable({ rows, tagLabel }: { rows: readonly FileRow[]; tagLabel: str
 function FileTableRow({ row }: { row: FileRow }): ReactNode {
   return (
     <TableRow>
-      <TableCell>{row.title}</TableCell>
+      <TableCell>
+        <Link color="primary" className={PHONE_TAP_LINK} onPress={() => openRef(row.ref)}>
+          {row.title}
+        </Link>
+      </TableCell>
       <TableCell width={120}>
         <Pill variant="subtle" size="xs">
           {row.tag}

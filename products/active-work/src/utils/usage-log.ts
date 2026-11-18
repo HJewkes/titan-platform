@@ -14,6 +14,7 @@ interface UsageRecord {
   command: string; // registry name
   args?: Record<string, unknown>;
   duration_ms?: number;
+  timings_ms?: Record<string, number>;
   success: boolean;
   exit_code: number;
 }

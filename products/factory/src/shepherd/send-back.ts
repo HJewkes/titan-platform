@@ -1,5 +1,6 @@
 import type { WorkflowContext } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
+import { ATTEST_SEND_BACKS, attestDeclined, attestSendBacksBefore, declinedSteps } from "./attest-send-back.js";
 import type { LandOutcome } from "../workflows/land.js";
 import { withEarlier, type FixFirstTrail } from "./fix-first-trail.js";
 import { unhandledSendBack } from "./gate-route.js";
@@ -48,4 +49,19 @@ function workflowCiGate(run: GateRun, headSha: string): Promise<LandOutcome | un
   const why = "the PR changes only workflows, whose CI proof needs a required check red at the merge base, so no fixer was woken";
   const prompt = `fix-proof did not reproduce (NO_REPRO) at ${where}: ${why}. Waive the fix-proof, await a new head or abandon?`;
   return sentBackGate(run, headSha, prompt, "a human abandoned the PR after a workflow-only NO_REPRO", prompt, true);
+}
+
+type Wake = (payload: unknown) => Promise<boolean>;
+
+/**
+ * True goes on to the merge decision as before. A MERGE whose reviewer declined to attest a claimed step first goes back
+ * to the implementer through `wake` to replace the claim with a version bump, once per run; a taken wake leaves the land
+ * round, and an unhandled wake or a second decline asks the owner as before.
+ */
+export async function attestDeclineRoute(reviews: ReadonlyMap<string, Verdict>, pr: number, routed: { headSha: string; verdict: Verdict }, wake: Wake): Promise<boolean> {
+  const { headSha, verdict } = routed;
+  const steps = declinedSteps(verdict, headSha);
+  if (steps.length === 0 || attestSendBacksBefore(reviews, headSha) >= ATTEST_SEND_BACKS) return true;
+  if (await wake(attestDeclined(pr, steps))) throw new LeaveLand();
+  return true;
 }

@@ -12,6 +12,7 @@ export const WIRE_CLASSES = [
   'sessions',
   'notes',
   'sources',
+  'plans',
   'nested_sources',
   'other',
 ] as const;
@@ -24,6 +25,7 @@ const TO_WIRE: Record<InventoryClass, WireClass> = {
   session: 'sessions',
   note: 'notes',
   source: 'sources',
+  plan: 'plans',
   nested_source: 'nested_sources',
   other: 'other',
 };

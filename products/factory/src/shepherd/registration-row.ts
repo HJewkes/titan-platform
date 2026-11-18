@@ -25,6 +25,7 @@ export interface RegistrationRow {
   registrant?: string | null;
   registrant_fixer?: number | null;
   last_slice?: number | null;
+  reverts?: string | null;
   created_at: string;
   updated_at: string;
 }

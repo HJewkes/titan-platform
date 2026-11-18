@@ -77,3 +77,18 @@ describe('ensureSchemaVersion', () => {
     });
   });
 });
+
+describe('readSchemaVersion', () => {
+  it('returns 0 when the file is missing', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      expect(await readSchemaVersion(root)).toBe(0);
+    });
+  });
+
+  it('rejects a file containing 0', async () => {
+    await withEmptyActiveRoot(async (root) => {
+      await writeFile(schemaVersionFile(root), '0\n', 'utf8');
+      await expect(readSchemaVersion(root)).rejects.toThrow(/positive integer/);
+    });
+  });
+});
