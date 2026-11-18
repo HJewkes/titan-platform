@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "superseded lines are kept",
+      "file": "products/active-work/src/commands/plan-seed.ts",
+      "find": "line.superseded_by === undefined",
+      "replace": "true",
+      "kills": ["plan.seed drops a superseded line and keeps its replacement with date and quote ref"]
+    },
+    {
+      "name": "tasks without done_when are listed",
+      "file": "products/active-work/src/commands/plan-seed.ts",
+      "find": "task.done_when === undefined\n      ? []",
+      "replace": "false\n      ? []",
+      "kills": ["plan.seed lists only open, done_when-bearing, domain-tagged tasks in priority order"]
+    },
+    {
+      "name": "domain tag filter is dropped",
+      "file": "products/active-work/src/commands/plan-seed.ts",
+      "find": "{ slug: initiative, tag: domain }",
+      "replace": "{ slug: initiative }",
+      "kills": ["plan.seed lists only open, done_when-bearing, domain-tagged tasks in priority order"]
+    },
+    {
+      "name": "parser errors lose their line numbers",
+      "file": "products/active-work/src/commands/plan-seed.ts",
+      "find": "`line ${error.line}: ${error.message}`",
+      "replace": "error.message",
+      "kills": ["plan.seed returns the parser line-numbered errors for a malformed digest"]
+    },
+    {
+      "name": "ruled-out section is not seeded",
+      "file": "products/active-work/src/commands/plan-seed.ts",
+      "find": "  ['ruled_out', 'Ruled out'],\n",
+      "replace": "",
+      "kills": ["plan.seed includes the ruled-out lines"]
+    }
+  ]
+}

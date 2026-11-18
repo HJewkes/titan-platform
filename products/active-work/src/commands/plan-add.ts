@@ -77,7 +77,7 @@ function parseEndCondition(raw: string): FreezeEndCondition {
   if (kind === 'task-done') return { kind, task: value };
   const measure = /^measure:(.+):(increase|decrease):(-?\d+(?:\.\d+)?)$/.exec(raw);
   if (measure !== null) {
-    const [, metric, direction, threshold] = measure;
+    const [, metric = '', direction, threshold] = measure;
     return { kind: 'measure', metric, direction: direction === 'increase' ? 'increase' : 'decrease', threshold: Number(threshold) };
   }
   throw new UsageError(`--ends must be one of ${END_FORMS}: ${raw}`);

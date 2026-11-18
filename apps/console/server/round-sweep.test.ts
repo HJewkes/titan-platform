@@ -236,6 +236,34 @@ describe("titan-console rounds sweep", () => {
   });
 });
 
+describe("titan-console rounds sweep, default decisions file", () => {
+  const runSweep = (activeRoot: string) => {
+    const consoleDir = path.join(import.meta.dirname, "..");
+    const env = { ...process.env, ACTIVE_ROOT: activeRoot, TITAN_CONSOLE_STATE: root, TITAN_CONSOLE_ROUNDS_DIR: dir, TITAN_CONSOLE_HOST: "", TITAN_CONSOLE_DECISIONS_FILE: "" };
+    return new Promise<string>((resolve, reject) => {
+      execFile(process.execPath, ["--import", "tsx", "server/cli.ts", "rounds", "sweep"], { cwd: consoleDir, env }, (err, out) => (err ? reject(err) : resolve(out)));
+    });
+  };
+
+  it("rounds sweep reads the active-root decisions file when no flag or env is set", { timeout: SPAWN_TIMEOUT_MS }, async () => {
+    const activeRoot = path.join(root, "active");
+    const decisionsFile = path.join(activeRoot, "claude-channels", "sources", "autonomy", "decisions.md");
+    await mkdir(path.dirname(decisionsFile), { recursive: true });
+    await writeFile(decisionsFile, `- ${OPEN_B} answered\n`);
+
+    const stdout = await runSweep(activeRoot);
+
+    expect(stdout).toContain(`decisions: ${decisionsFile}`);
+    expect(stdout).toContain(`${OPEN_B}: would-withdraw`);
+  });
+
+  it("rounds sweep reports no decisions file when the default path is absent", { timeout: SPAWN_TIMEOUT_MS }, async () => {
+    const stdout = await runSweep(path.join(root, "empty-active"));
+
+    expect(stdout).toContain("decisions: no decisions file");
+  });
+});
+
 describe("rounds sweep argument parsing", () => {
   it.each([
     [["rounds", "sweep"], { apply: false, json: false, decisions: null }],

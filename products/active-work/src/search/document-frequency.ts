@@ -1,5 +1,11 @@
 import { documentFrequencyCap, orExpression, type DocumentFrequency } from '@titan-design/retrieval';
 import type { WorkspaceGraph } from '../session-index/graph.js';
+import {
+  indexStamp,
+  readStoredCounts,
+  removeStoredCounts,
+  writeStoredCounts,
+} from './document-frequency-store.js';
 import { hasLegacyWorkspaceSpans } from './workspace-spans.js';
 
 /**
@@ -20,7 +26,11 @@ const SPAN_CAP = 2000;
 
 interface DatabaseCounts {
   terms: Map<string, number>;
-  spans?: number;
+  spans: number;
+  /** Absent when the graph has no file to stamp; such counts stay in memory. */
+  stamp?: string;
+  /** Holds counts this process looked up that the store does not have yet. */
+  dirty: boolean;
 }
 
 /** Per database file, for the life of the process; the daemon keeps one graph open. */
@@ -28,6 +38,11 @@ const cache = new Map<string, DatabaseCounts>();
 
 /** Bounded so a long-lived daemon cannot grow the cache without limit. */
 const CACHE_TERMS = 20_000;
+
+/** How long a daemon batches new counts before persisting them; a CLI persists on exit. */
+const PERSIST_DELAY_MS = 1000;
+let persistTimer: NodeJS.Timeout | undefined;
+let persistOnExit = false;
 
 /**
  * Both span indexes: the frequency of a term is corpus-wide, whichever table a
@@ -40,16 +55,71 @@ const SPAN_INDEXES = [
 
 type SpanIndex = (typeof SPAN_INDEXES)[number];
 
-/** Drop the cached counts for one database; a pass that indexed spans has made them stale. */
+/** Drop the counts for one database, here and on disk; a pass that indexed spans has made them stale. */
 export function clearDocumentFrequency(dbName: string): void {
   cache.delete(dbName);
+  removeStoredCounts(dbName);
+}
+
+/** Write every database's new counts to its store, so the next process skips their lookups. */
+export function persistDocumentFrequency(): void {
+  clearTimeout(persistTimer);
+  persistTimer = undefined;
+  for (const [dbName, counts] of cache) {
+    if (!counts.dirty || counts.stamp === undefined) continue;
+    writeStoredCounts(dbName, counts.stamp, counts.terms);
+    counts.dirty = false;
+  }
+}
+
+function schedulePersist(): void {
+  if (!persistOnExit) {
+    persistOnExit = true;
+    process.once('exit', persistDocumentFrequency);
+  }
+  persistTimer ??= setTimeout(persistDocumentFrequency, PERSIST_DELAY_MS).unref();
+}
+
+/**
+ * Highest span id per index. Ids are never reused, so this counts purged spans
+ * too, the same way the vocabulary's doc counts do; `count(*)` would read the
+ * whole table (0.36 s).
+ */
+function highestSpanIds(graph: WorkspaceGraph): { search: number; workspace: number } {
+  const row = graph.db
+    .prepare<[], { search: number | null; workspace: number | null }>(
+      `SELECT (SELECT max(span_id) FROM search_span) AS search,
+              (SELECT max(span_id) FROM workspace_span) AS workspace`,
+    )
+    .get();
+  return { search: row?.search ?? 0, workspace: row?.workspace ?? 0 };
+}
+
+function stampOf(graph: WorkspaceGraph, spanIds: { search: number; workspace: number }): string | undefined {
+  try {
+    return indexStamp(graph, spanIds);
+  } catch {
+    return undefined;
+  }
+}
+
+function loadCounts(graph: WorkspaceGraph): DatabaseCounts {
+  const spanIds = highestSpanIds(graph);
+  const stamp = stampOf(graph, spanIds);
+  const stored = stamp === undefined ? new Map<string, number>() : readStoredCounts(graph.db.name, stamp);
+  return {
+    terms: stored.size > CACHE_TERMS ? new Map() : stored,
+    spans: spanIds.search + spanIds.workspace,
+    stamp,
+    dirty: false,
+  };
 }
 
 function countsFor(graph: WorkspaceGraph): DatabaseCounts {
   const key = graph.db.name;
   const known = cache.get(key);
   if (known) return known;
-  const fresh: DatabaseCounts = { terms: new Map() };
+  const fresh = loadCounts(graph);
   cache.set(key, fresh);
   return fresh;
 }
@@ -103,34 +173,16 @@ function countSpans(graph: WorkspaceGraph, term: string): number {
 
 export function graphDocumentFrequency(graph: WorkspaceGraph): DocumentFrequency {
   return (term) => {
-    const counts = countsFor(graph).terms;
-    const known = counts.get(term);
+    const counts = countsFor(graph);
+    const known = counts.terms.get(term);
     if (known !== undefined) return known;
-    if (counts.size >= CACHE_TERMS) counts.clear();
+    if (counts.terms.size >= CACHE_TERMS) counts.terms.clear();
     const count = countSpans(graph, term);
-    counts.set(term, count);
+    counts.terms.set(term, count);
+    counts.dirty = true;
+    if (counts.stamp !== undefined) schedulePersist();
     return count;
   };
-}
-
-/**
- * How many spans the index holds, as its highest span id.
- *
- * Ids are never reused, so this counts purged spans too, the same way the
- * vocabulary's doc counts do; `count(*)` would read the whole table (0.36 s).
- */
-function corpusSpans(graph: WorkspaceGraph): number {
-  const counts = countsFor(graph);
-  if (counts.spans === undefined) {
-    const row = graph.db
-      .prepare<[], { n: number | null }>(
-        `SELECT coalesce((SELECT max(span_id) FROM search_span), 0)
-              + coalesce((SELECT max(span_id) FROM workspace_span), 0) AS n`,
-      )
-      .get();
-    counts.spans = row?.n ?? 0;
-  }
-  return counts.spans;
 }
 
 interface TermStatistics {
@@ -153,7 +205,7 @@ export function graphTermStatistics(graph: WorkspaceGraph): TermStatistics {
     df: graphDocumentFrequency(graph),
     maxDfFor: (classes) =>
       ranksSharedTable(graph, classes)
-        ? documentFrequencyCap(corpusSpans(graph))
+        ? documentFrequencyCap(countsFor(graph).spans)
         : Number.POSITIVE_INFINITY,
   };
 }

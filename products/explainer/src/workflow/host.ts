@@ -23,6 +23,7 @@ import { buildReport, ownUsd, renderReport, stageRecords, type LinkedRun, type R
 import { readJson, runPaths, writeJson, writeText } from "./run-dir.js";
 import { childWorkflow, runStageCached, stageRunsMigration, type CacheDeps } from "./stage-cache.js";
 import type { CheckJudge } from "./stage-checks.js";
+import type { FfmpegExec } from "../contact-sheet-render.js";
 import type { MediaExec } from "./sheets-stage.js";
 import type { QaEngine } from "../qa/qa-engine.js";
 import type { RenderEngine } from "../render/render-stage.js";
@@ -63,6 +64,8 @@ export interface RunHost {
   gather?: GatherDeps;
   /** The sheets stage's ffprobe and ffmpeg; tests pass a fake. */
   media?: MediaExec;
+  /** The ffmpeg the sheets stage cuts and tiles its contact sheets with; the host's own by default, tests pass a fake. */
+  ffmpeg?: FfmpegExec;
   /** The qa stage's browser and ffprobe; real Chromium by default, tests pass a fake. */
   qaEngine?: QaEngine;
   /** The qa stage's timing thresholds in place of the type profile's; tests of the run's plumbing pass lax ones. */
@@ -145,7 +148,7 @@ function buildPlan(request: RunRequest, db: Db, store: ArtifactStore, dataDir: s
   if (from === "gather" && !request.gather) throw new Error("a run from gather needs --facts-from <adapter>");
   const runs = new WorkflowRunStore(db);
   const pinned = request.pins !== undefined && Object.keys(request.pins).length > 0;
-  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from) : undefined;
+  const base = request.base || (!startsFresh(from) && !pinned) ? findBase(runs, request.base, from, request.video) : undefined;
   const basePlan = base ? planOf(base) : undefined;
   const gather = request.gather ?? basePlan?.gather;
   // A replay keeps its base run's video type, else tts falls back to the default voice and every beat stretches (TP-4622).
@@ -235,7 +238,7 @@ export function newRuntime(db: Db, host: RunHost, plan?: RunPlan): Runtime {
     ...(host.runnerFor ? { runnerFor: host.runnerFor } : {}), ...(host.harnessFor ? { harnessFor: host.harnessFor } : {}), ...(host.evalChecks ? { evalChecks: host.evalChecks } : {}),
     ...(host.signal ? { signal: host.signal } : {}), ...(host.ttsEngine ? { ttsEngine: host.ttsEngine } : {}), ...(host.gather ? { gather: host.gather } : {}),
     ...(host.media ? { media: host.media } : {}), ...(host.qaEngine ? { qaEngine: host.qaEngine } : {}), ...(host.qaTiming ? { qaTiming: host.qaTiming } : {}),
-    ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}),
+    ...(host.renderEngine ? { renderEngine: host.renderEngine } : {}), ...(host.ffmpeg ? { ffmpeg: host.ffmpeg } : {}),
   });
   const builder = runners.worker ? { builder: runners.worker.builder } : {};
   const video = (runId: string) => runVideoRef(new WorkflowRunStore(db), runId);

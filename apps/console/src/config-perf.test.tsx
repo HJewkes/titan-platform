@@ -16,12 +16,12 @@ const SUMMARY_15M = {
     { name: "tasks", count: 4, p50: 400, p95: 900, max: 900 },
     { name: "home", count: 6, p50: 200, p95: 3500, max: 3500 },
   ],
-  rpcs: [stats("work.tasks", 100, 900, { bytesMax: 3000 * 1024 }), stats("work.portfolio", 10, 300, { bytesMax: 512 }), stats("rounds.get", 20, 60, { bytesMax: 512 })],
+  rpcs: [stats("work.tasks", 100, 900, { bytesMax: 3000 * 1024 }), stats("work.portfolio", 10, 300, { bytesMax: 512 }), stats("rounds.get", 20, 40, { bytesMax: 512 })],
   upstreams: [stats("factory:needs.list", 300, 1200, { timeouts: 1 })],
 };
 const waitStats = (command: string, ownerMs: number, p95: number, budgetMs: number) => ({ command, waits: 4, ownerMs, p50: p95 / 2, p95, max: p95, cold: 1, mutation: 0, budgetMs, overBudget: p95 > budgetMs ? 1 : 0 });
 const WAITS_15M = { window: "15m", waits: [waitStats("work.tasks", 42_000, 12_000, 9700), waitStats("inbox.list", 6000, 1500, 4200)] };
-const SUMMARY_24H = { ...SUMMARY_15M, window: "24h", rpcs: [stats("rounds.get", 20, 60, { bytesMax: 512 })], routes: [], upstreams: [] };
+const SUMMARY_24H = { ...SUMMARY_15M, window: "24h", rpcs: [stats("rounds.get", 20, 40, { bytesMax: 512 })], routes: [], upstreams: [] };
 
 function renderPerf(): void {
   const calls = {

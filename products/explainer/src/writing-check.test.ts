@@ -1,14 +1,16 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
+import { formatWritingReport } from "./writing-check-format.js";
+import { overrideWritingGatePolicy } from "./writing-gate-policy.js";
 import { WRITING_METRICS } from "./lint-writing.js";
 import { scriptWith } from "./script-fixtures.test-helpers.js";
 import { parseWritingCheck, type BucketName } from "./writing-calibrate.js";
 import { scoreWriting, type WritingBeat } from "./writing-check.js";
 import type { WritingStatus } from "./writing-status.js";
-import { useReportOnlyGate } from "./writing-gate-fixtures.test-helpers.js";
+import { shippedGatePolicy, useReportOnlyGate } from "./writing-gate-fixtures.test-helpers.js";
 
 // The calibrated rows alone: the writing gate rows (TP-5721) have tests of their own in writing-gate.test.ts.
 useReportOnlyGate();
@@ -236,5 +238,60 @@ describe("explainer eval writing", () => {
 
     expect(code).toBe(2);
     expect(existsSync(join(dir, "bench"))).toBe(false);
+  });
+});
+
+describe("explainer eval writing hallmark quotes", () => {
+  const withLine = (line: string): WritingBeat[] => beatsOf([CLEAN_LINE, CLEAN_LINE, line, ...cleanLines(14)]);
+  const report = (line: string) => scoreWriting(withLine(line), tableWith({}));
+  const gateRow = (scored: ReturnType<typeof scoreWriting>, id: string) => scored.gate.find((candidate) => candidate.id === id)!;
+  const printed = (scored: ReturnType<typeof scoreWriting>): string => formatWritingReport(scored, { script: "script.txt", tableSha: "abc" });
+  const lineOf = (text: string, id: string): string => text.split("\n").find((line) => line.startsWith(id))!;
+
+  beforeAll(() => overrideWritingGatePolicy(shippedGatePolicy()));
+  afterAll(() => {
+    const policy = shippedGatePolicy();
+    for (const rows of [policy.gate, policy.hallmarks]) for (const rule of Object.values(rows)) rule.severity = "report-only";
+    overrideWritingGatePolicy(policy);
+  });
+
+  it("prints a failing label-first row with the sentence and its beat", () => {
+    const scored = report("The fix is a smaller batch.");
+
+    expect(gateRow(scored, "hallmark:label-first").spans).toEqual([{ beat: "b3", text: "The fix is a smaller batch." }]);
+    expect(lineOf(printed(scored), "hallmark:label-first")).toContain(`"The fix is a smaller batch." (b3)`);
+  });
+
+  it("prints a failing colon-tricolon row with its sentence", () => {
+    const scored = report("The record carries three fields: the key, the value, and the tag.");
+
+    expect(lineOf(printed(scored), "hallmark:colon-tricolon")).toContain(`"The record carries three fields: the key, the value, and the tag." (b3)`);
+  });
+
+  it("prints no sentences on a passing row", () => {
+    const scored = report(CLEAN_LINE);
+
+    expect(gateRow(scored, "hallmark:label-first")).toMatchObject({ pass: true, spans: [] });
+    expect(lineOf(printed(scored), "hallmark:label-first")).not.toContain('"');
+  });
+
+  it("keeps at most three sentences per row", () => {
+    const line = "The fix is one. The key is two. The answer is three. The trick is four.";
+
+    expect(gateRow(report(line), "hallmark:label-first").spans).toHaveLength(3);
+  });
+
+  it("carries the spans in the JSON report", () => {
+    const scored = report("The fix is a smaller batch.");
+
+    const json = JSON.parse(JSON.stringify(scored));
+
+    expect(json.gate.find((candidate: { id: string }) => candidate.id === "hallmark:label-first").spans).toEqual([{ beat: "b3", text: "The fix is a smaller batch." }]);
+  });
+
+  it("clears the spans under the minimum words", () => {
+    const scored = scoreWriting(beatsOf(["The fix is a smaller batch."]), tableWith({}));
+
+    expect(gateRow(scored, "hallmark:label-first")).toMatchObject({ pass: true, spans: [] });
   });
 });

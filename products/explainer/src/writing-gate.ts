@@ -13,7 +13,20 @@ export interface GateRow {
   severity: GateSeverity;
   pass: boolean;
   beats: string[];
+  /** The sentences a failing hallmark row matched, at most `MAX_SPANS`; empty for a whole-script row. */
+  spans: GateSpan[];
 }
+
+/** One quoted sentence and the beat it sits in. */
+interface GateSpan {
+  beat: string;
+  text: string;
+}
+
+export const MAX_SPANS = 3;
+
+/** The sentences a hallmark row matched, as the spans it quotes. */
+export const spansOf = (sentences: readonly { beat: string; text: string }[]): GateSpan[] => sentences.map(({ beat, text }) => ({ beat, text }));
 
 interface GateBeat {
   id: string;
@@ -39,7 +52,7 @@ const severityAt = (severity: GateSeverity, words: number, minWords: number): Ga
 
 function judged(id: string, value: number | null, threshold: number, severity: GateSeverity, fails: boolean): GateRow {
   const pass = severity === "report-only" || value === null || !fails;
-  return { id, value, threshold, severity, pass, beats: [] };
+  return { id, value, threshold, severity, pass, beats: [], spans: [] };
 }
 
 function shortRegisterRow(shape: Shape, policy: WritingGatePolicy): GateRow {
@@ -82,9 +95,9 @@ export function writingGateRows(beats: readonly GateBeat[], policy: WritingGateP
 }
 
 /** A capped row: it fails past `max` at the policy's severity, and a report-only row never fails. */
-export function cappedRow(id: string, value: number, cap: { severity: GateSeverity; max: number }, beats: readonly string[]): GateRow {
+export function cappedRow(id: string, value: number, cap: { severity: GateSeverity; max: number }, beats: readonly string[], spans: readonly GateSpan[] = []): GateRow {
   const pass = cap.severity === "report-only" || value <= cap.max;
-  return { id, value, threshold: cap.max, severity: cap.severity, pass, beats: pass ? [] : [...new Set(beats)] };
+  return { id, value, threshold: cap.max, severity: cap.severity, pass, beats: pass ? [] : [...new Set(beats)], spans: pass ? [] : spans.slice(0, MAX_SPANS) };
 }
 
 /** A gate row as an L0 row: report-only becomes a passing warning, since L0 knows only errors and warnings. */

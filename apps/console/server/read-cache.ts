@@ -2,7 +2,8 @@
  * A stale-while-revalidate read for an upstream slower than the page waiting on it (TP-4390: the factory's needs.list
  * takes seconds). A value younger than `freshMs` is served as is; one younger than `staleMs` is served while a single
  * refresh runs behind it; anything older, or nothing, waits for the read. A failed read is never kept, so the caller sees
- * the failure once the kept value is too old to serve.
+ * the failure once the kept value is too old to serve. With `keptMs`, a value past `staleMs` is still served behind one
+ * refresh up to that age, until a refresh fails: then `staleMs` bounds it again, so a down upstream still surfaces.
  */
 export interface CachedRead<T> {
   read(): Promise<T>;
@@ -18,6 +19,8 @@ export interface CachedRead<T> {
 export interface CacheTimes {
   freshMs: number;
   staleMs: number;
+  /** TP-6703: how old a value may be and still be served behind a refresh while no refresh has failed. */
+  keptMs?: number;
 }
 
 interface CacheState<T> {
@@ -29,6 +32,8 @@ interface CacheState<T> {
   moves: number;
   /** Set when a read served a value `stale` marked, so the refresh it started reports when it lands. */
   owed: boolean;
+  /** The last refresh failed, so a value past `staleMs` is no longer served. */
+  failed: boolean;
 }
 
 /** One read at a time; callers that arrive while it runs share it. */
@@ -38,6 +43,7 @@ function refresh<T>(state: CacheState<T>, load: () => Promise<T>, now: () => num
   const run = load().then((value) => {
     if (started.generation !== state.generation) return value;
     state.kept = { at: started.at, value, stale: started.moves !== state.moves };
+    state.failed = false;
     if (state.owed) {
       state.owed = false;
       onRefreshed?.();
@@ -47,21 +53,36 @@ function refresh<T>(state: CacheState<T>, load: () => Promise<T>, now: () => num
   const settled = () => {
     if (state.running === run) state.running = undefined;
   };
+  const failed = () => {
+    if (started.generation === state.generation) state.failed = true;
+    settled();
+  };
   state.running = run;
-  run.then(settled, settled);
+  run.then(settled, failed);
   return run;
 }
 
+const keptWindow = ({ staleMs, keptMs }: CacheTimes): number => Math.max(staleMs, keptMs ?? staleMs);
+
+/**
+ * How long the kept value may still be served behind a refresh. TP-6747: once a refresh runs, the read that started it
+ * already waits on it, so a read that arrives meanwhile is served the kept value for the whole kept window, failed or not.
+ */
+function servedMs(state: CacheState<unknown>, times: CacheTimes): number {
+  return times.keptMs === undefined || (state.failed && state.running === undefined) ? times.staleMs : keptWindow(times);
+}
+
 /** `onRefreshed` is called when a refresh that a `stale` asked for lands, so a page served the old value can read again. */
-export function cachedRead<T>(load: () => Promise<T>, { freshMs, staleMs }: CacheTimes, now: () => number = Date.now, onRefreshed?: () => void): CachedRead<T> {
-  const state: CacheState<T> = { generation: 0, moves: 0, owed: false };
+export function cachedRead<T>(load: () => Promise<T>, times: CacheTimes, now: () => number = Date.now, onRefreshed?: () => void): CachedRead<T> {
+  const state: CacheState<T> = { generation: 0, moves: 0, owed: false, failed: false };
   return {
     read() {
       const { kept } = state;
       const age = kept === undefined ? Infinity : now() - kept.at;
-      if (kept === undefined || age >= staleMs) return refresh(state, load, now, onRefreshed);
-      if (kept.stale) state.owed = true;
-      if (kept.stale || age >= freshMs) refresh(state, load, now, onRefreshed).catch(() => undefined);
+      if (kept === undefined || age >= servedMs(state, times)) return refresh(state, load, now, onRefreshed);
+      // A value past `staleMs` may predate an edit no frame announced, so the page hears when its refresh lands.
+      if (kept.stale || age >= times.staleMs) state.owed = true;
+      if (kept.stale || age >= times.freshMs) refresh(state, load, now, onRefreshed).catch(() => undefined);
       return Promise.resolve(kept.value);
     },
     invalidate() {

@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { readRoster, type AgentsSource } from "./agents.js";
 import { liveHeads, readFlow, type ApprovalsSources } from "./approvals.js";
-import { gateStripCommands, gateStripReader, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
+import { gateStripCommands, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import { foldCoveredGates, gateHeadOf, liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
@@ -97,11 +97,11 @@ const OWNER_HOLD_CLASS = "owner-asked";
 /** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
 const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "retire-agent", "close-pr", "deploy-pause-clear", "plan-bet-select", "plan-outcome-edit", "plan-freeze-set"]);
 /**
- * TP-3918: a gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
+ * A gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
  * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot
- * tell which, so every rowless gate is held to the Morning path until TP-3918 lands.
+ * tell which, so every rowless gate stays on the terminal: the console shows the gate's command and offers no tap.
  */
-export const DIVERGED_HOLD = "resolve from Morning (TP-3918)";
+export const DIVERGED_HOLD = "resolve from the terminal with the command shown";
 const REPLAY_DIVERGED = /^replay diverged/;
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
@@ -364,18 +364,26 @@ async function readNudges({ rounds, now = Date.now }: InboxSources): Promise<Rou
 }
 
 /** The finished runs are read beside the queue rather than after it, since each read waits seconds on its upstream. */
+function cachedSources(sources: InboxSources, cache: InboxReadCache): InboxSources {
+  const rounds = { ...sources.rounds, ...(cache.lineage !== undefined && { lineage: cache.lineage }) };
+  return { ...sources, factory: cache.factory, rounds };
+}
+
+/** TP-6751: a shown merge row's lineage is two `gh` calls; read here by the primer, the first page after a restart waits on none. */
+export async function warmShownRows(sources: InboxSources, cache: InboxReadCache): Promise<void> {
+  await readOwnerQueue(cachedSources(sources, cache));
+}
+
 async function readInboxView(sources: InboxSources, strips: GateStripReader, cache: InboxReadCache, args: { planning?: boolean }): Promise<InboxView> {
   const finished = readOrGap("shepherd finished", () => cache.finished.read(), []);
-  const rounds = { ...sources.rounds, ...(cache.lineage !== undefined && { lineage: cache.lineage }) };
-  const cached = { ...sources, factory: cache.factory, rounds };
-  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue(cached, { strips, planning: args.planning === true }), readNudges(sources)]);
+  const [{ list, ...reads }, nudges] = await Promise.all([readOwnerQueue(cachedSources(sources, cache), { strips, planning: args.planning === true }), readNudges(sources)]);
   const derived = await readDerived(sources, reads, finished);
   const { items, ...rest } = list;
   return { ...rest, ...viewRows(items, args), gaps: [...list.gaps, ...derived.gaps], derived: derived.value, nudges };
 }
 
 export function inboxViewCommands(sources: InboxSources, cache: InboxReadCache = inboxReadCache(sources)) {
-  const strips = gateStripReader(sources.shepherd, sources.now);
+  const strips = cache.strips;
   return {
     ...gateStripCommands(sources.shepherd, strips),
     "inbox.list": readCommand({

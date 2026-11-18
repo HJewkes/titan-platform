@@ -31,10 +31,15 @@ import deliverableList from './deliverable-list.js';
 // Plan records (TP-5453 P3)
 import { planFreezeAdd, planOutcomeAdd, planOutOfScopeAdd } from './plan-add.js';
 import { planBetAdd, planBetList } from './plan-bet.js';
+import { planIntentAdd, planIntentDigest, planIntentImportMessages } from './plan-intent.js';
+import { planSheetApplyDefaults, planSheetGenerate, planSheetShow } from './plan-sheet.js';
+import { planSeed } from './plan-seed.js';
 import {
   planBetShow,
   planFreezeList,
   planFreezeShow,
+  planIntentList,
+  planIntentShow,
   planOutcomeList,
   planOutcomeShow,
   planOutOfScopeList,
@@ -64,6 +69,7 @@ import loopOpen from './loop-open.js';
 import loopResolve from './loop-resolve.js';
 import loopTier from './loop-tier.js';
 import loops from './loops.js';
+import digest from './digest.js';
 import facetAdd from './facet-add.js';
 import facetList from './facet-list.js';
 import preflight from './preflight.js';
@@ -181,6 +187,15 @@ const ALL_COMMANDS: AnyCommand[] = [
   planOutOfScopeAdd,
   planOutOfScopeShow,
   planOutOfScopeList,
+  planIntentAdd,
+  planIntentShow,
+  planIntentList,
+  planIntentDigest,
+  planIntentImportMessages,
+  planSheetGenerate,
+  planSheetShow,
+  planSheetApplyDefaults,
+  planSeed,
   // tasks
   taskAdd,
   taskApply,
@@ -199,6 +214,7 @@ const ALL_COMMANDS: AnyCommand[] = [
   sessionRecover,
   sessionsBrowser,
   loops,
+  digest,
   loopOpen,
   loopResolve,
   loopBoard,

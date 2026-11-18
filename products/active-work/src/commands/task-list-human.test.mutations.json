@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "due is shown even when unset",
+      "file": "products/active-work/src/commands/_task-list-render.ts",
+      "find": "if (task.due) parts.push",
+      "replace": "if (true) parts.push",
+      "kills": ["renderTaskList shows due and severity only when set, then a count line"]
+    },
+    {
+      "name": "empty list prints nothing",
+      "file": "products/active-work/src/commands/_task-list-render.ts",
+      "find": "if (tasks.length === 0) return 'No tasks\\n';",
+      "replace": "if (tasks.length === 0) return '';",
+      "kills": ["renderTaskList prints a No tasks line for an empty list"]
+    },
+    {
+      "name": "human format returns the object",
+      "file": "products/active-work/src/commands/task-list.ts",
+      "find": "if (ctx.format === 'human') return",
+      "replace": "if (false) return",
+      "kills": ["task.list output format returns the line form in human format"]
+    },
+    {
+      "name": "plan.seed forwards the human format to task.list",
+      "file": "products/active-work/src/commands/plan-seed.ts",
+      "find": "{ ...ctx, format: 'json' }",
+      "replace": "ctx",
+      "kills": ["task.list output format keeps plan.seed working when the CLI runs it in human format"]
+    },
+    {
+      "name": "json format returns the text",
+      "file": "products/active-work/src/commands/task-list.ts",
+      "find": "if (ctx.format === 'human') return",
+      "replace": "if (ctx.format !== undefined) return",
+      "kills": ["task.list output format returns the tasks object in json format"]
+    }
+  ]
+}

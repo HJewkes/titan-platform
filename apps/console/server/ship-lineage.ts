@@ -5,6 +5,8 @@
  */
 import { z } from "zod";
 import { ghCliWire, githubPort, type GitHubPort } from "@titan-design/github";
+import { timedCall } from "./perf/timed-call.js";
+import type { UpstreamObserver } from "./perf/timed-fetch.js";
 
 const sha40 = z.string().regex(/^[0-9a-f]{40}$/);
 
@@ -44,7 +46,14 @@ interface LineageOptions {
   maxEntries?: number;
   /** How long a GitHub read may take before the lineage reads as unknown. */
   timeoutMs?: number;
+  /** TP-6751: the inbox's first read waited on these `gh` calls with no row in the perf log, so each now leaves one. */
+  recorder?: UpstreamObserver;
 }
+
+const timedPort = (github: LineagePort, recorder: UpstreamObserver | undefined): LineagePort => ({
+  getPr: (repo, pr) => timedCall(recorder, "github:getPr", () => github.getPr(repo, pr), () => ({ bytes: 0, ok: true })),
+  getHeadSha: (repo, ref) => timedCall(recorder, "github:getHeadSha", () => github.getHeadSha(repo, ref), (sha) => ({ bytes: 0, ok: sha !== null })),
+});
 
 const LINEAGE_TTL_MS = 60_000;
 /** Each Ship round open in the console holds one entry; a long-running console must not grow past this. */
@@ -96,7 +105,7 @@ function evict(cache: LineageCache, at: number, ttlMs: number, maxEntries: numbe
 }
 
 export function shipLineageReader(options: LineageOptions = {}): SizedLineageReader {
-  const github = options.github ?? githubPort(ghCliWire());
+  const github = timedPort(options.github ?? githubPort(ghCliWire()), options.recorder);
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? LINEAGE_TTL_MS;
   const maxEntries = options.maxEntries ?? LINEAGE_MAX_ENTRIES;

@@ -733,9 +733,9 @@ describe('deriveResolvedLoops', () => {
       resolves: [{ ref: `${opener}#n1`, outcome: 'done' }],
     });
 
-    const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop.outcome).toBe('done');
-    expect(loop.note).toBeUndefined();
+    const loop = (await deriveResolvedLoops(initiativeDir, { now: NOW })).at(0);
+    expect(loop?.outcome).toBe('done');
+    expect(loop?.note).toBeUndefined();
   });
 
   it('lets the later of two resolutions win', async () => {
@@ -755,9 +755,9 @@ describe('deriveResolvedLoops', () => {
       resolves: [{ ref: `${opener}#n1`, outcome: 'abandoned', note: 'reverted, not worth it' }],
     });
 
-    const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop.outcome).toBe('abandoned');
-    expect(loop.note).toBe('reverted, not worth it');
+    const loop = (await deriveResolvedLoops(initiativeDir, { now: NOW })).at(0);
+    expect(loop?.outcome).toBe('abandoned');
+    expect(loop?.note).toBe('reverted, not worth it');
   });
 
   // `iso8601` accepts any timezone offset, so "later" cannot be decided by
@@ -783,10 +783,10 @@ describe('deriveResolvedLoops', () => {
       resolves: [{ ref: `${opener}#n1`, outcome: 'abandoned', note: 'reverted an hour later' }],
     });
 
-    const [loop] = await deriveResolvedLoops(initiativeDir, { now: NOW });
-    expect(loop.outcome).toBe('abandoned');
-    expect(loop.note).toBe('reverted an hour later');
-    expect(loop.closedBy).toBe('2026-07-22-c');
+    const loop = (await deriveResolvedLoops(initiativeDir, { now: NOW })).at(0);
+    expect(loop?.outcome).toBe('abandoned');
+    expect(loop?.note).toBe('reverted an hour later');
+    expect(loop?.closedBy).toBe('2026-07-22-c');
   });
 
   // Auto-resolution states no outcome and gives no reason; reporting it as
@@ -820,7 +820,8 @@ describe('triggersMet', () => {
       ended: '2026-07-20T10:00:00Z',
       next_steps: [{ id: 'n1', text: 'a promise', ...step }],
     });
-    const [loop] = await deriveOpenLoops(initiativeDir, { now: NOW });
+    const loop = (await deriveOpenLoops(initiativeDir, { now: NOW })).at(0);
+    if (loop === undefined) throw new Error('expected one derived open loop');
     return loop;
   }
 

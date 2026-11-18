@@ -18,6 +18,15 @@
       "kills": [
         "runs the full suite for a pull request that changes a file every test loads"
       ]
+    },
+    {
+      "name": "the console project loses its scheduler drain setup file",
+      "file": "vitest.config.ts",
+      "find": "setupFiles: consoleSetup,",
+      "replace": "",
+      "kills": [
+        "sizes in-test waits for a loaded runner and keeps them under the test timeout"
+      ]
     }
   ]
 }

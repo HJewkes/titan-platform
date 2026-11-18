@@ -1,6 +1,7 @@
 import type { GateDecision } from "../gate-policy.js";
 import type { SettleKind, UnsettledMerge } from "../workflows/land-settle.js";
 import { MERGE_BY_REVIEWER_RULE, isUnsettledGate, type MergeGuardRow } from "./merge-facts.js";
+import { isFailedFilesRead } from "./pr-changed-paths.js";
 
 /** Each wait that replaces an approve-merge gate (TP-3734 r3b, gate-context F2); false asks the owner as before. */
 interface WaitDemotions {
@@ -30,6 +31,15 @@ export function isDeploySkewGate(decision: GateDecision): boolean {
   return decision.outcome === "gate" && decision.rule.table === "shepherd-merge-guard" && decision.rule.rowId === row;
 }
 
+/**
+ * The changed-files read threw (a rate limit, a 5xx) rather than listing too many files (TP-6758). It still never merges
+ * on unread files: land re-reads at the head with backoff, and past the bound the seat is told instead of the owner.
+ */
+function isFilesReadFailedGate(decision: GateDecision): boolean {
+  const row: MergeGuardRow = "files-unread";
+  return decision.outcome === "gate" && decision.rule.table === "shepherd-merge-guard" && decision.rule.rowId === row && isFailedFilesRead(decision.reason);
+}
+
 /** A wait for a deploy has no bound and tells no one, as a freeze does: only the deploy ends it, and the deploy pacer owns that. */
 export function settleKind(decision: GateDecision): SettleKind {
   if (isDeploySkewGate(decision)) return "thaw";
@@ -38,8 +48,8 @@ export function settleKind(decision: GateDecision): SettleKind {
   return "settle";
 }
 
-/** The gates land waits on at their head instead of asking the owner: unsettled mergeability, a freeze alone, missing facts, and an attest read awaiting a deploy. */
+/** The gates land waits on at their head instead of asking the owner: unsettled mergeability, a failed files read, a freeze alone, missing facts, and an attest read awaiting a deploy. */
 export function headWaits(refresh: UnsettledMerge["refresh"]): UnsettledMerge {
-  const transient = (decision: GateDecision) => isUnsettledGate(decision) || settleKind(decision) !== "settle";
+  const transient = (decision: GateDecision) => isUnsettledGate(decision) || isFilesReadFailedGate(decision) || settleKind(decision) !== "settle";
   return { transient, kind: settleKind, refresh };
 }

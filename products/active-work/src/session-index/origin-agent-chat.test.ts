@@ -118,7 +118,7 @@ function spawnedWorker(
   parentId: string | null,
   ts = T0 + 1_000,
   name = 'worker-1',
-): Row[] {
+): [Row, Row] {
   const meta: Record<string, string> = {
     name,
     profile: 'implementer',
@@ -207,9 +207,9 @@ describe('agent-chat origin adapter', () => {
 
     const { origins } = resolve([WORKER_SESSION, legacySession, 'later-session']);
 
-    expect(origins[WORKER_SESSION].parentSessionId).toBe(COORD_SESSION);
-    expect(origins[legacySession].parentSessionId).toBe(COORD_SESSION);
-    expect(origins['later-session'].parentSessionId).toBeNull();
+    expect(origins[WORKER_SESSION]).toMatchObject({ parentSessionId: COORD_SESSION });
+    expect(origins[legacySession]).toMatchObject({ parentSessionId: COORD_SESSION });
+    expect(origins['later-session']).toMatchObject({ parentSessionId: null });
   });
 
   it('reads brief length and excerpt from plan.json', () => {
@@ -580,8 +580,8 @@ describe('experiment arm and follow-ups (CC-168)', () => {
 
     const { origins } = resolve();
 
-    expect(origins[WORKER_SESSION].followupKinds).toEqual({ fix: 2, rebase: 1 });
-    expect(origins[COORD_SESSION].followupKinds).toBeNull();
+    expect(origins[WORKER_SESSION]).toMatchObject({ followupKinds: { fix: 2, rebase: 1 } });
+    expect(origins[COORD_SESSION]).toMatchObject({ followupKinds: null });
   });
 
   it('a follow-up after a respawn under the same name counts toward the new session', () => {
@@ -598,8 +598,8 @@ describe('experiment arm and follow-ups (CC-168)', () => {
 
     const { origins } = resolve([WORKER_SESSION, laterSession]);
 
-    expect(origins[WORKER_SESSION].followupKinds).toEqual({ fix: 1 });
-    expect(origins[laterSession].followupKinds).toEqual({ review: 1 });
+    expect(origins[WORKER_SESSION]).toMatchObject({ followupKinds: { fix: 1 } });
+    expect(origins[laterSession]).toMatchObject({ followupKinds: { review: 1 } });
   });
 
   it('one query over session_origin gives the arm table for an experiment', async () => {
@@ -680,8 +680,12 @@ describe('route decision on the spawn row (CC-1666)', () => {
 
     const origin = resolve().origins[WORKER_SESSION];
 
-    expect(origin).toMatchObject({ routeMode: null, routeSource: null, routeFacts: null });
-    expect(origin.routeCandidateWanted).toBeNull();
+    expect(origin).toMatchObject({
+      routeMode: null,
+      routeSource: null,
+      routeFacts: null,
+      routeCandidateWanted: null,
+    });
   });
 
   it('ignores a malformed route value and keeps the valid ones', () => {
@@ -692,6 +696,58 @@ describe('route decision on the spawn row (CC-1666)', () => {
       routeTable: null,
       routeMode: 'shadow',
     });
+  });
+});
+
+describe('execution phase from the agent_execution ledger (TP-6308)', () => {
+  // The columns of agent-lifecycle's executionLedgerDdl that the reader touches.
+  const LEDGER_DDL = `CREATE TABLE agent_execution (
+    execution_id TEXT PRIMARY KEY, request_key TEXT NOT NULL UNIQUE, phase TEXT NOT NULL,
+    revision INTEGER NOT NULL, owner_generation INTEGER NOT NULL, prepared_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL, record TEXT NOT NULL)`;
+
+  function writeLedger(rows: { id: string; phase: string; session: string | null }[]): void {
+    const db = new Database(path.join(home, 'events.db'));
+    db.exec(LEDGER_DDL);
+    const insert = db.prepare(
+      "INSERT INTO agent_execution VALUES (?, ?, ?, 1, 0, '2026-09-23T10:00:00Z', '2026-09-23T10:00:00Z', ?)",
+    );
+    for (const row of rows) {
+      const conversation = row.session
+        ? { harness: 'claude', namespace: 'ns', nativeId: row.session }
+        : undefined;
+      insert.run(row.id, `key-${row.id}`, row.phase, JSON.stringify({ execution: { executionId: row.id, conversation } }));
+    }
+    db.close();
+  }
+
+  const spawned = (): Row[] => [
+    ...adoptedCoordinator('coord', 'aaaa1111'),
+    ...spawnedWorker('coord', 'aaaa1111'),
+  ];
+
+  it.each(['succeeded', 'cancelled', 'failed'])('maps a %s execution to the session', (phase) => {
+    writeEvents(spawned());
+    writeLedger([{ id: 'e1', phase, session: WORKER_SESSION }]);
+
+    expect(resolve().origins[WORKER_SESSION].executionPhase).toBe(phase);
+  });
+
+  it('leaves a session with no execution row null', () => {
+    writeEvents(spawned());
+    writeLedger([{ id: 'e1', phase: 'succeeded', session: 'other-session' }]);
+
+    expect(resolve().origins[WORKER_SESSION].executionPhase).toBeNull();
+  });
+
+  it('leaves the phase null when the events file has no ledger table', () => {
+    writeEvents(spawned());
+
+    expect(resolve().origins[WORKER_SESSION].executionPhase).toBeNull();
+  });
+
+  it('leaves the phase null when there is no events file at all', () => {
+    expect(eventsDbSource(home).executionPhases?.()).toEqual(new Map());
   });
 });
 

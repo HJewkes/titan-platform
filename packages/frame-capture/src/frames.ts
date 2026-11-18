@@ -35,6 +35,8 @@ export interface FramesResult {
   /** `__titanMotion.duration`: the page's own idea of the timeline length. */
   pageDurationS: number
   fonts: CapturePage['fonts']
+  /** `__titanMotion.marks()`, sorted by t; empty when the page publishes none. */
+  marks: CapturePage['marks']
 }
 
 type Emit = (index: number, png: Buffer) => Promise<void>
@@ -110,7 +112,7 @@ function captureChunk(browser: Browser, options: FramesOptions, [from, to]: Rang
 export async function captureFrames(options: FramesOptions, sink: Sink): Promise<FramesResult> {
   const spillIn = spillParent(options)
   return withBrowser(options.browser, async (first) => {
-    const probe = await withCapturePage(first, options.url, options, async ({ duration, fonts }) => ({ duration, fonts }))
+    const probe = await withCapturePage(first, options.url, options, async ({ duration, fonts, marks }) => ({ duration, fonts, marks }))
     const frames = options.frames ?? Math.round(probe.duration * options.fps)
     const ranges = chunks(options, frames)
     const ordered = new OrderedSink(ranges, sink, spillIn)
@@ -122,6 +124,6 @@ export async function captureFrames(options: FramesOptions, sink: Sink): Promise
     } finally {
       await ordered.close()
     }
-    return { frames, pageDurationS: probe.duration, fonts: probe.fonts }
+    return { frames, pageDurationS: probe.duration, fonts: probe.fonts, marks: probe.marks }
   })
 }

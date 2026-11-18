@@ -54,6 +54,6 @@ export function framesOf(png: Buffer, pageDurationS?: (frames: number, fps: numb
   return async (options, sink) => {
     const frames = options.frames ?? 0;
     for (let i = 0; i < frames; i++) await sink(i, png);
-    return { frames, pageDurationS: pageDurationS ? pageDurationS(frames, options.fps) : frames / options.fps, fonts: [] };
+    return { frames, pageDurationS: pageDurationS ? pageDurationS(frames, options.fps) : frames / options.fps, fonts: [], marks: [] };
   };
 }

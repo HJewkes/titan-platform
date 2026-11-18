@@ -51,7 +51,9 @@
           "packages/speech-stt",
           "packages/speech-g2p",
           "packages/test-timing",
-          "packages/egress-scan"
+          "packages/egress-scan",
+          "packages/text-ingest",
+          "packages/service-supervisor"
         ],
         "2": [
           "packages/session-read",
@@ -141,7 +143,9 @@
           "packages/speech-stt",
           "packages/speech-g2p",
           "packages/test-timing",
-          "packages/egress-scan"
+          "packages/egress-scan",
+          "packages/text-ingest",
+          "packages/service-supervisor"
         ],
         [
           "packages/session-read",

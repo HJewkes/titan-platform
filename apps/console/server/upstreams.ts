@@ -13,7 +13,7 @@ import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
 import { dayStartFrom } from "./coord-day.js";
 import { createDecisionLog, type HumanOnly } from "./decision-log.js";
 import { factoryNeeds } from "./factory.js";
-import type { UpstreamObserver } from "./perf/timed-fetch.js";
+import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 import { factoryGateAnswer } from "./gate-answer.js";
 import { createRoundListeners } from "./listeners.js";
 import { createInvalidation } from "./invalidation.js";
@@ -22,6 +22,7 @@ import { storybookLiveReader } from "./round-live.js";
 import { seatNotifier } from "./round-notice-transport.js";
 import { subscriptionsDirOf } from "./round-subscriptions.js";
 import { shepherdReader, type ShepherdSource } from "./shepherd.js";
+import { gitEvidenceReader } from "./repo-evidence.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
 
@@ -139,21 +140,22 @@ function inboxActionsOf(config: ConsoleConfig): NonNullable<ConsoleSources["inbo
   };
 }
 
-function agentsOf(config: ConsoleConfig): ConsoleSources["agents"] {
+/** TP-6747: every `inbox.list` reads the broker's sessions and history, so each read leaves an `agent-chat:(other)` row. */
+function agentsOf(config: ConsoleConfig, recorder: UpstreamObserver | undefined): ConsoleSources["agents"] {
   return {
-    broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath }),
+    broker: brokerReader({ port: config.agentChatPort, tokenPath: config.agentChatTokenPath, fetch: timedFetch("agent-chat", recorder, fetch) }),
     eventsDbPath: config.agentChatEventsDbPath,
     seatPrefixes: config.seatPrefixes,
   };
 }
 
 /** The sources that read dirs on this machine, which other processes write. */
-function localDirSourcesOf(config: ConsoleConfig): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
+function localDirSourcesOf(config: ConsoleConfig, recorder: UpstreamObserver | undefined): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
     inbox: { dir: config.inboxDir, capExemptAskers: config.capExemptAskers ?? DEFAULT_CAP_EXEMPT_ASKERS },
     rounds: {
       dir: config.roundsDir,
-      lineage: shipLineageReader(),
+      lineage: shipLineageReader({ recorder }),
       ...(config.storybooksDir !== undefined && { live: storybookLiveReader(config.storybooksDir) }),
     },
     hostReports: { dir: path.join(config.stateDir, "config", "host-reports") },
@@ -187,9 +189,10 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     upstreams: createUpstreams(config),
     invalidation,
     activeWork,
-    agents: agentsOf(config),
+    evidence: gitEvidenceReader({ recorder }),
+    agents: agentsOf(config, recorder),
     sessions: { graphPath: config.sessionGraphPath, codewatchUrl: config.codewatchUrl },
-    ...localDirSourcesOf(config),
+    ...localDirSourcesOf(config, recorder),
     shepherd,
     autoresearch: autoresearchReader(config.factoryPort, undefined, recorder),
     coordinatorRoots: config.coordinatorRoots,

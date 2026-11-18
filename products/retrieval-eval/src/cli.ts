@@ -8,6 +8,7 @@ import type { Candidate } from "./candidates/candidate.js";
 import { dateOrderNotes } from "./candidates/date-order.js";
 import { hybridVector } from "./candidates/hybrid-vector.js";
 import { notesFts } from "./candidates/notes-fts.js";
+import { claimRecall, parseChunks, parseQuestions, type ArmRecall, type ArmSpec } from "./claims/recall.js";
 import { readHead, transcriptFiles } from "./corpus/transcripts.js";
 import { mineBootstrapArm } from "./mine/bootstrap-arm.js";
 import { mineSpawnArm } from "./mine/spawn-arm.js";
@@ -221,6 +222,48 @@ function weeklyCommand(paths: PathOptions): Command {
     });
 }
 
+const CLAIM_ARMS = ["fts", "fts+hash", "fts+ollama"] as const;
+
+function claimArm(name: (typeof CLAIM_ARMS)[number]): ArmSpec {
+  if (name === "fts") return { name };
+  return { name, embedder: instantiateEmbedder({ backend: name === "fts+hash" ? "hash" : "ollama" }) };
+}
+
+function parseBudget(value: string): number {
+  const budget = Number(value);
+  if (!Number.isInteger(budget) || budget <= 0) throw new Error(`--budget must be a positive integer, got ${value}`);
+  return budget;
+}
+
+function formatClaimRows(rows: ArmRecall[]): string {
+  const header = ["arm", "meanRecall", "usedTokens", "questions", "excludedClaims"].join("\t");
+  const lines = rows.map((row) =>
+    [row.arm, row.meanRecall.toFixed(3), row.usedTokens.toFixed(1), row.questionsScored, row.claimsExcluded].join("\t"),
+  );
+  return [header, ...lines].join("\n");
+}
+
+function claimsCommand(): Command {
+  return new Command("claims")
+    .description("Score claim recall: the share of required quotes present in context packed at one token budget")
+    .argument("<corpus>", "JSONL of {id, text} chunks")
+    .argument("<questions>", "JSONL of {id, question, claims: [{id, quote}]}")
+    .option("--arms <list>", `comma-separated: ${CLAIM_ARMS.join(" | ")}`, "fts,fts+hash")
+    .requiredOption("--budget <tokens>", "token budget every arm packs under")
+    .option("--json", "emit rows as JSON instead of a table")
+    .action(async (corpusFile, questionsFile, options) => {
+      const arms = parseChoices("--arms", String(options.arms), CLAIM_ARMS).map(claimArm);
+      const budget = parseBudget(String(options.budget));
+      const rows = await claimRecall({
+        chunks: parseChunks(readFileSync(corpusFile, "utf8")),
+        questions: parseQuestions(readFileSync(questionsFile, "utf8")),
+        arms,
+        budget,
+      });
+      console.log(options.json ? JSON.stringify(rows, null, 2) : formatClaimRows(rows));
+    });
+}
+
 /** `paths` overrides where the --active-root and --graph defaults read env, home and platform from. */
 export function buildCli(paths: PathOptions = {}): Command {
   return new Command("retrieval-eval")
@@ -230,7 +273,8 @@ export function buildCli(paths: PathOptions = {}): Command {
     .addCommand(runCommand(paths))
     .addCommand(uptakeCommand())
     .addCommand(servedCommand(paths))
-    .addCommand(weeklyCommand(paths));
+    .addCommand(weeklyCommand(paths))
+    .addCommand(claimsCommand());
 }
 
 export async function runCli(argv: string[]): Promise<number> {

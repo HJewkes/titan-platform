@@ -7,6 +7,7 @@ import { open } from "../router.js";
 import { PersonalBadge } from "./PersonalBadge.js";
 import { openRef } from "./KnowledgeTable.js";
 import { PHONE_TAP, PHONE_TAP_BUTTONS, PHONE_TAP_ID_LINK, PHONE_TAP_LINK } from "./phone.js";
+import { WeeklySheetPanel } from "./WeeklySheetPanel.js";
 
 type Detail = ConsoleCommands["work.initiative"]["result"];
 
@@ -29,6 +30,9 @@ export function InitiativeDetailPage({ slug }: { slug: string }): ReactNode {
       <Panel>
         <InitiativeBrief className={PHONE_TAP_BUTTONS} brief={{ ...initiative, body: brief.body }} linkers={LINKERS} />
         {brief.truncated ? <Alert status="info" size="compact" message="The brief is longer than active-work's read cap; this is its head." /> : null}
+      </Panel>
+      <Panel>
+        <WeeklySheetPanel slug={slug} />
       </Panel>
       <Panel>
         <Records detail={detail.data} now={now} />

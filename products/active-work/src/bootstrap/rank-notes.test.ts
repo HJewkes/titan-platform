@@ -223,7 +223,7 @@ describe('rankNotes', () => {
       subject: 'matching subject',
       relevance: relevance([{ ref: 'note:beta/x.md', scorePerTerm: 9 }]),
     });
-    expect(ranking.foreign[0].title).toBe('note:beta/x.md');
+    expect(ranking.foreign.at(0)?.title).toBe('note:beta/x.md');
   });
 });
 

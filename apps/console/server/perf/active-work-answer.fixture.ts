@@ -37,6 +37,8 @@ function inventory(state: ActiveWorkState) {
 
 function taskList(state: ActiveWorkState, args: Args) {
   const tasks = forSlug(state.tasks, args);
+  // Like the daemon: naming ids reads those tasks in any status.
+  if (typeof args.id === "string") return { tasks: tasks.filter((task) => String(args.id).split(",").includes(task.id)) };
   return { tasks: args.status === "all" ? tasks : tasks.filter((task) => task.status === "open") };
 }
 

@@ -1,28 +1,6 @@
-import { OwnerIntentRefSchema } from "./planning.js";
+import { INTENT_SECTIONS, IntentLineSchema, type IntentLine, type IntentSection } from "./planning.js";
 
 export const INTENT_DIGEST_SCHEMA = "titan-intent-digest/v1";
-
-export const INTENT_SECTIONS = [
-  "Standing direction",
-  "Reasons",
-  "Ruled out",
-  "Taste",
-  "Open questions",
-  "Superseded",
-] as const;
-
-export type IntentSection = (typeof INTENT_SECTIONS)[number];
-
-export interface IntentLine {
-  /** `<slug>/I<n>`, the owner-intent id other records cite. */
-  id: string;
-  date: string;
-  quote: string;
-  /** The reference to the exact quote, for example `msg:3f2a91`. */
-  ref: string;
-  section: IntentSection;
-  supersededBy?: string;
-}
 
 export interface IntentDigestError {
   line: number;
@@ -84,26 +62,18 @@ function checkSlug(values: Record<string, string>, line: number, errors: IntentD
   const { slug, initiative } = values;
   if (!slug) return;
   if (!LOWERCASE_SLUG.test(slug)) errors.push({ line, message: `slug "${slug}" must be a lowercase slug` });
-  else if (initiative && slug !== initiative) {
-    errors.push({ line, message: `slug "${slug}" must equal initiative "${initiative}"` });
-  }
+  else if (initiative && !LOWERCASE_SLUG.test(initiative)) errors.push({ line, message: `initiative "${initiative}" must be a lowercase slug` });
 }
 
 function parseBullet(raw: string, number: number, slug: string, section: IntentSection, errors: IntentDigestError[]) {
   const match = BULLET.exec(raw);
   if (!match) return void errors.push({ line: number, message: whyBulletFails(raw) });
   const [, n = "", date = "", quote = "", ref = "", superseded] = match;
-  const id = `${slug}/I${n}`;
-  const problems: string[] = [];
-  if (!isRealDate(date)) problems.push(`date must be a real YYYY-MM-DD, got "${date}"`);
-  if (quote.length === 0) problems.push("quote is empty");
-  const refCheck = OwnerIntentRefSchema.safeParse({ intent_ref: id, quote_ref: ref });
-  if (!refCheck.success) problems.push(...refCheck.error.issues.map((issue) => issue.message));
-  for (const message of problems) errors.push({ line: number, message });
-  if (problems.length > 0) return undefined;
-  const line: IntentLine = { id, date, quote, ref, section };
-  if (superseded !== undefined) line.supersededBy = `${slug}/I${superseded}`;
-  return line;
+  const candidate = { id: `${slug}/I${n}`, section, date, quote, ref };
+  const parsed = IntentLineSchema.safeParse(superseded === undefined ? candidate : { ...candidate, superseded_by: `${slug}/I${superseded}` });
+  if (parsed.success) return parsed.data;
+  for (const issue of parsed.error.issues) errors.push({ line: number, message: `${issue.path.join(".")}: ${issue.message}` });
+  return undefined;
 }
 
 interface Located {
@@ -143,8 +113,8 @@ function checkReferences(entries: Located[], errors: IntentDigestError[]): void 
     ids.add(entry.id);
   }
   for (const { entry, number } of entries) {
-    if (entry.supersededBy !== undefined && !ids.has(entry.supersededBy)) {
-      errors.push({ line: number, message: `superseded-by names ${entry.supersededBy}, which is not in the file` });
+    if (entry.superseded_by !== undefined && !ids.has(entry.superseded_by)) {
+      errors.push({ line: number, message: `superseded-by names ${entry.superseded_by}, which is not in the file` });
     }
   }
 }

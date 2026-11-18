@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { sessionInitiative } from '@titan-design/session-analytics';
 import {
   openSessionGraph,
@@ -14,8 +15,9 @@ import type { RelatedDegradation } from './related.js';
 
 /**
  * The spawn brief's recent-sessions section (TP-5453 P11b): sessions that touched the files the
- * assignment names, in the last two weeks. A session is listed only when it maps to an initiative
- * the agent view shows, so one in an owner-only initiative, or in none, never reaches a spawn.
+ * assignment names, in the last two weeks. A session is listed only when every initiative its task
+ * edges name is one the agent view shows (or, with no task edges, its cwd's initiative is), so one
+ * that touched an owner-only initiative at all, or maps to none, never reaches a spawn.
  */
 
 const SESSIONS_SHARE_BYTES = 500;
@@ -28,7 +30,6 @@ const TITLE_MAX = 60;
 const ID_CHARS = 8;
 const HEADING = '## Recent sessions on the named files\n\n';
 const SECTION_GAP = '\n\n';
-const ACTIVE_WORK_CWD = 'active-work:';
 
 interface BriefSessionsInput {
   text: string;
@@ -44,11 +45,27 @@ export interface BriefSessions {
   degraded: RelatedDegradation[];
 }
 
+type SessionRow = Pick<SessionTouchingFiles, 'tasks' | 'cwd'>;
+
+/** The initiative folder a cwd sits in under the configured active root, whatever that root is named. */
+function cwdInitiative(cwd: string | null, activeRoot: string): string | null {
+  if (!cwd) return null;
+  const relative = path.relative(path.resolve(activeRoot), path.resolve(cwd));
+  if (relative === '' || path.isAbsolute(relative)) return null;
+  const first = relative.split(path.sep)[0];
+  return first === '..' ? null : first;
+}
+
 /** A task edge names the initiative outright; otherwise only a cwd inside the active root does. */
-export function initiativeOf(row: Pick<SessionTouchingFiles, 'tasks' | 'cwd'>): string | null {
-  const key = sessionInitiative(row.tasks, row.cwd);
-  if (row.tasks.length > 0) return key;
-  return key.startsWith(ACTIVE_WORK_CWD) ? key.slice(ACTIVE_WORK_CWD.length) : null;
+export function initiativeOf(row: SessionRow, activeRoot: string): string | null {
+  if (row.tasks.length > 0) return sessionInitiative(row.tasks, row.cwd);
+  return cwdInitiative(row.cwd, activeRoot);
+}
+
+/** Every initiative a task edge names must be shown: one owner-only edge withholds the whole row. */
+export function sessionShown(row: SessionRow, activeRoot: string, shown: Shown): boolean {
+  if (row.tasks.length > 0) return row.tasks.every((task) => shown(task.initiative));
+  return shown(cwdInitiative(row.cwd, activeRoot));
 }
 
 function bounded(text: string, max: number): string {
@@ -70,7 +87,7 @@ function readVisible(
   try {
     const since = new Date(input.now.getTime() - WINDOW_DAYS * DAY_MS).toISOString();
     const rows = sessionsTouchingFiles(graph, { files, since, limit: SESSION_CANDIDATES })
-      .filter((row) => shown(initiativeOf(row)))
+      .filter((row) => sessionShown(row, input.activeRoot, shown))
       .slice(0, SESSION_LINES);
     return { lines: rows.map(sessionLine), refs: rows.map((row) => row.sessionId) };
   } finally {

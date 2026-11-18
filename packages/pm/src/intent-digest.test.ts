@@ -41,7 +41,7 @@ describe("parseIntentDigest", () => {
 
   it("records superseded-by as a full id", () => {
     const result = parseIntentDigest(digest({ "Standing direction": [good(1)], Superseded: [good(2, " superseded-by: I1")] }));
-    expect(result.ok && result.lines[1]?.supersededBy).toBe("demo/I1");
+    expect(result.ok && result.lines[1]?.superseded_by).toBe("demo/I1");
   });
 
   it.each([
@@ -92,9 +92,14 @@ describe("parseIntentDigest", () => {
     expect(errors.some((e) => e.line === 3 && e.message.includes("lowercase slug"))).toBe(true);
   });
 
-  it("refuses a slug that differs from the initiative, naming the slug line", () => {
-    const errors = errorsOf(digest().replace("initiative: demo", "initiative: other"));
-    expect(errors).toContainEqual({ line: 3, message: 'slug "demo" must equal initiative "other"' });
+  it("accepts a lane slug that differs from its initiative", () => {
+    const text = digest().replace("initiative: demo", "initiative: other");
+    expect(parseIntentDigest(text)).toMatchObject({ ok: true, slug: "demo", initiative: "other" });
+  });
+
+  it("refuses an initiative that is not a lowercase slug, naming the slug line", () => {
+    const errors = errorsOf(digest().replace("initiative: demo", "initiative: Other"));
+    expect(errors).toContainEqual({ line: 3, message: 'initiative "Other" must be a lowercase slug' });
   });
 
   it("refuses a digest whose slug field is dropped", () => {

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a row exactly 4 weeks old drops",
+      "file": "products/factory/src/shepherd/follow-up-digest.ts",
+      "find": "<= RETENTION_MS",
+      "replace": "< RETENTION_MS",
+      "kills": [
+        "the follow-up digest a write drops rows older than 4 weeks unless promoted to a task, and keeps the rest with the new row (TP-6714)"
+      ]
+    },
+    {
+      "name": "a promoted row drops with the stale ones",
+      "file": "products/factory/src/shepherd/follow-up-digest.ts",
+      "find": "row.promoted !== undefined || ",
+      "replace": "",
+      "kills": [
+        "the follow-up digest a write drops rows older than 4 weeks unless promoted to a task, and keeps the rest with the new row (TP-6714)"
+      ]
+    },
+    {
+      "name": "a write keeps stale rows",
+      "file": "products/factory/src/shepherd/follow-up-digest.ts",
+      "find": ".filter((row) => kept(row, nowMs))",
+      "replace": "",
+      "kills": [
+        "the follow-up digest a write drops rows older than 4 weeks unless promoted to a task, and keeps the rest with the new row (TP-6714)"
+      ]
+    },
+    {
+      "name": "an unreadable row is kept",
+      "file": "products/factory/src/shepherd/follow-up-digest.ts",
+      "find": "      return row.success ? [row.data] : [];",
+      "replace": "      return [row.data as DigestRow];",
+      "kills": [
+        "the follow-up digest a first write creates the initiative's digest file, and an unreadable line is dropped rather than failing the write"
+      ]
+    }
+  ]
+}

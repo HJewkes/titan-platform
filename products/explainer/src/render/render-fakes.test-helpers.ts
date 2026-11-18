@@ -31,7 +31,7 @@ export function fakeRenderDeps(options: FakeRenderOptions = {}): RenderDeps {
       if (options.fails) throw new Error("capture failed at beat-01");
       frames = capture.frames ?? 0;
       workers = capture.workers ?? 1;
-      return { frames, pageDurationS: frames / capture.fps + (options.pageLongerS ?? 0), fonts: [] };
+      return { frames, pageDurationS: frames / capture.fps + (options.pageLongerS ?? 0), fonts: [], marks: [] };
     },
     startEncoder: (out) => ({
       write: async () => undefined,

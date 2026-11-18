@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an external is nested inside the sys box",
+      "file": "packages/graph-layout/src/repo-map-context.ts",
+      "find": "  kind,\n  chain: [],\n});",
+      "replace": "  kind,\n  chain: [SYS_ID],\n});",
+      "kills": [
+        "emitRepoMap level-0 context pass on the notes fixture keeps every actor and external outside the sys box"
+      ]
+    },
+    {
+      "name": "packages are not nested under sys",
+      "file": "packages/graph-layout/src/repo-map.ts",
+      "find": "const nest = (b: Box): Box => ({ ...b, chain: [SYS_ID, ...b.chain] });",
+      "replace": "const nest = (b: Box): Box => b;",
+      "kills": [
+        "emitRepoMap level-0 context pass on the notes fixture puts every package box inside the sys box, as its child"
+      ]
+    },
+    {
+      "name": "a context arrow loses its label",
+      "file": "packages/graph-layout/src/repo-map-context.ts",
+      "find": "edgeSource: \"protocol\", id: `context:${srcId}->${dstId}`, label };",
+      "replace": "edgeSource: \"protocol\", id: `context:${srcId}->${dstId}`, label: \"\" };",
+      "kills": [
+        "emitRepoMap level-0 context pass on the notes fixture routes an actor to sys arrow that ends on the sys border"
+      ]
+    },
+    {
+      "name": "an unknown link end is accepted",
+      "file": "packages/graph-layout/src/repo-map-context.ts",
+      "find": "if (!known.has(end)) throw",
+      "replace": "if (false) throw",
+      "kills": [
+        "emitRepoMap level-0 context pass on the notes fixture throws on a link to an id that is not sys, a package, an actor or an external"
+      ]
+    },
+    {
+      "name": "the context level is always listed",
+      "file": "packages/graph-layout/src/repo-map.ts",
+      "find": "levels: options.context ? [CONTEXT_LEVEL_DEF, ...LEVELS] : LEVELS",
+      "replace": "levels: [CONTEXT_LEVEL_DEF, ...LEVELS]",
+      "kills": [
+        "emitRepoMap level-0 context pass on the notes fixture leaves the map without a level 0 and with its old sha when no context is given"
+      ]
+    }
+  ]
+}
