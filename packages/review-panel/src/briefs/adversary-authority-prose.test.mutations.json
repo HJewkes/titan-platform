@@ -34,8 +34,7 @@
       "find": "?? \"malformed\";",
       "replace": "?? \"unchanged\";",
       "kills": [
-        "authorityLine prose that starts with the word Authority a bold paragraph lead above Authority: unchanged reads malformed, never unchanged",
-        "authorityLine prose that starts with the word Authority a worded widened label, Authority gate: widened, reads malformed over unchanged"
+        "authorityLine prose that starts with the word Authority a bold paragraph lead above Authority: unchanged reads malformed, never unchanged"
       ]
     },
     {

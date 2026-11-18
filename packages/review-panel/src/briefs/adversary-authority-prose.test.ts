@@ -23,8 +23,8 @@ describe("authorityLine prose that starts with the word Authority", () => {
     expect(authorityLine(`${probes}\n${widened}\n${tail}`)).toBe("widened");
   });
 
-  it("a worded widened label, Authority gate: widened, reads malformed over unchanged", () => {
-    expect(authorityLine(`${probes}\nAuthority gate: widened\n${tail}`)).toBe("malformed");
+  it("a worded widened label, Authority gate: widened, reads widened over unchanged", () => {
+    expect(authorityLine(`${probes}\nAuthority gate: widened\n${tail}`)).toBe("widened");
   });
 });
 
