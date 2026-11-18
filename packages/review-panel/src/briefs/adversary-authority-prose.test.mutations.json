@@ -1,0 +1,51 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "malformedAuthorityLines picks a safe line instead",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "find((raw) => authorityReading(raw) === \"malformed\")",
+      "replace": "find((raw) => authorityReading(raw) === \"unchanged\")",
+      "kills": [
+        "malformedAuthorityLines names the first prose lead, trimmed"
+      ]
+    },
+    {
+      "name": "malformedAuthorityLines keeps the surrounding spaces",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "[line.trim()]",
+      "replace": "[line]",
+      "kills": [
+        "malformedAuthorityLines names the first prose lead, trimmed"
+      ]
+    },
+    {
+      "name": "the overlay drops the no-other-Authority-line sentence",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": " Start no other line with the word Authority, not even in bold or in a list; a reply where another line does is not read.",
+      "replace": "",
+      "kills": [
+        "ADVERSARY_OVERLAY tells the reviewer to start no other line with the word Authority"
+      ]
+    },
+    {
+      "name": "an unreadable Authority line reads unchanged",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "?? \"malformed\";",
+      "replace": "?? \"unchanged\";",
+      "kills": [
+        "authorityLine prose that starts with the word Authority a bold paragraph lead above Authority: unchanged reads malformed, never unchanged"
+      ]
+    },
+    {
+      "name": "unchanged outranks malformed",
+      "file": "packages/review-panel/src/briefs/adversary.ts",
+      "find": "[\"widened\", \"malformed\", \"unchanged\", \"tightened\"]",
+      "replace": "[\"widened\", \"unchanged\", \"malformed\", \"tightened\"]",
+      "kills": [
+        "authorityLine prose that starts with the word Authority a bold bullet lead above Authority: unchanged reads malformed, never unchanged",
+        "authorityLine prose that starts with the word Authority a plain bullet lead above Authority: unchanged reads malformed, never unchanged"
+      ]
+    }
+  ]
+}

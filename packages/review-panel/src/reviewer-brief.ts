@@ -333,7 +333,7 @@ export const REFUSAL_SENTENCES: Record<MalformedRefusal, string> = {
   ci_policy_malformed: "its CI-policy line held more than the exact form",
   ci_policy_prose: "a prose line used the CI-policy label, or the exact line was not right after Head",
   probes_missing: "it had no Probes line above the Verdict line",
-  authority_missing: "it had no valid Authority line above the Verdict line",
+  authority_missing: "it had no exact `Authority:` line, or another line started with the word Authority",
   scope_untagged: `a blocking item cites only lines outside the fix's ranges and lacks \`${IMPORTANT_TAG}\` and a \`${CLASS_TAG}\` line`,
   repeated_finding: "a blocking item restates an earlier finding",
 };
@@ -353,8 +353,11 @@ const lastLine = (refusal: MalformedRefusal): string =>
 const probesReminder = (refusal: MalformedRefusal): string[] =>
   refusal === "probes_missing" ? [`Above the verdict lines add \`${PROBES_HEADING} <input> -> <what the code did>; ...\` for each probe you ran.`] : [];
 
+/** Prose led by Authority reads malformed by design; the reword rule rides here, costing room only when a line is quoted. */
+const AUTHORITY_QUOTES_HEADING = "Reword each line below so it does not start with Authority:";
+
 const authorityReminder = (refusal: MalformedRefusal): string[] =>
-  refusal === "authority_missing" ? [`Above the verdict lines add \`${AUTHORITY_HEADING}\` and one of unchanged, tightened, widened.`] : [];
+  refusal === "authority_missing" ? [`Above the verdict lines keep one \`${AUTHORITY_HEADING}\` line: unchanged, tightened or widened.`] : [];
 
 interface CorrectionPromptInput {
   repo: RepoSlug;
@@ -370,7 +373,8 @@ interface CorrectionPromptInput {
 /** Built only from code-chosen strings, since it travels in argv; the verdict line is a placeholder, so it never parses as a verdict. */
 export function correctionPrompt(input: CorrectionPromptInput): string {
   const base = correctionLines(input);
-  const quoted = input.quotes ? quoteLines(input.quotes, MAX_CORRECTION_PROMPT_CHARS - base.join("\n").length - 1) : [];
+  const room = MAX_CORRECTION_PROMPT_CHARS - base.join("\n").length - 1;
+  const quoted = input.quotes ? quoteLines(input.quotes, room, ...(input.refusal === "authority_missing" ? [AUTHORITY_QUOTES_HEADING] : [])) : [];
   if (quoted.length === 0) return base.join("\n");
   return [base[0]!, ...quoted, ...base.slice(1)].join("\n");
 }

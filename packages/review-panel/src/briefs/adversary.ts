@@ -20,7 +20,7 @@ export const ADVERSARY_OVERLAY: readonly string[] = [
   "- An error path that allows: a throw, timeout or parse failure that ends in the permitted branch.",
   "For each probe, give the input you tried and what the code did with it. A fail-open or bypass you can show is blocking.",
   `Whatever your verdict, above the verdict lines write a line that starts \`${PROBES_HEADING}\` and lists each probe as \`<input> -> <what the code did>\`, separated by \`;\`. A verdict without that line is not read.`,
-  `Above the verdict lines also write \`${AUTHORITY_HEADING} unchanged\`, \`${AUTHORITY_HEADING} tightened\` or \`${AUTHORITY_HEADING} widened\`: whether this change lets any agent, account or path do something it could not before (widened), less (tightened), or neither (unchanged). Nothing else on the line.`,
+  `Above the verdict lines also write \`${AUTHORITY_HEADING} unchanged\`, \`${AUTHORITY_HEADING} tightened\` or \`${AUTHORITY_HEADING} widened\`: whether this change lets any agent, account or path do something it could not before (widened), less (tightened), or neither (unchanged). Nothing else on the line. Start no other line with the word Authority, not even in bold or in a list; a reply where another line does is not read.`,
 ];
 
 /** Why a hold asked for an adversary, as the host knows it; every field is text other agents wrote, so it is rendered as data. */
@@ -107,4 +107,10 @@ function authorityReading(raw: string): AuthorityLine | "malformed" | undefined 
 export function authorityLine(text: string): AuthorityLine | "malformed" | undefined {
   const readings = text.split("\n").map(authorityReading);
   return STRICTNESS.find((reading) => readings.includes(reading));
+}
+
+/** The first line that reads malformed, trimmed, so an authority_missing correction shows the reviewer what to reword. */
+export function malformedAuthorityLines(text: string): string[] {
+  const line = text.split("\n").find((raw) => authorityReading(raw) === "malformed");
+  return line === undefined ? [] : [line.trim()];
 }
