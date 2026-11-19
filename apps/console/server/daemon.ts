@@ -18,6 +18,7 @@ import {
 import { PERF_REPORT, PERF_REPORT_BODY_LIMIT, perfCommands } from "./perf/commands.js";
 import { createPerfRecorder, type PerfRecorder } from "./perf/recorder.js";
 import { readBuildInfo } from "./build-info.js";
+import { startDepositByRecSweep } from "./deposit-by-rec.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
@@ -77,7 +78,12 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
   const relay = relayEvents(handle.hub, sources, config, logger);
-  return { ...handle, close: async () => closeAll([relay.close(), handle.close()], perf) };
+  const byRec = startDepositByRecSweep({ stateDir: config.stateDir, inboxDir: config.inboxDir, ...(sources.decisionLog && { decisionLog: sources.decisionLog }), logger });
+  const close = async (): Promise<void> => {
+    byRec.stop();
+    await closeAll([relay.close(), handle.close()], perf);
+  };
+  return { ...handle, close };
 }
 
 async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promise<void> {
