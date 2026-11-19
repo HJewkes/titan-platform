@@ -166,7 +166,7 @@ async function routeLanded(run: ShepherdRun, outcome: LandOutcome): Promise<Land
     if (held !== false) return held === true ? undefined : held;
     const staleBase = await staleBaseOf(run, outcome.headSha);
     if (staleBase !== undefined) return (await woken(run, "conflict", outcome.headSha, { staleBase })) ? undefined : ciFailedRoute(run, outcome);
-    const accepted = await visualAcceptRoute(run, outcome, run.phases.visualSetCarry, (p) => woken(run, "review", outcome.headSha, p), (id, text) => packetBeforeGate(packetRunOf(run), id, text));
+    const accepted = await visualAcceptRoute(run, outcome, run.phases.visualSetCarry, (p) => woken(run, "review", outcome.headSha, p), async (id, text) => void (await packetBeforeGate(packetRunOf(run), id, text)));
     if (accepted !== NOT_OFFERED) return accepted;
     if (await woken(run, "ci-red", outcome.headSha, { failing: outcome.failing })) return undefined;
     return ciFailedRoute(run, outcome);
@@ -193,7 +193,7 @@ async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: strin
   return afterWake(run, kind, headSha, payload, outcome, (left) => new LeaveLand(left));
 }
 
-const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason });
+const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: run.target, state: run.state, ownerGateReason: () => run.policy.ownerGateReason });
 
 /** Runs the review at every green head `land` reads, before `land` asks the policy or the owner about that head. */
 function reviewingContext(run: ShepherdRun): WorkflowContext {

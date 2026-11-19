@@ -4,19 +4,20 @@ import type { StepRoute, WorkflowContext } from "@titan-design/workflow";
 import { z } from "zod";
 import { stepIdMatches, type StepDeclaration } from "../definition.js";
 import { codeRoute, step } from "../workflows/land.js";
-import type { VisualPacketPorts } from "./spawn-ports.js";
+import type { PrVisualFrames, VisualPacketPorts } from "./spawn-ports.js";
 import { landGateHead } from "./approval-carry.js";
-import type { PrTarget } from "./run-state.js";
+import type { GateRun } from "./run-state.js";
 import type { OwnerGateReason } from "./policy-schema.js";
 import { resolveCheckout } from "./reviewer-dispatch.js";
 import { visualAcceptHead } from "./visual-accept.js";
+import { nothingToSee, routeEmptyVisualRun, visualRunFacts, type VisualRunFacts } from "./visual-run-empty.js";
 
 const VISUAL_PACKET_STEP = "sh-visual-packet";
 export const VISUAL_PACKET_STEPS: readonly StepDeclaration[] = [{ id: VISUAL_PACKET_STEP, kind: "dispatch" }];
 
 export const DEFAULT_PACKAGER_PROFILE = "review-packager";
 
-const PacketEvent = z.enum(["visual-packet-off", "visual-packet-would-spawn", "visual-packet-spawned", "visual-packet-spawn-failed"]);
+const PacketEvent = z.enum(["visual-packet-off", "visual-packet-would-spawn", "visual-packet-spawned", "visual-packet-spawn-failed", "visual-run-empty"]);
 const PacketResult = z.looseObject({
   event: PacketEvent,
   packetDir: z.string().optional(),
@@ -47,25 +48,29 @@ export function isVisualGate(stepId: string, prompt: string, ownerGateReason: Ow
   return head !== undefined && (VISUAL_RULE.test(prompt) || ownerGateReason === "gate-2-visual") ? head : undefined;
 }
 
-/** What the trigger reads from the run: its target and the policy as narrowed so far. */
-export interface PacketRun {
-  ctx: WorkflowContext;
-  target: PrTarget;
+/** What the trigger reads from the run: its target, the policy as narrowed so far, and the waits an empty run spends. */
+export interface PacketRun extends GateRun {
   ownerGateReason: () => OwnerGateReason | undefined;
 }
 
-/** Wraps `assisted` so a visual approve-merge gate records its packet step first; the gate opens whatever the step recorded. */
+/**
+ * Wraps `assisted` so a visual gate records its packet step first. The gate opens whatever the step recorded, unless
+ * the step found the head's pr-visual run empty (TP-6776): then the seat hears and no owner gate opens.
+ */
 export function packetTriggering(run: PacketRun, assisted: WorkflowContext["assisted"]): WorkflowContext["assisted"] {
   return async (stepId, prompt, options) => {
-    await packetBeforeGate(run, stepId, prompt);
-    return assisted(stepId, prompt, options);
+    const packet = await packetBeforeGate(run, stepId, prompt);
+    if (packet?.event !== "visual-run-empty" || packet.headSha === undefined) return assisted(stepId, prompt, options);
+    return routeEmptyVisualRun(run, stepId, packet.headSha, packet.reason ?? "the pr-visual run was empty", (note) => assisted(stepId, `${prompt}${note}`, options));
   };
 }
 
-/** Records a visual gate's packet step; any other gate records nothing. */
-export async function packetBeforeGate(run: PacketRun, stepId: string, prompt: string): Promise<void> {
+/** Records a visual gate's packet step and returns it with its head; any other gate, or a step skipped, records nothing. */
+export async function packetBeforeGate(run: Pick<PacketRun, "ctx" | "target" | "ownerGateReason">, stepId: string, prompt: string): Promise<(PacketResult & { headSha?: string }) | undefined> {
   const headSha = isVisualGate(stepId, prompt, run.ownerGateReason());
-  if (headSha !== undefined) await triggerPacket(run, stepId, headSha);
+  if (headSha === undefined) return undefined;
+  const packet = await triggerPacket(run, stepId, headSha);
+  return packet && { ...packet, headSha };
 }
 
 /**
@@ -73,16 +78,16 @@ export async function packetBeforeGate(run: PacketRun, stepId: string, prompt: s
  * spawn nothing. A record that goes on to something else predates the step, and a run resumed on a pending gate opened
  * it before the step existed; neither records one now, as the replay would diverge.
  */
-async function triggerPacket(run: PacketRun, gateStep: string, headSha: string): Promise<void> {
+async function triggerPacket(run: Pick<PacketRun, "ctx" | "target">, gateStep: string, headSha: string): Promise<PacketResult | undefined> {
   const { ctx } = run;
   const stepId = `${VISUAL_PACKET_STEP}:${headSha}`;
   const next = ctx.historyNext();
-  if (ctx.iteration(stepId) > 0 || (next !== undefined && next !== stepId)) return;
+  if (ctx.iteration(stepId) > 0 || (next !== undefined && next !== stepId)) return undefined;
   const resumed = ctx.resumedGate();
-  if (next === undefined && resumed !== undefined && stepIdMatches(gateStep, resumed)) return;
+  if (next === undefined && resumed !== undefined && stepIdMatches(gateStep, resumed)) return undefined;
   const index = ctx.iteration(gateStep);
   const gateId = `${ctx.runId}/${index === 0 ? gateStep : `${gateStep}:${index}`}`;
-  await step(ctx, stepId, { runId: ctx.runId, ...run.target, headSha, gateId } satisfies PacketInput, PacketResult);
+  return step(ctx, stepId, { runId: ctx.runId, ...run.target, headSha, gateId } satisfies PacketInput, PacketResult);
 }
 
 export function packetDirFor(stateDir: string, runId: string, headSha: string): string {
@@ -94,17 +99,18 @@ export function packagerName(runId: string, headSha: string): string {
   return `packager-${headSha.slice(0, 8)}-${runId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toLowerCase()}`;
 }
 
-interface PacketFacts {
+interface PacketFacts extends VisualRunFacts {
   headTree?: string;
   ciRunId?: number;
 }
 
 /** Each read is best effort: a fact GitHub would not give is left out, and the packager looks it up. */
-async function packetFacts(port: GitHubPort, input: PacketInput): Promise<PacketFacts> {
+async function packetFacts(port: GitHubPort, input: PacketInput, frames?: PrVisualFrames): Promise<PacketFacts> {
   const tree = await port.getCommit(input.repo, input.headSha).then((commit) => commit.tree, () => undefined);
   const runs = await port.checkRuns(input.repo, input.headSha).catch(() => []);
   const ciRunId = runs.find((run) => /visual/i.test(run.name) && run.headSha === input.headSha && run.workflowRunId !== null)?.workflowRunId ?? undefined;
-  return { ...(tree && { headTree: tree }), ...(ciRunId !== undefined && { ciRunId }) };
+  const visualRun = await visualRunFacts(runs, input.repo, input.headSha, frames);
+  return { ...(tree && { headTree: tree }), ...(ciRunId !== undefined && { ciRunId }), ...visualRun };
 }
 
 /** What the brief names on disk: the packet dir, the clone from-ci reads git from, and the titan-review binary. */
@@ -161,13 +167,18 @@ async function spawnPackager(ports: VisualPacketPorts, brief: string, paths: Pac
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/** Never throws: a refused spawn or a missing profile is recorded as failed, and the gate it precedes opens as usual. */
-export async function visualPacket(port: GitHubPort, ports: VisualPacketPorts | undefined, input: PacketInput): Promise<PacketResult> {
+/**
+ * Never throws: a refused spawn or a missing profile is recorded as failed, and the gate it precedes opens as usual. An
+ * empty pr-visual run is recorded whatever the mode, with no packager, as there is nothing to package.
+ */
+export async function visualPacket(port: GitHubPort, ports: VisualPacketPorts | undefined, input: PacketInput, frames?: PrVisualFrames): Promise<PacketResult> {
+  const facts = await packetFacts(port, input, frames);
+  const empty = nothingToSee(facts);
+  if (empty !== undefined) return { event: "visual-run-empty", reason: empty, ...facts };
   if (ports === undefined || ports.mode === "off") return { event: "visual-packet-off" };
   const packetDir = packetDirFor(ports.stateDir, input.runId, input.headSha);
   const recorded = { packetDir, agent: packagerName(input.runId, input.headSha), profile: ports.profile };
   try {
-    const facts = await packetFacts(port, input);
     const paths = packagerPaths(ports, input, facts, packetDir);
     if (ports.mode === "shadow") return { event: "visual-packet-would-spawn", ...recorded, ...facts };
     await spawnPackager(ports, packagerBrief(input, facts, paths), paths, recorded.agent);
@@ -177,6 +188,6 @@ export async function visualPacket(port: GitHubPort, ports: VisualPacketPorts | 
   }
 }
 
-export function visualPacketRoutes(deps: { port: GitHubPort; now: () => number; visualPacket?: VisualPacketPorts }): StepRoute[] {
-  return [codeRoute(VISUAL_PACKET_STEP, deps.now, async (input: PacketInput) => visualPacket(deps.port, deps.visualPacket, input))];
+export function visualPacketRoutes(deps: { port: GitHubPort; now: () => number; visualPacket?: VisualPacketPorts; prVisualFrames?: PrVisualFrames }): StepRoute[] {
+  return [codeRoute(VISUAL_PACKET_STEP, deps.now, async (input: PacketInput) => visualPacket(deps.port, deps.visualPacket, input, deps.prVisualFrames))];
 }

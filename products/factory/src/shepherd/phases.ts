@@ -10,7 +10,7 @@ import type { GitCachePorts } from "./carry-cache-ports.js";
 import type { PrFilesRead } from "./git-pr-files.js";
 import type { PrSnapshot } from "../workflows/pr-snapshot.js";
 import type { PushWatch } from "./push-signal.js";
-import type { DiagnosisPorts, ReplanPorts, VisualPacketPorts } from "./spawn-ports.js";
+import type { DiagnosisPorts, PrVisualFrames, ReplanPorts, VisualPacketPorts } from "./spawn-ports.js";
 import type { CleanupPorts, ExitNoticePorts, RemoveDir, RosterReader, SpawnGate, SuiteRules, TaskClose } from "./ports.js";
 import type { VisualGateMode } from "./visual-gate-config.js";
 
@@ -169,6 +169,8 @@ export interface ShepherdDeps {
   visualGate?: VisualGateMode;
   /** `shepherd.visualPacket`: whether a visual approve-merge gate spawns its review packager; absent means `off`. */
   visualPacket?: VisualPacketPorts;
+  /** Reads the frames the head's pr-visual run rendered (TP-6776); absent checks only the run's conclusion. */
+  prVisualFrames?: PrVisualFrames;
   /** The planner failed rounds with no adversary verdict spawn (TP-3796); absent records a failed spawn, so ops hears instead. */
   diagnosis?: DiagnosisPorts;
   /** The planner a dead-end gate's replan answer spawns (TP-4759); absent records a refused spawn, so the seat is asked again. */
