@@ -4,6 +4,7 @@ import { EXIT, errorEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
 import { doneResults, ownerOpsLedger } from "../owner-ops/ledger.js";
+import type { BranchDeletePolicy } from "../owner-ops/delete-branch.js";
 import type { PauseClearPorts } from "../owner-ops/pause-clear.js";
 import type { AgentChatRetirePort } from "../owner-ops/retire-agent.js";
 import { standingAnswers, type StandingAnswers } from "../owner-ops/standing-answers.js";
@@ -42,6 +43,8 @@ interface ConsoleActionDeps {
   stateDir: string;
   /** The agent-chat CLI a retire-agent op runs through; absent, such an op answers 503. */
   agentChat?: AgentChatRetirePort;
+  /** The branch prefixes a delete-branch op may name and the repos it may name them in; absent, every such op is refused. */
+  branches?: BranchDeletePolicy;
   /** The deployer's state directory and its lock and pause-file ports, which a deploy-pause-clear reads and writes. */
   deploy: { stateDir: string; ports: PauseClearPorts };
   /** active-work's data root, which the planning ops write through pm's plan store. */
@@ -89,11 +92,11 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps,
 type Mounted = ConsoleActionDeps & { port: GitHubPort; store: ShepherdStoreRef };
 
 async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: StandingAnswers): Promise<Outcome> {
-  const { host, port, store, freeze, deploy, now, agentChat, stateDir, readVerdictText, activeRoot } = deps;
+  const { host, port, store, freeze, deploy, now, agentChat, branches, stateDir, readVerdictText, activeRoot } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
   if ("op" in read) {
-    const context = { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, activeRoot, done: (id: string) => doneResults(stateDir, id) };
+    const context = { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, branches, activeRoot, done: (id: string) => doneResults(stateDir, id) };
     return actOnOp(actionId, read, ops, context);
   }
   const { action, confirmEvent } = read;

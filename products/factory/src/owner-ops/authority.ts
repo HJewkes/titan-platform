@@ -10,6 +10,7 @@ const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "release-hold": "human-verb",
   "merge-at-head": "merge",
   "close-pr": "destructive-remote",
+  "delete-branch": "destructive-remote",
   "factory-config-set": "authority-config",
   "deploy-pause-clear": "release",
   "retire-agent": "agent-retire",

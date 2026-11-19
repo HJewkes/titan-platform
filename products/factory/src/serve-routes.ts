@@ -37,8 +37,8 @@ export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, d
   if (consoleAnswers) mountGateAnswer(app, { host: deps.host, port: shepherd?.port, roundsDir: consoleAnswers.roundsDir, stateDir, now: deps.now, log: deps.log });
   if (consoleAnswers?.actionsDir === undefined) return;
   const { host, now, log } = deps;
-  const { actionsDir, agentChatBin } = consoleAnswers;
+  const { actionsDir, agentChatBin, branches } = consoleAnswers;
   const agentChat = agentChatBin === undefined ? undefined : agentChatRetirePort(agentChatBin);
   const deploy = { stateDir: deployStateDir, ports: systemPauseClearPorts() };
-  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, activeRoot });
+  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, activeRoot, ...(branches && { branches }) });
 }

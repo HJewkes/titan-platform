@@ -29,6 +29,9 @@ export type Outcome =
   /** A planning op wrote the owner's bets, outcome or freeze; `ids` are the plan records it wrote. */
   | { outcome: "plan-applied"; op: OwnerOpKind; ids: string[] }
   | { outcome: "already"; ids: string[] }
+  /** A delete-branch tap deleted the branch at `tipSha`, the sha its restore line names. */
+  | { outcome: "deleted"; branch: string; tipSha: string }
+  | { outcome: "already"; branch: string }
   | { outcome: "moved"; currentHead: string | undefined }
   /** The name now belongs to a different agent than the one the owner confirmed. */
   | { outcome: "moved"; currentAgentId: string }
@@ -70,6 +73,7 @@ export function statusOf(outcome: Outcome): Status {
     case "pause-cleared":
     case "plan-approved":
     case "plan-applied":
+    case "deleted":
     case "already":
       return 200;
     case "moved":

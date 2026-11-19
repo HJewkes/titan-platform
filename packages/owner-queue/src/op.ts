@@ -69,6 +69,8 @@ export const ownerOpSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("release-hold"), repo, pr, headSha, holdClass: z.enum(HOLD_CLASSES) }),
   z.strictObject({ kind: z.literal("merge-at-head"), repo, pr, headSha, waitFor: z.enum(MERGE_WAITS).optional() }),
   z.strictObject({ kind: z.literal("close-pr"), repo, pr, headSha }),
+  /** The branch as the owner read it; the factory checks the name, prefix and tip again before it deletes anything. */
+  z.strictObject({ kind: z.literal("delete-branch"), repo, branch: z.string().min(1).max(255), tipSha: headSha }),
   z.strictObject({ kind: z.literal("factory-config-set"), path: configPath, value: z.json(), expectFrom: z.json().optional() }),
   z.strictObject({ kind: z.literal("deploy-pause-clear"), pausedAt: z.iso.datetime({ offset: true }), target: name }),
   z.strictObject({ kind: z.literal("retire-agent"), name, agentId: name, force: z.boolean() }),

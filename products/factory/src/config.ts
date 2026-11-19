@@ -17,6 +17,9 @@ import { RedSeatConfigSchema } from "./shepherd/red-seat-config.js";
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
 const absolutePath = noNul.refine(isAbsolute, "must be an absolute path");
 
+/** A delete-branch prefix ends in `/`, so no prefix can be empty or stand for a whole branch name. */
+const BranchPrefixSchema = z.string().regex(/^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*\/$/, "must be a branch prefix such as scratch/");
+
 /** The chore land-pr runs after a merge; strict, so a `shell` or `command` key fails the load instead of being ignored. */
 const PostMergeConfigSchema = z.strictObject({
   argv: z.tuple([noNul.min(1, "argv[0] must name a program")], noNul),
@@ -273,9 +276,10 @@ export const FactoryConfigSchema = z.object({
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
        * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
        * `actionsDir` also mounts `POST /owner/console-action`, which resolves an approve-merge gate as owner-remote from the
-       * console inbox's action record read out of that dir; absent means that route 404s.
+       * console inbox's action record read out of that dir; absent means that route 404s. `branchPrefixes` are the branches a
+       * console delete-branch op may name, in `shepherd.repos` only; absent means `scratch/` alone (TP-3620 Q4).
        */
-      consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional() }).optional(),
+      consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional(), branchPrefixes: z.array(BranchPrefixSchema).min(1).optional() }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
       /** Per repo, the visual-diff threshold the merge evidence measures against; read at each evidence step. */

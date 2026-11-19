@@ -209,6 +209,11 @@ declare const ownerItemSchema: z.ZodObject<{
         pr: z.ZodNumber;
         headSha: z.ZodString;
     }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"delete-branch">;
+        repo: z.ZodString;
+        branch: z.ZodString;
+        tipSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"factory-config-set">;
         path: z.ZodString;
         value: z.ZodJSONSchema;
