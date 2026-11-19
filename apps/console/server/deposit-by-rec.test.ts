@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { readAnswer, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
@@ -11,6 +12,7 @@ import { sweepDeposits } from "./deposit-by-rec.js";
 const ASKER = "seat-alpha";
 const HOUR = 3_600_000;
 const SHA = "a".repeat(40);
+const ROW = z.record(z.string(), z.unknown());
 
 let dir: string;
 const stateDir = () => path.join(dir, "state");
@@ -39,7 +41,7 @@ function deposit(overrides: Partial<OwnerItemDeposit> = {}): OwnerItemDeposit {
     ],
     recommended: { optionId: "amber", by: ASKER, rationale: "Higher contrast on dark" },
     ...overrides,
-  } as OwnerItemDeposit;
+  };
 }
 
 /** Deposits stamp `openedAt` with the wall clock, so each sweep runs at a time measured from the filed item. */
@@ -58,7 +60,7 @@ async function rows(): Promise<Array<Record<string, unknown>>> {
   return text
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as Record<string, unknown>);
+    .map((line) => ROW.parse(JSON.parse(line)));
 }
 
 function recordingLog(): DecisionLog & { calls: unknown[][] } {
@@ -150,7 +152,7 @@ describe("deposit by-rec sweep, live", () => {
 
     await sweepDeposits({ stateDir: stateDir(), inboxDir: inboxDir(), decisionLog, now: () => opened + 24 * HOUR });
 
-    const [ledger] = (await readFile(path.join(stateDir(), "answers.jsonl"), "utf8")).split("\n").map((line) => (line ? (JSON.parse(line) as Record<string, unknown>) : null));
+    const [ledger] = (await readFile(path.join(stateDir(), "answers.jsonl"), "utf8")).split("\n").map((line) => (line ? ROW.parse(JSON.parse(line)) : null));
     expect(ledger).toMatchObject({ answered_by: "decider", answer: "Amber", by: { class: "automation", id: "auto-by-rec" } });
   });
 });

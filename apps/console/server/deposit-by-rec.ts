@@ -11,6 +11,7 @@
 import { createHash } from "node:crypto";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import { BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_ROW_SCHEMA, byRecDecision, byRecPolicySchema, byRecRowSchema, byRecSubjectOfItem, type ByRecPolicy, type ByRecRow, type OwnerAnswer, type OwnerItem } from "@titan-design/owner-queue";
 import { writeAnswer } from "@titan-design/owner-queue/spool";
 import { spoolQueueItems } from "./approval-items.js";
@@ -20,6 +21,7 @@ const POLICY_FILE = "auto-by-rec-policy.json";
 const LOG_FILE = "auto-by-rec.jsonl";
 const MARKERS_DIR = "auto-by-rec";
 const HOUR_MS = 3_600_000;
+const JSON_FACTS = z.record(z.string(), z.json());
 const BY_REC_ANSWERER = Object.freeze({ ...BY_REC_RESOLVER, channel: "console-sweep" } as const);
 
 type SweepLogger = { warn(fields: Record<string, unknown>, message: string): void };
@@ -63,7 +65,7 @@ async function readPolicy(stateDir: string): Promise<{ policy: ByRecPolicy; gap?
 /** Facts as JSON values only: a field the deposit leaves out is left out here too. */
 function factsOf(item: OwnerItem, decision: Eligible): ByRecRow["facts"] {
   const facts = { asker: item.asker, kind: item.kind, door: item.door, onSilence: item.onSilence, default: item.default, eligibleAt: decision.at, sources: item.sources };
-  return JSON.parse(JSON.stringify(facts)) as ByRecRow["facts"];
+  return JSON_FACTS.parse(JSON.parse(JSON.stringify(facts)));
 }
 
 function rowOf(ctx: SweepContext, item: OwnerItem, decision: Eligible, result: "would-resolve" | "resolved"): ByRecRow {
