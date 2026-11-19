@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { successEnvelope } from "@titan-design/registry";
 import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-client";
+import { z } from "zod";
 import { LOG_ANSWERS } from "../server/twin/log.js";
 import { renderPage } from "./render-page.test-helpers.js";
 
@@ -71,11 +72,13 @@ describe("the decisions and ships page", () => {
   });
 });
 
+const logViewShape = z.looseObject({ days: z.array(z.looseObject({ rows: z.array(z.looseObject({ key: z.string(), frames: z.unknown() })) })) });
+
 /** The twin's log with #41's frames replaced, as the builder writes them for a PR whose artifact showed nothing. */
 function withFramesOf41(frames: unknown): Snapshot {
   return snapshot((command, result) => {
     if (command !== "log.list") return result;
-    const view = structuredClone(result) as { days: { rows: { key: string; frames: unknown }[] }[] };
+    const view = logViewShape.parse(structuredClone(result));
     for (const row of view.days.flatMap((day) => day.rows)) if (row.key === "orbit/relay#41") row.frames = frames;
     return view;
   });

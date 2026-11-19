@@ -57,8 +57,7 @@ export function isSafeRepo(repo: string): boolean {
 /** GitHub names are case-insensitive, so the folder is too: a row and its `log.frame` read meet whatever case each used. */
 export function framesDirOf(stateDir: string, repo: string, pr: number): string {
   if (!isSafeRepo(repo)) throw failure("log frames: the repo is not owner/repo", EXIT.USAGE);
-  const [owner, name] = repo.toLowerCase().split("/") as [string, string];
-  return path.join(stateDir, "log-frames", owner, name, String(pr));
+  return path.join(stateDir, "log-frames", ...repo.toLowerCase().split("/"), String(pr));
 }
 
 async function readIndex(folder: string): Promise<LogFramesIndex | null> {
