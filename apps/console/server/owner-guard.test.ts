@@ -309,7 +309,7 @@ describe("classes fail closed", () => {
     );
   });
 
-  it("classes every console command at its definition: inbox.deposit and config.report deposits, rounds.answer-rec, rounds.reveal, rounds.submit, inbox.act, prTaps.act, taps.act, videos.edit, videos.note, work.loop-tier and work.task-done owner-writes, the rest reads", () => {
+  it("classes every console command at its definition: inbox.deposit and config.report deposits, rounds.answer-rec, rounds.reveal, rounds.submit, inbox.act, log.overrule, prTaps.act, taps.act, videos.edit, videos.note, work.loop-tier and work.task-done owner-writes, the rest reads", () => {
     const classes = createConsoleRegistry(createSources(syntheticConfig()))
       .list()
       .map((command) => [command.name, (command as ClassedCommand).commandClass]);
@@ -319,6 +319,7 @@ describe("classes fail closed", () => {
       ["config.report", "deposit"],
       ["inbox.act", "owner-write"],
       ["inbox.deposit", "deposit"],
+      ["log.overrule", "owner-write"],
       ["prTaps.act", "owner-write"],
       ["rounds.answer-rec", "owner-write"],
       ["rounds.reveal", "owner-write"],
