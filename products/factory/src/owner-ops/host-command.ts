@@ -35,7 +35,7 @@ export const systemHostCommandPorts = (): HostCommandPorts => ({
 });
 
 /** One fixed unit per command, so systemd itself refuses a second run while the first is still loaded. */
-export const hostUnitName = (command: HostCommand): string => `titan-host-${command}`;
+const hostUnitName = (command: HostCommand): string => `titan-host-${command}`;
 
 /**
  * Starts the vetted command as a transient `systemd-run --user` unit and returns once systemd has started it. The unit is a
