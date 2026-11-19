@@ -27,6 +27,15 @@
       "kills": [
         "owner-op.preview reads a deploy-pause-clear op's pause, the manual hold it leaves, and whether a deployer runs"
       ]
+    },
+    {
+      "name": "a host command runs under a class owner-remote may act on",
+      "file": "products/factory/src/owner-ops/authority.ts",
+      "find": "  \"host-command\": \"destructive-local\",\n",
+      "replace": "  \"host-command\": \"human-verb\",\n",
+      "kills": [
+        "owner-op.preview shows a host command as denied until the owner picks its authority row"
+      ]
     }
   ]
 }
