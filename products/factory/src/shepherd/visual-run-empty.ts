@@ -41,11 +41,13 @@ export function nothingToSee(facts: VisualRunFacts): string | undefined {
   return conclusion === "success" && frames === 0 ? "the pr-visual run succeeded with zero frames rendered" : undefined;
 }
 
+type Asked = ReturnType<WorkflowContext["assisted"]>;
+
 /**
  * Only approve-merge is routed: the regenerated-baselines ask stands at a red head by design. A told seat leaves land
  * to wait for a new head; a notice that could not go out opens the owner gate, saying why.
  */
-export async function routeEmptyVisualRun(run: GateRun, stepId: string, headSha: string, empty: string, open: (note: string) => ReturnType<WorkflowContext["assisted"]>): ReturnType<WorkflowContext["assisted"]> {
+export async function routeEmptyVisualRun(run: GateRun, stepId: string, headSha: string, empty: string, open: (note: string) => Asked): Asked {
   if (!stepIdMatches("approve-merge", stepId)) return open("");
   const why = `${empty}, so the visual gate has nothing for the owner to look at`;
   const told = await noticeHeldSeat(run, JSON.stringify(["visual-empty", headSha]), { headSha, why, gate: "visual-empty" });
