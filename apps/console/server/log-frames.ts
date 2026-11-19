@@ -55,7 +55,7 @@ export function isSafeRepo(repo: string): boolean {
 }
 
 /** GitHub names are case-insensitive, so the folder is too: a row and its `log.frame` read meet whatever case each used. */
-export function framesDirOf(stateDir: string, repo: string, pr: number): string {
+function framesDirOf(stateDir: string, repo: string, pr: number): string {
   if (!isSafeRepo(repo)) throw failure("log frames: the repo is not owner/repo", EXIT.USAGE);
   return path.join(stateDir, "log-frames", ...repo.toLowerCase().split("/"), String(pr));
 }
@@ -107,7 +107,7 @@ async function writeIndex(folder: string, index: LogFramesIndex): Promise<void> 
   await rename(staged, path.join(folder, FRAMES_FILE));
 }
 
-export type CaptureOutcome = "kept" | "written" | { skipped: string };
+type CaptureOutcome = "kept" | "written" | { skipped: string };
 
 /** Writes the PR's frames.json once; a folder that already has one is left alone, and a failed read writes nothing. */
 export async function captureLogFrames(target: Omit<CaptureTarget, "dir">, stateDir: string, capture: FramesCapture): Promise<CaptureOutcome> {
@@ -121,7 +121,7 @@ export async function captureLogFrames(target: Omit<CaptureTarget, "dir">, state
 }
 
 const FRAME_SIDES = ["before", "after"] as const;
-export type FrameSide = (typeof FRAME_SIDES)[number];
+type FrameSide = (typeof FRAME_SIDES)[number];
 export const frameSideSchema = z.enum(FRAME_SIDES);
 
 /** One side of one pair, checked against the sha256 frames.json recorded for it. */

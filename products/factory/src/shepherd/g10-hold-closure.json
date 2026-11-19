@@ -499,6 +499,7 @@
   "shepherd/view.ts",
   "shepherd/visual-accept-adapter.ts",
   "shepherd/visual-accept.ts",
+  "shepherd/visual-commands.ts",
   "shepherd/visual-delivery-sweep.ts",
   "shepherd/visual-delivery.ts",
   "shepherd/visual-delta-command.ts",

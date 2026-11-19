@@ -19,7 +19,7 @@ const reply: z.ZodType<Captured> = z.object({
   failed: z.literal(true).optional(),
 });
 
-export function parseCaptured(stdout: string): Captured | { error: string } {
+function parseCaptured(stdout: string): Captured | { error: string } {
   try {
     const parsed = reply.safeParse(JSON.parse(stdout));
     return parsed.success ? parsed.data : { error: "shepherd log-frames: the reply has another shape" };
