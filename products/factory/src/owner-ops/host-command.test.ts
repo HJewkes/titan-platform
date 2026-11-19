@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OwnerOp } from "@titan-design/owner-queue";
 import { afterEach, describe, expect, it } from "vitest";
-import { actOnOp, OP_EFFECTS } from "../console-action/op.js";
+import { actOnOp } from "../console-action/op.js";
 import type { Outcome } from "../console-action/outcome.js";
 import type { CommandResult } from "../run-command.js";
 import { runHostCommand, systemHostCommandPorts, type HostCommandDeps } from "./host-command.js";
@@ -101,7 +101,7 @@ describe("a host-command op", () => {
   it("is refused by the authority table before it reaches the host, until the owner picks its row", async () => {
     const w = world();
 
-    const outcome = await actOnOp("act-1", { op: OP, confirmEvent: CONFIRM }, { effects: OP_EFFECTS, ledger: w.ledger, now: NOW }, w.deps as never);
+    const outcome = await actOnOp("act-1", { op: OP, confirmEvent: CONFIRM }, { effects: { "host-command": runHostCommand }, ledger: w.ledger, now: NOW }, w.deps);
 
     expect(outcome).toMatchObject({ outcome: "refused", reason: "class" });
     expect(w.calls).toEqual([]);
