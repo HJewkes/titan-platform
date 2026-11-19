@@ -21,6 +21,13 @@
       "find": ".slice(0, SPAN_TEXT_MAX_CHARS)",
       "replace": "",
       "kills": ["hitTiers span text is capped at 2,000 characters"]
+    },
+    {
+      "name": "span read tolerates a shrunk file",
+      "file": "products/active-work/src/search/context-tiers.ts",
+      "find": "await readLocatorText(file, locator)",
+      "replace": "(await (await import('node:fs/promises')).readFile(file, 'utf8')).slice(byteOffset)",
+      "kills": ["hitTiers a span running past the end of a shrunk file yields only two tiers"]
     }
   ]
 }
