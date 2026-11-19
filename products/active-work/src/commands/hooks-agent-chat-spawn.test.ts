@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { handleOnSpawn } from './hooks-agent-chat-spawn.js';
 import { takeSpawnContext } from '../utils/agent-chat-hook-state.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { useTempStateRoot } from '../test-support/temp-state-root.js';
 
 /** Mirrors `open.test.ts`'s fixture builder — a minimal initiative with a registered worktree. */
 async function makeInitiativeWithWorktree(
@@ -35,6 +36,8 @@ async function makeInitiativeWithWorktree(
     `branches: []\nstashes: []\nworktrees:\n  - path: ${worktreePath}\n    repo: ${worktreePath}\n    name: main\n    default: true\n`,
   );
 }
+
+useTempStateRoot();
 
 describe('handleOnSpawn', () => {
   it('resolves the initiative from cwd and stashes the spawn context', async () => {
