@@ -102,7 +102,7 @@ export class WorkflowRuntime {
     if (run.status === "cancelling") controller.abort(new WorkflowCancelledError(run.id, run.error ?? "cancelled"));
     try {
       const recovered = await this.reconcile(run, controller.signal);
-      if (!recovered || this.isStopped) {
+      if (!recovered || this.stopped()) {
         clearInterval(renewTimer);
         this.release(run);
         return null;
@@ -205,6 +205,10 @@ export class WorkflowRuntime {
   quiesce(): void {
     this.isQuiesced = true;
     this.shutdown();
+  }
+
+  private stopped(): boolean {
+    return this.isStopped;
   }
 
   quiesced(): boolean {
