@@ -179,6 +179,13 @@ function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Lo
   });
 }
 
+/** The decision log every owner answer is recorded in, and the two sources that answer through it: round listeners and the log's overrule tap. */
+function ownerAnswerSourcesOf(config: ConsoleConfig, activeWork: ActiveWork, shepherd: ShepherdSource, logger: Logger): Pick<ConsoleSources, "decisionLog" | "listeners" | "log"> {
+  const decisionLog = createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger });
+  const log = { stateDir: config.stateDir, gateRows: factoryGateRows(config.factoryBin), dayStart: dayStartFrom(config.dayStart), overrule: overruleDepsOf(config, decisionLog) };
+  return { decisionLog, listeners: listenersOf(config, shepherd, logger), log };
+}
+
 /** The log's overrule tap records in the same decision log as every other owner answer, and tells the asker as a round notice does. */
 function overruleDepsOf(config: ConsoleConfig, decisionLog: DecisionLog): OverruleDeps {
   return { stateDir: config.stateDir, inboxDir: config.inboxDir, roundsDir: config.roundsDir, decisionLog, ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }) };
@@ -192,7 +199,6 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
   const invalidation = createInvalidation();
   const activeWork = cachedActiveWork(activeWorkClient(config.activeWorkPort, undefined, recorder), invalidation);
   const shepherd = shepherdReader(config.factoryPort, undefined, recorder);
-  const decisionLog = createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger });
   return {
     upstreams: createUpstreams(config),
     invalidation,
@@ -207,14 +213,12 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     coordinator: coordinatorOf(config, shepherd, activeWork),
     factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
-    decisionLog,
-    listeners: listenersOf(config, shepherd, logger),
+    ...ownerAnswerSourcesOf(config, activeWork, shepherd, logger),
     ...(config.agentChatBin !== undefined && { videoNotify: seatNotifier(config.agentChatBin) }),
     ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
     shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
-    log: { stateDir: config.stateDir, gateRows: factoryGateRows(config.factoryBin), dayStart: dayStartFrom(config.dayStart), overrule: overruleDepsOf(config, decisionLog) },
     ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
     ...(config.scorecardStore !== undefined && { scorecard: { storeFile: config.scorecardStore } }),
   };

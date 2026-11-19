@@ -1,21 +1,21 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
-import { EXIT, errorEnvelope, successEnvelope } from "@titan-design/registry";
-import { SNAPSHOT_FORMAT, snapshotKey, staticSource, type DataSource } from "@titan-design/rpc-client";
+import { EXIT, errorEnvelope, successEnvelope, type JsonEnvelope } from "@titan-design/registry";
+import { SNAPSHOT_FORMAT, snapshotKey, staticSource, type DataSource, type Snapshot } from "@titan-design/rpc-client";
 import { LOG_ANSWERS } from "../server/twin/log.js";
 import { renderPage, unmountPages } from "./render-page.test-helpers.js";
 
 const ROW = "deposit:dep-ceiling";
 const OPTIONS = { options: [{ id: "keep", label: "Keep 30 s", recommended: true }, { id: "raise", label: "Raise to 60 s", recommended: false }], refusal: null };
 
-function snapshot() {
+function snapshot(): Snapshot {
   const calls = Object.fromEntries(LOG_ANSWERS.map(({ command, args, result }) => [snapshotKey(command, args), successEnvelope(result)]));
   return { format: SNAPSHOT_FORMAT, createdAt: "2031-03-06T00:00:00.000Z", calls };
 }
 
 /** The log with a live answer source on a desktop; returns each write's name and args. */
-function renderLive(overrule: object = successEnvelope({ from: "Keep 30 s", to: "Raise to 60 s", seat: "seat-alpha", notice: "sent" })): unknown[][] {
+function renderLive(overrule: JsonEnvelope<unknown> = successEnvelope({ from: "Keep 30 s", to: "Raise to 60 s", seat: "seat-alpha", notice: "sent" })): unknown[][] {
   vi.stubGlobal("matchMedia", (query: string) => ({ matches: false, media: query, addEventListener: () => undefined, removeEventListener: () => undefined }));
   const inner = staticSource({ snapshot: snapshot() });
   const writes: unknown[][] = [];

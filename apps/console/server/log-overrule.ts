@@ -17,7 +17,7 @@ import { EXIT } from "@titan-design/registry";
 import { failure } from "./active-work.js";
 import { appendByRecRows, readByRecRows } from "./by-rec-log.js";
 import { decisionLogResult, type DecisionAnswer, type DecisionLog } from "./decision-log.js";
-import { overruleTarget, type OverruleDirs, type OverruleSource, type OverruleTarget } from "./log-overrule-target.js";
+import { overruleTarget, type OverruleDirs, type OverruleTarget } from "./log-overrule-target.js";
 import { ownerWriteCommand, ownerWriteRefusal, readCommand, type ConsoleContext } from "./owner-guard.js";
 import type { SeatNotifier } from "./round-notice-transport.js";
 import { writeJsonOnce } from "./state-file.js";
