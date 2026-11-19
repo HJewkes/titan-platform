@@ -1,10 +1,10 @@
 import type { GitHubPort } from "@titan-design/github";
 import type { GateResolver } from "@titan-design/hitl";
-import type { OwnerOpKind } from "@titan-design/owner-queue";
+import type { HostCommand, OwnerOpKind } from "@titan-design/owner-queue";
 
 export type Status = 200 | 400 | 403 | 409 | 410 | 413 | 422 | 500 | 503;
 
-type RefusalCode = "record" | "record-unreadable" | "class" | "evidence" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying" | "plan-busy";
+type RefusalCode = "record" | "record-unreadable" | "class" | "evidence" | "mismatch" | "resolver" | "payload" | "github-unreadable" | "agent-chat-unavailable" | "deploying" | "plan-busy" | "host-busy" | "host-unavailable";
 export type Outcome =
   /** `covered` names the owner-at-head facts whose evidence the owner read on the card before this resolve (TP-4404). */
   | { outcome: "resolved"; gateId: string; covered?: string[] }
@@ -32,6 +32,9 @@ export type Outcome =
   /** A delete-branch tap deleted the branch at `tipSha`, the sha its restore line names. */
   | { outcome: "deleted"; branch: string; tipSha: string }
   | { outcome: "already"; branch: string }
+  /** A host-command tap started the vetted command's transient user unit; its exit code and log are read from the journal. */
+  | { outcome: "host-command-started"; command: HostCommand; unit: string; invocationId: string | null }
+  | { outcome: "already"; unit: string }
   | { outcome: "moved"; currentHead: string | undefined }
   /** The name now belongs to a different agent than the one the owner confirmed. */
   | { outcome: "moved"; currentAgentId: string }
@@ -74,6 +77,7 @@ export function statusOf(outcome: Outcome): Status {
     case "plan-approved":
     case "plan-applied":
     case "deleted":
+    case "host-command-started":
     case "already":
       return 200;
     case "moved":
@@ -87,7 +91,7 @@ export function statusOf(outcome: Outcome): Status {
 
 /** A running deployer is a conflict that passes, so a later tap may land; a record or class fault never will. */
 function refusalStatus(reason: RefusalCode): Status {
-  if (reason === "github-unreadable" || reason === "agent-chat-unavailable") return 503;
-  if (reason === "deploying" || reason === "plan-busy") return 409;
+  if (reason === "github-unreadable" || reason === "agent-chat-unavailable" || reason === "host-unavailable") return 503;
+  if (reason === "deploying" || reason === "plan-busy" || reason === "host-busy") return 409;
   return reason === "class" || reason === "resolver" ? 403 : 422;
 }

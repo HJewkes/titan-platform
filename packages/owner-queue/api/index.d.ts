@@ -179,6 +179,11 @@ declare const ownerCardSchema: zod.ZodObject<{
         remoteControl: zod.ZodBoolean;
         briefPath: zod.ZodString;
         briefSha256: zod.ZodOptional<zod.ZodString>;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"host-command">;
+        command: zod.ZodEnum<{
+            "broker-restart-window": "broker-restart-window";
+        }>;
     }, zod_v4_core.$strict>], "kind">>;
     evidenceRef: zod.ZodOptional<zod.ZodString>;
     anchors: zod.ZodOptional<zod.ZodArray<zod.ZodString>>;
@@ -266,6 +271,12 @@ declare const HOLD_CLASSES: readonly ["g10", "owner-asked"];
  * loop closes with MERGE at the same head. Absent, the merge goes past the hold.
  */
 declare const MERGE_WAITS: readonly ["adversary-loop"];
+/**
+ * The owner-only host commands a deposit may ask the owner to run, by id. A deposit names an id and never a path or argument:
+ * the host that runs it maps each id to its own vetted command (TP-5265).
+ */
+declare const HOST_COMMANDS: readonly ["broker-restart-window"];
+type HostCommand = (typeof HOST_COMMANDS)[number];
 /**
  * The typed target of an owner action. It names what to act on and is never authority: the
  * system of record re-reads every field at tap time, so a deposit that lies only gets `moved`.
@@ -374,6 +385,11 @@ declare const ownerOpSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     remoteControl: z.ZodBoolean;
     briefPath: z.ZodString;
     briefSha256: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"host-command">;
+    command: z.ZodEnum<{
+        "broker-restart-window": "broker-restart-window";
+    }>;
 }, z.core.$strict>], "kind">;
 type OwnerOp = z.infer<typeof ownerOpSchema>;
 type OwnerOpKind = OwnerOp["kind"];
@@ -821,7 +837,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -984,6 +1000,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         remoteControl: z.ZodBoolean;
         briefPath: z.ZodString;
         briefSha256: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"host-command">;
+        command: z.ZodEnum<{
+            "broker-restart-window": "broker-restart-window";
+        }>;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -1250,6 +1271,11 @@ declare const ownerItemSchema: z.ZodObject<{
         remoteControl: z.ZodBoolean;
         briefPath: z.ZodString;
         briefSha256: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"host-command">;
+        command: z.ZodEnum<{
+            "broker-restart-window": "broker-restart-window";
+        }>;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;

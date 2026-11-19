@@ -61,6 +61,13 @@ export const HOLD_CLASSES = ["g10", "owner-asked"] as const;
 export const MERGE_WAITS = ["adversary-loop"] as const;
 
 /**
+ * The owner-only host commands a deposit may ask the owner to run, by id. A deposit names an id and never a path or argument:
+ * the host that runs it maps each id to its own vetted command (TP-5265).
+ */
+export const HOST_COMMANDS = ["broker-restart-window"] as const;
+export type HostCommand = (typeof HOST_COMMANDS)[number];
+
+/**
  * The typed target of an owner action. It names what to act on and is never authority: the
  * system of record re-reads every field at tap time, so a deposit that lies only gets `moved`.
  */
@@ -78,6 +85,7 @@ export const ownerOpSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("plan-outcome-edit"), outcome: planId, to: outcomeText.partial(), from: outcomeText.optional() }),
   z.strictObject({ kind: z.literal("plan-freeze-set"), initiative, freeze: z.discriminatedUnion("action", [freezeSet, freezeEnd]) }),
   startSession,
+  z.strictObject({ kind: z.literal("host-command"), command: z.enum(HOST_COMMANDS) }),
 ]);
 
 export type OwnerOp = z.infer<typeof ownerOpSchema>;

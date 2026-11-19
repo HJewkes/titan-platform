@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { auditCandidates, disagrees, runAudit, selectAuditSample, type AuditCandidate } from "./eval-audit.js";
 import { readCases } from "./eval-cases.js";
 import { replayCases, type ReplayOptions } from "./eval-replay.js";
+import { appendRows } from "./rows.js";
 import { runCli } from "./cli.js";
 import { scoreVideo } from "./score.js";
 import { tempTree, VALID_WATCHLIST, type TempTree } from "./fixtures.test-helpers.js";
@@ -240,6 +241,12 @@ describe("weekly audit", () => {
 
     expect(found.map((c) => c.id)).toEqual(["new00000001"]);
     expect(found[0]!.transcriptPath).toBe(path.join(tree.root, "new00000001.md"));
+  });
+
+  it("skips a detect fallback row instead of throwing", () => {
+    appendRows(path.join(tree.root, "rows"), [{ v: 1, video_id: null, source: "confTalks", step: "detect", attempt: 1, started_at: "2026-10-25T00:00:00.000Z", ms: 5, outcome: "fallback", error_class: null }]);
+
+    expect(auditCandidates(path.join(tree.root, "rows"), new Date("2026-10-22T00:00:00Z"), casesPath())).toEqual([]);
   });
 
   it("files an audit-disagree case only for the card the stronger model scores 3 or more away", async () => {
