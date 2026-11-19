@@ -16,6 +16,7 @@ const OPS: OwnerOp[] = [
   { kind: "factory-config-set", path: "shepherd.gateReset.heldRepair", value: "on", expectFrom: "off" },
   { kind: "deploy-pause-clear", pausedAt: "2026-01-01T00:00:00Z", target: "abc1234" },
   { kind: "retire-agent", name: "worker-a", agentId: "agent-1", force: true },
+  { kind: "host-command", command: "broker-restart-window" },
 ];
 
 function deposit(op: OwnerOp | undefined, overrides: Partial<OwnerItemDeposit> = {}): OwnerItemDeposit {
@@ -151,5 +152,15 @@ describe("opKeys", () => {
 
   it("keys a start-session op to the session it names", () => {
     expect(opKeys(START_SESSION)).toEqual(["session:research-lead"]);
+  });
+});
+
+describe("a host-command op", () => {
+  it("refuses a command id off the vetted list", () => {
+    expect(ownerOpSchema.safeParse({ kind: "host-command", command: "rm-rf-home" }).success).toBe(false);
+  });
+
+  it("refuses a command given as a path", () => {
+    expect(ownerOpSchema.safeParse({ kind: "host-command", command: "/tmp/restart-window.sh" }).success).toBe(false);
   });
 });
