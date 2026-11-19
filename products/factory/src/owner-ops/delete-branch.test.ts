@@ -72,7 +72,7 @@ describe("delete-branch op", () => {
     expect(w.fake.effects.deleteRef).toBe(0);
   });
 
-  it.each(["scratch/../main", "-scratch/x", "scratch/x.lock", "scratch/a b", "scratch/x@{1}", "scratch//x", "scratch/.hidden"])("refuses the invalid name %s and deletes nothing", async (branch) => {
+  it.each(["scratch/../main", "-scratch/x", "scratch/x.lock", "scratch/a b", "scratch/x@{1}", "scratch//x", "scratch/.hidden", "scratch/a\u0007b"])("refuses the invalid name %s and deletes nothing", async (branch) => {
     const w = world();
 
     expect(await w.tap({ branch })).toEqual(refusedWith("not a valid branch name"));

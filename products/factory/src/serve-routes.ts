@@ -40,5 +40,6 @@ export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, d
   const { actionsDir, agentChatBin, branches } = consoleAnswers;
   const agentChat = agentChatBin === undefined ? undefined : agentChatRetirePort(agentChatBin);
   const deploy = { stateDir: deployStateDir, ports: systemPauseClearPorts() };
-  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, activeRoot, ...(branches && { branches }) });
+  const policy = branches === undefined ? {} : { branches };
+  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, activeRoot, ...policy });
 }

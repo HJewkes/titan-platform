@@ -55,10 +55,12 @@ function staticStop({ repo, branch }: DeleteBranch, policy: BranchDeletePolicy |
 
 /** git check-ref-format's rules, plus no leading `-`, so a name can never read as a flag or climb out of refs/heads. */
 export function branchNameProblem(branch: string): boolean {
-  if (/[\s~^:?*[\\\u0000-\u001f\u007f]/.test(branch) || branch.includes("..") || branch.includes("//") || branch.includes("@{")) return true;
+  if (/[\s~^:?*[\\]/.test(branch) || [...branch].some(isControl) || branch.includes("..") || branch.includes("//") || branch.includes("@{")) return true;
   if (/^[-/.]/.test(branch) || /[/.]$/.test(branch) || branch.endsWith(".lock") || branch === "@") return true;
   return branch.split("/").some((part) => part.startsWith(".") || part.endsWith(".lock"));
 }
+
+const isControl = (char: string): boolean => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f;
 
 /** Checks 4 to 9, each a fixed refusal naming the rule; the roster is read last, so a GitHub refusal needs no agent-chat. */
 async function liveStop({ repo, branch }: DeleteBranch, deps: DeleteBranchDeps): Promise<Outcome | undefined> {
