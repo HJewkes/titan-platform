@@ -15,6 +15,7 @@ import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import { foldCoveredGates, gateHeadOf, liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { inboxContextCommand } from "./inbox-context.js";
+import { tapOp } from "./inbox-sitting.js";
 import { readCommand } from "./owner-guard.js";
 import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
@@ -212,7 +213,7 @@ function gateOpDerived(item: OwnerItem, op: Extract<OwnerOp, { kind: "resolve-ga
 
 /** A deposit's op names a target; the action comes from the live row, or for an allowlisted kind from the factory's preview at the tap. */
 function depositDerived(item: OwnerItem, row: WatchRow | undefined): Derived {
-  const { op } = item;
+  const op = tapOp(item);
   if (op === undefined) return { action: { kind: "answer-deposit" } };
   if (op.kind === "resolve-gate") return gateOpDerived(item, op, row);
   if (op.kind === "release-hold") return { action: holdOpAction(item, op, row) };
@@ -263,9 +264,10 @@ const rowOfPr = (repo: string, pr: number, rows: ReadonlyMap<string, WatchRow>):
 function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchRow | undefined {
   const source = item.sources[0]!;
   if (source.system === "hitl") return rowOfRun(source.ref, rows);
-  if (source.system !== "deposit" || item.op === undefined) return undefined;
-  if (item.op.kind === "resolve-gate") return rowOfRun(item.op.gateId, rows);
-  return item.op.kind === "release-hold" || item.op.kind === "merge-at-head" ? rowOfPr(item.op.repo, item.op.pr, rows) : undefined;
+  const op = source.system === "deposit" ? tapOp(item) : undefined;
+  if (op === undefined) return undefined;
+  if (op.kind === "resolve-gate") return rowOfRun(op.gateId, rows);
+  return op.kind === "release-hold" || op.kind === "merge-at-head" ? rowOfPr(op.repo, op.pr, rows) : undefined;
 }
 
 interface ItemFacts {
