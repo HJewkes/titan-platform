@@ -4,17 +4,10 @@ import { refused, type Outcome } from "../console-action/outcome.js";
 import type { OpRead } from "../console-action/record.js";
 import { LIVE } from "../shepherd/gone-elsewhere.js";
 import type { Registration } from "../shepherd/store.js";
+import type { BranchDeletePolicy } from "./branch-policy.js";
 import { nameHolder, type AgentChatRetirePort } from "./retire-agent.js";
 
 type DeleteBranch = Extract<OwnerOp, { kind: "delete-branch" }>;
-
-/** The branches the console may delete and the repos it manages, both from factory config; absent, every delete is refused. */
-export interface BranchDeletePolicy {
-  prefixes: readonly string[];
-  repos: readonly string[];
-}
-
-export const DEFAULT_BRANCH_PREFIXES: readonly string[] = Object.freeze(["scratch/"]);
 
 export interface DeleteBranchDeps {
   port: GitHubPort;

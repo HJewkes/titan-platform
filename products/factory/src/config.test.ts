@@ -487,3 +487,18 @@ describe("the autoresearch block", () => {
     expect(() => load({ ...section({}), stages: { planner: { profile: "p", ttl: "1h" }, implementer: { profile: "i" } } })).toThrow(/autoresearch\.stages\.planner/);
   });
 });
+
+describe("shepherd.consoleAnswers.branchPrefixes", () => {
+  const withPrefixes = (branchPrefixes: unknown) => xdg({ shepherd: { consoleAnswers: { roundsDir: "/srv/rounds", branchPrefixes } } });
+
+  it("loads prefixes that each end in a slash", () => {
+    const config = loadConfig(configPath(withPrefixes(["scratch/", "spike/tp/"])));
+
+    expect(config.shepherd?.consoleAnswers?.branchPrefixes).toEqual(["scratch/", "spike/tp/"]);
+  });
+
+  // Kills: a prefix rule loose enough that an empty or slashless prefix makes every branch, or a whole name, deletable.
+  it.each([[[""]], [["scratch"]], [["/"]], [["refs/heads/../"]], [[]]])("refuses the prefix list %j", (branchPrefixes) => {
+    expect(() => loadConfig(configPath(withPrefixes(branchPrefixes)))).toThrow(/branchPrefixes/);
+  });
+});

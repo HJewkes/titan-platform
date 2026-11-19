@@ -12,13 +12,11 @@ import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
 import { VisualGateSchema } from "./shepherd/visual-gate-config.js";
 import { RedSeatConfigSchema } from "./shepherd/red-seat-config.js";
+import { BranchPrefixSchema } from "./owner-ops/branch-policy.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
 const absolutePath = noNul.refine(isAbsolute, "must be an absolute path");
-
-/** A delete-branch prefix ends in `/`, so no prefix can be empty or stand for a whole branch name. */
-const BranchPrefixSchema = z.string().regex(/^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*\/$/, "must be a branch prefix such as scratch/");
 
 /** The chore land-pr runs after a merge; strict, so a `shell` or `command` key fails the load instead of being ignored. */
 const PostMergeConfigSchema = z.strictObject({

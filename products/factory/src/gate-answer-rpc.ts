@@ -15,7 +15,7 @@ import { consoleInboxDir } from "@titan-design/app-paths";
 import { checkAnswer, type AcceptFiles, type AnswerPayload, type AnswerRequest } from "./gate-answer-check.js";
 import { repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
-import { DEFAULT_BRANCH_PREFIXES, type BranchDeletePolicy } from "./owner-ops/delete-branch.js";
+import { DEFAULT_BRANCH_PREFIXES, type BranchDeletePolicy } from "./owner-ops/branch-policy.js";
 import type { TellOwner } from "./owner-ops/standing-answers.js";
 import { readCapped, TOO_LARGE } from "./resolve-proof.js";
 import { VISUAL_ACCEPT_GATE } from "./shepherd/visual-accept.js";

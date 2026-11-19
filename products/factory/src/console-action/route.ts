@@ -4,7 +4,7 @@ import { EXIT, errorEnvelope } from "@titan-design/registry";
 import { z } from "zod";
 import type { FactoryHost } from "../host.js";
 import { doneResults, ownerOpsLedger } from "../owner-ops/ledger.js";
-import type { BranchDeletePolicy } from "../owner-ops/delete-branch.js";
+import type { BranchDeletePolicy } from "../owner-ops/branch-policy.js";
 import type { PauseClearPorts } from "../owner-ops/pause-clear.js";
 import type { AgentChatRetirePort } from "../owner-ops/retire-agent.js";
 import { standingAnswers, type StandingAnswers } from "../owner-ops/standing-answers.js";
