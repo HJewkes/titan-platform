@@ -754,6 +754,34 @@ titan-console rounds nudge --json   # the same rounds as one JSON array
 
 A "rec" reply, or the tap, is `rounds.answer-rec`.
 
+### Auto-by-rec
+
+The daemon also sweeps rounds hourly, starting five minutes after it starts (`server/by-rec-rounds.ts`, TP-6773).
+A round still unanswered and not withdrawn after the policy's wait (24 h from its `round.json` mtime by default) is
+answered with its recommendations. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
+and the asker's notice see it like any other answer. The feedback's `general` says `auto-by-rec`, not
+`answered-by-rec`, which stays the owner's own tap. The decision log credits `{class: "automation", id: "auto-by-rec"}`.
+
+The sweep decides each question with owner-queue's `byRecDecision`. A round is skipped, with the reason in the
+daemon log, when any question:
+
+- is in an after-answer round,
+- is a Ship,
+- records a plan approval,
+- has no recommendation that answers it,
+- or hits another floor class.
+
+A marker written with `wx` beside the round claims it once per mode: `auto-by-rec.json` in live mode and
+`auto-by-rec-shadow.json` in shadow mode. A restart therefore never answers a round twice. Each question the sweep
+acts on adds one `titan/auto-by-rec@1` row to `<state dir>/auto-by-rec.jsonl`.
+
+The mode comes from `<state dir>/auto-by-rec-policy.json` (`titan/auto-by-rec-policy@1`):
+
+- With no file, the sweep runs in **shadow**: it writes would-resolve rows and answers nothing.
+- `mode: live` answers rounds.
+- `mode: off` stops the next pass.
+- A file that does not parse also stops the sweep.
+
 - **Supersedes (automatic).** A round may list `supersedes: ["<round-id>", ...]` in its `round.json`,
   the earlier rounds it replaces. It is the console's own field, lifted off before review-schema's
   strict parse. When the round is imported, and again when it is answered, each named round that
