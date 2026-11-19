@@ -196,6 +196,7 @@ describe("a Ship round with two PRs (TP-3329)", { timeout: RENDER_TIMEOUT_MS }, 
   it("keeps the earlier feedback once sent, with its Addressed tick locked as sent (TP-3824)", async () => {
     const priorFeedback = [{ round: 1, submittedAt: "2031-03-04T00:00:00.000Z", pick: "Don't ship", comment: "The stripe is two pixels low." }];
     await renderPrs({ status: "sent", priorFeedback, notes: { general: "", comments: {}, answers: { "ship-tiles": { pick: "Ship" }, "ship-panels": { pick: "Ship" } }, addressed: [1] } });
+    for (const key of ["example/tiles#1", "example/panels#2"]) fireEvent.click(getByRoleFast("tab", "Review", screen.getByTestId(`pr-${key}`)));
 
     // An entry with no `pr` bears on every PR, so each PR's Review tab shows it (TP-3790).
     expect(pr("example/panels#2").getByTestId("ship-prior-feedback").textContent).toContain("The stripe is two pixels low.");
