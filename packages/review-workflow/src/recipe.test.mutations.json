@@ -28,6 +28,13 @@
       "find": "return next !== undefined && next !== stepId;",
       "replace": "return false;",
       "kills": ["reviewHead skips preflight on a run recorded before it existed and dispatches the plan its intent recorded"]
+    },
+    {
+      "name": "a checkout still unready after its refresh is planned anyway",
+      "file": "packages/review-workflow/src/recipe.ts",
+      "find": "return decided(decision) ?? healIneffective(decision.kind === \"heal\" ? decision.heals : []);",
+      "replace": "return { kind: \"plan\", plan: { class: { class: \"standard\", touches: [] }, members: [], spendEstimate: 0, degraded: false } };",
+      "kills": ["sends a checkout that stays unready after the refresh to the fixer as heal-ineffective"]
     }
   ]
 }

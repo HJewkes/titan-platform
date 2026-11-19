@@ -73,7 +73,7 @@ Before adding code:
 | [`queue-mirror`](#cap-queue-mirror) | 2 | A local queue of human decisions (approvals, hitl gates) should also be answerable from a Matrix room, with verdicts folded back. |
 | [`render-qa`](#cap-render-qa) | 2 | You need to check a rendered page's layout at chosen moments (overlaps, off-frame, small or low-contrast text, wraps, frame rules) and separate held errors from transient ones before encoding, sample a whole video on a fixed 2 Hz grid with a settled sample per beat (`sweepMoments`), measure text line boxes, clipping ancestors and content boxes at moments (`probeMoments`), count changed pixels per frame of an MP4 (`frameDiffs`, through ffmpeg), or find an MP4's black, silent (2 s and more) and frozen stretches (`mediaScan`, through ffmpeg). |
 | [`review-panel`](#cap-review-panel) | 2 | You start reviewers for a pull request and read their verdicts, and want Shepherd's panel types (`PrFacts`, `PrClass`, `PanelPlan`, `PanelVerdict`), `classifyPr` to class a PR from its paths and kind, `planPanel` to pick its reviewers by shape, profile and blocking flag, the reviewer ports (`ReviewerDispatch`, `ReviewerReader`) your adapters satisfy, `acceptVerdict` to decide whether a reviewer's final message is its verdict for this PR at this head, `aggregate` to turn the members' verdicts into one fail-closed panel verdict, and `reviewPullRequest` to run the whole panel for one head over those ports. |
-| [`review-workflow`](#cap-review-workflow) | 2 | You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. |
+| [`review-workflow`](#cap-review-workflow) | 2 | You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data. |
 | [`session-analytics`](#cap-session-analytics) | 2 | You need cost, session class, role, episodes or a spend report over mined sessions, or the timeline read model behind a session view (turns, minute buckets, token and cost series). |
 | [`session-graph`](#cap-session-graph) | 2 | You query a growing corpus of Claude Code and Codex sessions repeatedly and want it folded into an incrementally maintained SQLite graph. |
 | [`session-read`](#cap-session-read) | 2 | You parse Claude Code or Codex transcripts into typed events with locators and do not want session-graph's storage. |
@@ -1245,17 +1245,18 @@ Tier 2, `@titan-design/review-workflow@0.1.2`. PR review as a resumable workflow
 
 **Use this when:**
 
-You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data, and `healOnce`, one bounded heal pass over the ports. `reviewHead` runs it over your step engine, with `REVIEW_STEP_BODIES` as the step bodies; `reviewRunner` runs it standalone as a version-pinned durable workflow. To run a panel in memory with no durable steps, use review-panel's `reviewPullRequest`.
+You review one PR head as a resumable workflow and want its vocabulary: the ports a host satisfies (`ReviewWorkflowPorts`), the injectable step ids (`ReviewStepIds`), the outcome union (`ReviewOutcome`), the member failure classes (`FailureClass`), and `DEFAULT_RETRY_POLICY`, the retry, heal and fixer rule for each class as data. `reviewHead` runs it over your step engine, with `REVIEW_STEP_BODIES` as the step bodies; `reviewRunner` runs it standalone as a version-pinned durable workflow. To run a panel in memory with no durable steps, use review-panel's `reviewPullRequest`.
 
 Key exports:
 
 - `plan-for-head`: `planForHead`
 - `preflight`: `preflight`
 - `preflight-read`: `preflightRead`
-- `heal`: `applyHeal`, `healOnce`
+- `heal`: `applyHeal`
 - `fixer`: `fixerBrief`, `fixerFingerprint`, `fixerName`, `requestFixer`, `resolveFingerprint`
 - `fixer-report`: `readFixerReport`
 - `failure`: `classifyFailure`
+- `recipe`: `reviewHead`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-workflow)
 
 <a id="cap-session-analytics"></a>
