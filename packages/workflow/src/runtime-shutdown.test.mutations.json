@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "hydrate drops the stopped check",
+      "file": "packages/workflow/src/runtime.ts",
+      "find": "    if (this.isQuiesced || this.isStopped) return [];\n",
+      "replace": "    if (this.isQuiesced) return [];\n",
+      "kills": [
+        "WorkflowRuntime.shutdown hydrates nothing after shutdown and reports not quiesced"
+      ]
+    }
+  ]
+}

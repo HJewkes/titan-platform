@@ -33,6 +33,7 @@ export class WorkflowRuntime {
   private readonly now: () => number;
   private readonly baseDeps: Omit<ContextDeps, "save" | "recovered">;
   private isQuiesced = false;
+  private isStopped = false;
 
   constructor(private readonly options: WorkflowRuntimeOptions) {
     this.store = new WorkflowRunStore(options.db, options.runTable);
@@ -70,7 +71,7 @@ export class WorkflowRuntime {
     const run = newRun(randomUUID(), name, params, workflow.version);
     const insert = this.options.db.transaction((): WorkflowRun | null => {
       this.store.create(run);
-      const claimed = this.isQuiesced ? null : this.claim(run.id);
+      const claimed = this.isQuiesced || this.isStopped ? null : this.claim(run.id);
       if (claimed === undefined) throw new Error(`could not claim new workflow ${run.id}`);
       options.onStart?.(run.id);
       return claimed;
@@ -82,14 +83,14 @@ export class WorkflowRuntime {
 
   /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
   async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
-    if (this.isQuiesced) return [];
+    if (this.isQuiesced || this.isStopped) return [];
     const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id) && !this.held.has(run));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
   }
 
   private async hydrateOne(snapshot: WorkflowRun): Promise<string | null> {
-    if (this.live.has(snapshot.id)) return null;
+    if (this.live.has(snapshot.id) || this.isStopped) return null;
     const workflow = this.workflows.get(snapshot.workflowName);
     if (!workflow) return null;
     const run = this.claim(snapshot.id);
@@ -101,7 +102,7 @@ export class WorkflowRuntime {
     if (run.status === "cancelling") controller.abort(new WorkflowCancelledError(run.id, run.error ?? "cancelled"));
     try {
       const recovered = await this.reconcile(run, controller.signal);
-      if (!recovered) {
+      if (!recovered || this.isStopped) {
         clearInterval(renewTimer);
         this.release(run);
         return null;
@@ -191,6 +192,7 @@ export class WorkflowRuntime {
   }
 
   shutdown(): void {
+    this.isStopped = true;
     for (const live of this.live.values()) {
       clearInterval(live.renewTimer);
       live.controller.abort(new RuntimeShutdown());
