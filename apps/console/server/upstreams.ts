@@ -23,6 +23,7 @@ import { seatNotifier } from "./round-notice-transport.js";
 import { subscriptionsDirOf } from "./round-subscriptions.js";
 import { shepherdReader, type ShepherdSource } from "./shepherd.js";
 import { gitEvidenceReader } from "./repo-evidence.js";
+import { factoryLogFrames } from "./log-frames-capture.js";
 import { factoryGateRows } from "./log-gate-rows.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
@@ -207,7 +208,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
     shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
-    log: { stateDir: config.stateDir, gateRows: factoryGateRows(config.factoryBin), dayStart: dayStartFrom(config.dayStart) },
+    log: { stateDir: config.stateDir, gateRows: factoryGateRows(config.factoryBin), frames: factoryLogFrames(config.factoryBin), dayStart: dayStartFrom(config.dayStart) },
     ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
     ...(config.scorecardStore !== undefined && { scorecard: { storeFile: config.scorecardStore } }),
   };

@@ -10,6 +10,8 @@ import { readByRecPolicy, readByRecRows } from "./by-rec-log.js";
 import { DEFAULT_DAY_START, dayWindow, type DayWindow } from "./coord-day.js";
 import { approvalOf, type ApprovalRead } from "./log-approval.js";
 import { logHeader, type LogHeader } from "./log-floor.js";
+import { frameSideSchema, isSafeRepo, readLogFrame, type FramesCapture } from "./log-frames.js";
+import { withFrames } from "./log-frames-rows.js";
 import type { GateRowsSource } from "./log-gate-rows.js";
 import { digestLine, logCounts, mergeLog, type LogCounts, type LogRow, type ShipInput } from "./log-rows.js";
 import { readCommand } from "./owner-guard.js";
@@ -20,6 +22,8 @@ export interface LogSource {
   /** The console state dir, which holds the by-rec policy file and the console's own rows. */
   stateDir: string;
   gateRows: GateRowsSource;
+  /** Captures a visual ship's before and after pairs; absent, rows show only frames captured before. */
+  frames?: FramesCapture;
   dayStart?: string;
   now?: () => number;
 }
@@ -32,6 +36,8 @@ export interface LogView {
   gaps: string[];
   readAt: string;
 }
+
+const frameResult = z.object({ contentType: z.literal("image/png"), bytes: z.number(), sha256: z.string(), base64: z.string() });
 
 const DEFAULT_LOG_DAYS = 7;
 const MAX_LOG_DAYS = 30;
@@ -69,7 +75,7 @@ async function readShips(shepherd: Shepherd, window: DayWindow): Promise<{ ships
     merged.map(async ({ row, ref }) => {
       const { approval, rule } = await approvalFor(shepherd, row);
       const mergedAt = times.get(row.runId) ?? Date.parse(row.phaseSince);
-      return { repo: ref.repo, pr: ref.number, task: ref.task, url: ref.url, mergedAt, approval, ...(rule !== undefined && { rule }) };
+      return { repo: ref.repo, pr: ref.number, task: ref.task, url: ref.url, mergedAt, approval, ...(rule !== undefined && { rule }), ...(row.headSha !== null && { head: row.headSha }) };
     }),
   );
   return { ships, gaps: [] };
@@ -101,14 +107,15 @@ export async function readLog(shepherd: Shepherd, source: LogSource, days: numbe
   const dayStart = source.dayStart ?? DEFAULT_DAY_START;
   const window = windowOf(now, dayStart, days);
   const [policy, ships, gates, asked] = await Promise.all([readByRecPolicy(source.stateDir), readShips(shepherd, window), source.gateRows(days), readConsoleRows(source.stateDir)]);
-  const rows = mergeLog({ ships: ships.ships, gateRows: gates.rows.filter(inWindow(window)), consoleRows: asked.rows.filter(inWindow(window)), dayOf: (ms) => dayWindow(ms, dayStart).date });
+  const merged = mergeLog({ ships: ships.ships, gateRows: gates.rows.filter(inWindow(window)), consoleRows: asked.rows.filter(inWindow(window)), dayOf: (ms) => dayWindow(ms, dayStart).date });
+  const { rows, gaps: frameGaps } = await withFrames(merged, ships.ships, { stateDir: source.stateDir, ...(source.frames && { capture: source.frames }) });
   const counts = logCounts(rows);
   return {
     header: logHeader(policy.policy, policy.problem),
     days: byDay(rows),
     counts,
     digest: digestLine(counts),
-    gaps: [...ships.gaps, ...gates.gaps, ...asked.gaps],
+    gaps: [...ships.gaps, ...gates.gaps, ...asked.gaps, ...frameGaps],
     readAt: new Date(now).toISOString(),
   };
 }
@@ -122,6 +129,13 @@ export function logCommands(shepherd: ShepherdSource, source: LogSource) {
       args: z.object({ days: z.number().int().min(1).max(MAX_LOG_DAYS).optional().describe(`days back, today included; ${DEFAULT_LOG_DAYS} when left out`) }),
       result: z.custom<LogView>(),
       run: ({ days }) => readLog(shepherd, source, days),
+    }),
+    "log.frame": readCommand({
+      name: "log.frame",
+      description: "One before or after PNG of a visual ship row's captured pr-visual pair on the log, by repo, PR and frame key, checked against the sha256 its frames.json recorded",
+      args: z.object({ repo: z.string().refine(isSafeRepo, "must be owner/repo"), pr: z.number().int().positive(), key: z.string().regex(/^shot-\d{1,4}$/), side: frameSideSchema }),
+      result: frameResult,
+      run: ({ repo, pr, key, side }) => readLogFrame(source.stateDir, repo, pr, key, side),
     }),
   };
 }

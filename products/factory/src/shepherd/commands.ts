@@ -39,6 +39,7 @@ import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { waitingCommand } from "./waiting.js";
+import { logFramesCommand } from "./log-frames-command.js";
 import { visualDeltaCommand } from "./visual-delta-command.js";
 import { visualWeekCommand } from "./visual-week-command.js";
 import { visualFeedbackCommand } from "./visual-feedback-command.js";
@@ -375,6 +376,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.visual-week": visualWeekCommand,
   "shepherd.visual-week-feedback": visualFeedbackCommand,
   "shepherd.visual-feedback-notes": visualFeedbackNotesCommand,
+  "shepherd.log-frames": logFramesCommand,
   "shepherd.brief": briefCommand,
   "shepherd.ownerMeter": ownerMeterCommand,
 };

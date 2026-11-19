@@ -798,7 +798,15 @@ first, grouped by day (`?days=1` to `30`, default 7). It merges three sources an
 
 Each row shows its link, the recommendation and rationale, its opened and resolved times, its resolver and a way back.
 A merged PR links to its GitHub page, whose Revert button opens the revert PR. A live decision gets the overrule tap
-when TP-6778 lands. A tier-2 visual gate (D2) gets a frames slot, which TP-6777 fills.
+when TP-6778 lands.
+
+A ship row for a tier-2 visual gate (D2) shows its before and after frames (TP-6777). When the log is built, a visual
+ship row with no frames yet runs `titan-factory shepherd log-frames` at the merged head. That verb writes the PR's
+changed pr-visual pairs into `<state dir>/log-frames/<owner>/<repo>/<pr>/`, and the console writes `frames.json`
+(titan-review/frames@1) beside them once. Later builds read that file, so the frames outlive the artifact. One build
+starts at most three captures. A failed read writes nothing, shows as a gap line and is tried on the next build. A PR
+whose artifact is missing or rendered nothing shows one "no visual evidence: <reason>" line. Thumbnails open full size;
+`log.frame` serves each PNG after checking it against the sha256 in `frames.json`. Other rows show no frames block.
 
 The header shows the policy's mode and wait, and the exclusions. The floor is owner-queue's `BY_REC_FLOOR`. It has no
 remove control, and each class names the owner-only change that removes it. The owner has not confirmed the floor yet,

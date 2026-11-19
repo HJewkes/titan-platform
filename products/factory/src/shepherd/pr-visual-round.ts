@@ -11,7 +11,13 @@ const WORKFLOW = ".github/workflows/pr-visual.yml";
 const PIXEL_TOLERANCE = 0.1;
 const CAVEAT = "unattested producer output; not used for the tier";
 
-const nothing = (reason: string): RoundVisuals => ({ line: `pr-visual: no before and after shown, ${reason} (${CAVEAT})`, variantKeys: [] });
+/** One PR's pairs as written: `reason` says why none are, and `failed` marks a read that may succeed when tried again. */
+export interface PrVisuals extends RoundVisuals {
+  reason?: string;
+  failed?: true;
+}
+
+const nothing = (reason: string): PrVisuals => ({ line: `pr-visual: no before and after shown, ${reason} (${CAVEAT})`, variantKeys: [], reason });
 
 type Measured = Extract<PrVisualEvidence, { measured: true }>;
 
@@ -54,7 +60,7 @@ async function writePairs(zip: ZipReader, manifest: Manifest, changed: readonly 
   return shots.flatMap((shot) => [join(folder, shot.before), join(folder, shot.after)]);
 }
 
-async function roundVisualsOf(gh: PrVisualGh, target: Target, roundDir: string): Promise<RoundVisuals> {
+async function prVisualsOf(gh: PrVisualGh, target: Target, folder: string): Promise<PrVisuals> {
   const zip = await openHeadArtifact(gh, { repo: target.repo, head: target.head, workflow: WORKFLOW, pixelTolerance: PIXEL_TOLERANCE }, DEFAULT_LIMITS);
   if (typeof zip === "string") return nothing(zip);
   const evidence = measureArchive(zip, PIXEL_TOLERANCE);
@@ -64,14 +70,20 @@ async function roundVisualsOf(gh: PrVisualGh, target: Target, roundDir: string):
   const reason = incomplete(manifest, target);
   if (reason !== undefined) return nothing(reason);
   const changed = evidence.shots.map(isChanged);
-  return { line: lineOf(evidence), variantKeys: await writePairs(zip, manifest, changed, join(roundDir, `pr-${target.pr}`)) };
+  return { line: lineOf(evidence), variantKeys: await writePairs(zip, manifest, changed, folder) };
 }
 
-/** The PR's pr-visual pairs written under `<roundDir>/pr-<n>/`, or a stated reason none are shown; never an after-only set, never a throw. */
-export async function writeRoundVisuals(target: Target, roundDir: string, gh: PrVisualGh = execPrVisualGh()): Promise<RoundVisuals> {
+/** The PR's pr-visual pairs written into `folder` itself, or a stated reason none are shown; never an after-only set, never a throw. */
+export async function writePrVisuals(target: Target, folder: string, gh: PrVisualGh = execPrVisualGh()): Promise<PrVisuals> {
   try {
-    return await roundVisualsOf(gh, target, roundDir);
+    return await prVisualsOf(gh, target, folder);
   } catch (error) {
-    return nothing(`the read failed: ${errorClass(error)}`);
+    return { ...nothing(`the read failed: ${errorClass(error)}`), failed: true };
   }
+}
+
+/** The PR's pr-visual pairs written under `<roundDir>/pr-<n>/`, or a stated reason none are shown. */
+export async function writeRoundVisuals(target: Target, roundDir: string, gh?: PrVisualGh): Promise<RoundVisuals> {
+  const { line, variantKeys } = await writePrVisuals(target, join(roundDir, `pr-${target.pr}`), gh);
+  return { line, variantKeys };
 }

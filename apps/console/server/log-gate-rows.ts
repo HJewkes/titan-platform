@@ -39,7 +39,7 @@ export function parseGateRows(stdout: string): GateRowsRead {
   return { rows, gaps: dropped === 0 ? [] : [`shepherd by-rec: ${dropped} row(s) did not match titan/auto-by-rec@1`] };
 }
 
-function childEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function childEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([name, value]) => value !== undefined && CHILD_ENV.includes(name)));
 }
 
