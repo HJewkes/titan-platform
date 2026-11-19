@@ -31,7 +31,7 @@ import { failure } from "./active-work.js";
 import { decisionLogResult, type LiveViewedEntry, type RoundDecisionLog } from "./decision-log.js";
 import type { RoundListeners } from "./listeners.js";
 import { ownerWriteCommand } from "./owner-guard.js";
-import { roundDecisions, type SubmittedRound } from "./round-decisions.js";
+import { roundDecisions, type RoundAnswerer, type SubmittedRound } from "./round-decisions.js";
 import { hasFramesIndex } from "./round-frames.js";
 import { viewedBuilds } from "./round-live.js";
 import { refuseUnrevealedSeen } from "./round-reveal.js";
@@ -259,7 +259,7 @@ async function recordFollowUps(roundDir: string, inboxDir: string | undefined, m
   return { followUps: { sidecar: written === null ? "unrecorded" : "recorded", filed } };
 }
 
-async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs, now = new Date()): Promise<Submission> {
+async function submitRound({ source, inboxDir, answerer }: SubmitTarget, args: SubmitArgs, now = new Date()): Promise<Submission> {
   const { dir } = source;
   if (!(await roundDirExists(dir, args.id))) throw failure(`No round named "${args.id}"`, EXIT.NOINPUT);
   const roundDir = path.join(dir, args.id);
@@ -281,7 +281,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
   if (written === null) return { result: { status: "already-submitted" }, round: null, live: null };
-  const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString() };
+  const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString(), ...(answerer && { answerer }) };
   const addressed = await recordAddressed(roundDir, args.addressed, now);
   const followUps = await recordFollowUps(roundDir, inboxDir, manifest, args, now);
   const live = liveKeys === undefined ? null : { roundId: args.id, at: round.submittedAt, keys: liveKeys, ...(await viewedBuilds(roundDir, manifest, liveKeys)) };
@@ -319,6 +319,8 @@ interface SubmitTarget {
   source: RoundsSource;
   /** The owner-inbox spool follow-ups are filed into; absent, they are recorded but not filed. */
   inboxDir?: string;
+  /** Who the decision log credits; absent, the owner. Never read from the request, so no caller can claim it. */
+  answerer?: RoundAnswerer;
 }
 
 interface SubmitHooks {
@@ -328,13 +330,17 @@ interface SubmitHooks {
   onChange?: () => void;
 }
 
-/** The one way an owner answer is written, logged and announced; the nudge's one-tap rec answer runs it too (TP-4044). */
-export type SubmitPipeline = (posted: z.input<typeof submitArgs>) => Promise<SubmitResult>;
+/**
+ * The one way an owner answer is written, logged and announced; the nudge's one-tap rec answer runs it too (TP-4044), and
+ * the by-rec sweep (TP-6773) passes its own `answerer` so the decision log does not credit the owner.
+ */
+export type SubmitPipeline = (posted: z.input<typeof submitArgs>, answerer?: RoundAnswerer) => Promise<SubmitResult>;
 
 export function submitPipeline(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string, onChange?: () => void): SubmitPipeline {
-  return async (posted) => {
+  return async (posted, answerer) => {
     const args = submitArgs.parse(posted);
-    return afterSubmit({ decisionLog, listeners, ...(onChange && { onChange }) }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args));
+    const target = { source, ...(inboxDir !== undefined && { inboxDir }), ...(answerer && { answerer }) };
+    return afterSubmit({ decisionLog, listeners, ...(onChange && { onChange }) }, args.id, await submitRound(target, args));
   };
 }
 

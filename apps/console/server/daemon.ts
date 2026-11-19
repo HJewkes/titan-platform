@@ -18,6 +18,7 @@ import {
 import { PERF_REPORT, PERF_REPORT_BODY_LIMIT, perfCommands } from "./perf/commands.js";
 import { createPerfRecorder, type PerfRecorder } from "./perf/recorder.js";
 import { readBuildInfo } from "./build-info.js";
+import { startByRecRounds } from "./by-rec-timer.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
@@ -30,6 +31,7 @@ import { warmCards, type ConsoleSources } from "./commands.js";
 import type { ClassedCommand, ConsoleContext } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
 import { mountRoundMedia } from "./round-clip.js";
+import { submitPipeline } from "./rounds-submit.js";
 import type { LiveReader } from "./round-live.js";
 import { mountStoryRoutes } from "./story-origin.js";
 import { createSources } from "./upstreams.js";
@@ -77,12 +79,19 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
   const relay = relayEvents(handle.hub, sources, config, logger);
-  return { ...handle, close: async () => closeAll([relay.close(), handle.close()], perf) };
+  const byRec = byRecRounds(sources, config, logger);
+  return { ...handle, close: async () => (byRec.close(), closeAll([relay.close(), handle.close()], perf)) };
 }
 
 async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promise<void> {
   await Promise.all(closing);
   await perf.close();
+}
+
+/** The rounds by-rec sweep (TP-6773) answers through the same pipeline as `rounds.submit`, so it drops the inbox's kept reads too. */
+function byRecRounds(sources: KeptSources, config: ConsoleConfig, logger: Logger): { close: () => void } {
+  const submit = submitPipeline(sources.rounds, sources.decisionLog, sources.listeners, sources.inbox.dir, sources.inboxCache.invalidate);
+  return startByRecRounds({ dir: sources.rounds.dir, stateDir: config.stateDir, submit, logger });
 }
 
 function perfCommandList(perf: PerfRecorder, commandNames: () => readonly string[]): ClassedCommand[] {
