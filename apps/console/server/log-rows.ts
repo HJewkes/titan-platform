@@ -10,9 +10,6 @@ import type { ByRecRow } from "@titan-design/owner-queue";
 
 export type Approval = "owner" | "reviewer" | "plan" | "auto-by-rec" | "unrecorded";
 
-/** The slice that wires the overrule tap; until it lands a decision row names it instead of a control. */
-const OVERRULE_TASK = "TP-6778";
-
 export interface ShipInput {
   repo: string;
   pr: number;
@@ -24,7 +21,8 @@ export interface ShipInput {
   rule?: string;
 }
 
-type Reverse = { kind: "revert"; href: string } | { kind: "overrule"; task: string } | { kind: "none"; reason: string };
+/** A live round or deposit answer takes the Overrule tap (`log.overrule`); a merge only its PR's revert. */
+type Reverse = { kind: "revert"; href: string } | { kind: "overrule"; source: "round" | "deposit"; id: string } | { kind: "none"; reason: string };
 
 export interface LogRow {
   key: string;
@@ -43,6 +41,8 @@ export interface LogRow {
   resolvedAt: string;
   resolver: string;
   result?: ByRecRow["result"];
+  /** The owner overruled the by-rec answer: both picks, and when. */
+  overruled?: { from: string; to: string; at: string };
   reverse: Reverse;
   /** A tier-2 visual gate (D2); slice G (TP-6777) fills `frames` with its before/after pair. */
   visual: boolean;
@@ -115,9 +115,22 @@ function decisionHref(row: ByRecRow): string {
   return row.subject.source === "round" && typeof roundId === "string" ? `#/rounds/${encodeURIComponent(roundId)}` : "#/inbox";
 }
 
-function decisionRow(key: string, rows: readonly ByRecRow[], dayOf: LogInput["dayOf"]): LogRow {
+function reverseOf(row: ByRecRow, overruled: ByRecRow | undefined): Reverse {
+  if (row.mode !== "live") return { kind: "none", reason: "shadow: nothing was applied" };
+  if (row.result !== "resolved") return { kind: "none", reason: "nothing was applied" };
+  if (overruled !== undefined) return { kind: "none", reason: "you overruled it" };
+  const pr = prOfRow(row);
+  if (row.subject.source === "gate") return pr === undefined ? { kind: "none", reason: "the gate has no PR to revert" } : { kind: "revert", href: prUrl(pr.repo, pr.pr) };
+  return { kind: "overrule", source: row.subject.source, id: row.subject.id };
+}
+
+const overruledOf = (row: ByRecRow | undefined): LogRow["overruled"] =>
+  row?.overrule === undefined ? undefined : { from: row.recommendation.answer, to: row.overrule.answer, at: row.resolvedAt };
+
+function decisionRow(key: string, rows: readonly ByRecRow[], dayOf: LogInput["dayOf"], overrules: ReadonlyMap<string, ByRecRow>): LogRow {
   const row = liveOf(rows) ?? rows[0]!;
   const live = row.mode === "live";
+  const overruled = overrules.get(key);
   return {
     key,
     day: dayOf(Date.parse(row.resolvedAt)),
@@ -132,13 +145,21 @@ function decisionRow(key: string, rows: readonly ByRecRow[], dayOf: LogInput["da
     resolvedAt: row.resolvedAt,
     resolver: `${row.resolver.class}:${row.resolver.id}`,
     result: row.result,
-    reverse: live && row.result === "resolved" ? { kind: "overrule", task: OVERRULE_TASK } : { kind: "none", reason: live ? "nothing was applied" : "shadow: nothing was applied" },
+    ...(overruled !== undefined && { overruled: overruledOf(overruled) }),
+    reverse: reverseOf(row, overruled),
     visual: isVisual(row),
     frames: null,
   };
 }
 
 const newestFirst = (a: LogRow, b: LogRow): number => Date.parse(b.resolvedAt) - Date.parse(a.resolvedAt) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+
+const NO_OVERRULES: ReadonlyMap<string, ByRecRow> = new Map();
+
+/** Overrule rows by subject; the overrule tap writes at most one per subject. */
+function overrulesOf(rows: readonly ByRecRow[]): Map<string, ByRecRow> {
+  return new Map(rows.filter((row) => row.result === "overruled").map((row) => [`${row.subject.source}:${row.subject.id}`, row]));
+}
 
 /** Every ship once, every by-rec subject once, a gate folded into the ship of its PR; newest first. */
 export function mergeLog({ ships, gateRows, consoleRows, dayOf }: LogInput): LogRow[] {
@@ -148,9 +169,10 @@ export function mergeLog({ ships, gateRows, consoleRows, dayOf }: LogInput): Log
   });
   const shipped = new Map(ships.map((ship) => [prKeyOf(ship.repo, ship.pr), ship]));
   const shipRows = [...shipped.values()].map((ship) => shipRow(ship, gates.get(prKeyOf(ship.repo, ship.pr)) ?? [], dayOf));
-  const openGates = [...gates].filter(([key]) => !shipped.has(key)).map(([key, rows]) => decisionRow(key, rows, dayOf));
+  const openGates = [...gates].filter(([key]) => !shipped.has(key)).map(([key, rows]) => decisionRow(key, rows, dayOf, NO_OVERRULES));
   const asked = newestPerSubject(consoleRows, (row) => `${row.subject.source}:${row.subject.id}`);
-  const askRows = [...asked].map(([key, rows]) => decisionRow(key, rows, dayOf));
+  const overrules = overrulesOf(consoleRows);
+  const askRows = [...asked].map(([key, rows]) => decisionRow(key, rows, dayOf, overrules));
   return [...shipRows, ...openGates, ...askRows].sort(newestFirst);
 }
 

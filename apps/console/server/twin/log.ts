@@ -28,8 +28,13 @@ const GATE_ROWS = [
   row("gate", "gate-38", "Merge orbit/relay#38", "shadow", 3.5, { repo: "orbit/relay", pr: 38 }, "Reviewer MERGE at head, CI green, no hold."),
 ];
 
+const OVERRULE = { answer: "batch", by: { class: "owner-remote" as const, id: "titan-console", channel: "console:log" } };
+const BATCHED = row("deposit", "dep-digest", "Send the digest per item?", "live", 5, {}, "Per-item sends were read sooner last week.");
+
 const CONSOLE_ROWS = [
   row("deposit", "dep-ceiling", "Keep the retry ceiling at 30 s?", "live", 2, {}, "No send has needed more than 12 s this week."),
+  BATCHED,
+  { ...BATCHED, resolvedAt: iso(4), result: "overruled" as const, overrule: OVERRULE },
   row("round", "kiln-schedule-r2#q1", "Which night does the kiln run?", "shadow", 26, { roundId: "kiln-schedule-r2" }, "Tuesday has the lowest load."),
 ];
 

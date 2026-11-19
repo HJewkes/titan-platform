@@ -45,7 +45,8 @@ function recommendedOf(question: Question): DecisionItem["recommended"] {
   return typeof answer === "string" && labelsOf(question).includes(answer) ? { optionId: answer, by } : undefined;
 }
 
-function itemOf(question: Question, { roundId, openedAt }: SubmittedRound): DecisionItem {
+/** One round question as the decision log's item; the log's overrule tap (TP-6778) records against the same item. */
+export function roundDecisionItem(question: Question, { roundId, openedAt }: Pick<SubmittedRound, "roundId" | "openedAt">): DecisionItem {
   const options = optionsOf(question);
   const recommended = recommendedOf(question);
   return {
@@ -78,6 +79,6 @@ export function roundDecisions(submitted: SubmittedRound): RoundDecision[] {
     const question = submitted.manifest.questions.find((each) => each.id === submittedAnswer.questionId);
     const answer = answerOf(submittedAnswer, submitted.submittedAt, submitted.answerer ?? ROUND_ANSWERER);
     if (question === undefined || answer === null) return [];
-    return [{ questionId: question.id, item: itemOf(question, submitted), answer }];
+    return [{ questionId: question.id, item: roundDecisionItem(question, submitted), answer }];
   });
 }

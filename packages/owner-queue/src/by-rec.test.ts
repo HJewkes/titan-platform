@@ -210,20 +210,38 @@ describe("byRecSubjectOfItem", () => {
 });
 
 describe("byRecRowSchema", () => {
-  it("round-trips a log row", () => {
-    const row = {
-      schema: "titan/auto-by-rec@1",
-      subject: { source: "gate", id: "gate:example", summary: "Merge example-org/example-repo#7" },
-      recommendation: { answer: "merge", by: "example-reviewer", rationale: "MERGE at head, CI green", confidence: 0.9 },
-      openedAt: OPENED,
-      resolvedAt: "2026-03-02T00:05:00.000Z",
-      facts: { head: "a".repeat(40), checks: ["build", "test"], green: true },
-      mode: "shadow",
-      result: "would-resolve",
-      resolver: BY_REC_RESOLVER,
-    };
+  const row = {
+    schema: "titan/auto-by-rec@1",
+    subject: { source: "gate", id: "gate:example", summary: "Merge example-org/example-repo#7" },
+    recommendation: { answer: "merge", by: "example-reviewer", rationale: "MERGE at head, CI green", confidence: 0.9 },
+    openedAt: OPENED,
+    resolvedAt: "2026-03-02T00:05:00.000Z",
+    facts: { head: "a".repeat(40), checks: ["build", "test"], green: true },
+    mode: "shadow",
+    result: "would-resolve",
+    resolver: BY_REC_RESOLVER,
+  };
+  const overrule = { answer: "wait", by: { class: "owner-remote", id: "example-console", channel: "console:log" } };
 
+  it("round-trips a log row", () => {
     expect(byRecRowSchema.parse(JSON.parse(JSON.stringify(row)))).toEqual(row);
+  });
+
+  it("round-trips an overruled row carrying the owner's pick", () => {
+    const overruled = { ...row, mode: "live", result: "overruled", overrule };
+
+    expect(byRecRowSchema.parse(JSON.parse(JSON.stringify(overruled)))).toEqual(overruled);
+  });
+
+  it("refuses an overruled row without the owner's pick, and a pick on any other row", () => {
+    expect(byRecRowSchema.safeParse({ ...row, result: "overruled" }).success).toBe(false);
+    expect(byRecRowSchema.safeParse({ ...row, overrule }).success).toBe(false);
+  });
+
+  it("refuses an overrule attributed to anyone but owner-remote", () => {
+    const parsed = byRecRowSchema.safeParse({ ...row, result: "overruled", overrule: { ...overrule, by: { ...overrule.by, class: "automation" } } });
+
+    expect(parsed.success).toBe(false);
   });
 
   it("refuses a row attributed to anyone but auto-by-rec", () => {

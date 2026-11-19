@@ -545,8 +545,9 @@ const decision = byRecDecision(byRecSubjectOfItem(item), new Date(), policy);
   Shadow and live decide the same; only the sweep's action differs.
 - **Log row** (`byRecRowSchema`, `titan/auto-by-rec@1`): the subject, the recommendation,
   `openedAt`, `resolvedAt`, the facts read, `mode`, `result` (`would-resolve`, `resolved`,
-  `skipped`, `failed`) and `resolver`, always `BY_REC_RESOLVER`
-  (`{ class: "automation", id: "auto-by-rec" }`).
+  `skipped`, `failed`, `overruled`) and `resolver`, always `BY_REC_RESOLVER`
+  (`{ class: "automation", id: "auto-by-rec" }`). An `overruled` row, and only that row, carries
+  `overrule`: the owner's own pick and the `owner-remote` surface it came through.
 
 ## What it deliberately does not do
 

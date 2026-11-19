@@ -4,7 +4,8 @@ export const BY_REC_POLICY_SCHEMA = "titan/auto-by-rec-policy@1";
 export const BY_REC_ROW_SCHEMA = "titan/auto-by-rec@1";
 export const BY_REC_MODES = ["off", "shadow", "live"] as const;
 export const BY_REC_SOURCES = ["gate", "round", "deposit"] as const;
-export const BY_REC_RESULTS = ["would-resolve", "resolved", "skipped", "failed"] as const;
+/** `overruled` is the owner's later pick against a live `resolved` row (TP-6778); only it carries `overrule`. */
+export const BY_REC_RESULTS = ["would-resolve", "resolved", "skipped", "failed", "overruled"] as const;
 /** The fields a policy exclusion can name; `hold`, `path` and `authority` match by prefix, the rest exactly. */
 export const BY_REC_EXCLUDE_FIELDS = ["source", "id", "class", "hold", "category", "by", "path", "authority"] as const;
 
@@ -39,8 +40,14 @@ const recommendationSchema = z.strictObject({
   confidence: z.number().min(0).max(1).optional(),
 });
 
+/** The owner's own pick on an overruled row, and the owner-remote surface it came through. */
+const overruleSchema = z.strictObject({
+  answer: z.string().min(1),
+  by: z.strictObject({ class: z.literal("owner-remote"), id: z.string().min(1), channel: z.string().min(1) }),
+});
+
 /** One auto-by-rec decision, written once per subject and mode: the facts read, what was done and why. */
-export const byRecRowSchema = z.strictObject({
+const rowFields = z.strictObject({
   schema: z.literal(BY_REC_ROW_SCHEMA),
   subject: z.strictObject({ source: z.enum(BY_REC_SOURCES), id: z.string().min(1), summary: text.optional() }),
   recommendation: recommendationSchema,
@@ -51,6 +58,12 @@ export const byRecRowSchema = z.strictObject({
   result: z.enum(BY_REC_RESULTS),
   reason: text.optional(),
   resolver: z.strictObject({ class: z.literal(BY_REC_RESOLVER.class), id: z.literal(BY_REC_RESOLVER.id) }),
+  overrule: overruleSchema.optional(),
+});
+
+export const byRecRowSchema = rowFields.refine((row) => (row.result === "overruled") === (row.overrule !== undefined), {
+  message: "an overruled row, and only that row, carries overrule",
+  path: ["overrule"],
 });
 
 export type ByRecPolicy = z.infer<typeof byRecPolicySchema>;

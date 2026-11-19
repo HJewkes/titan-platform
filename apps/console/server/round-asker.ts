@@ -35,7 +35,7 @@ type AskerRecord = z.infer<typeof AskerRecord>;
 const NotifiedRecord = z.looseObject({ schema: z.literal(NOTIFIED_SCHEMA_ID), seat: z.string() });
 
 /** Undefined for every way `asker.json` can be missing or wrong; never throws. */
-const readAsker = (roundDir: string): Promise<AskerRecord | undefined> => readStateJson(path.join(roundDir, ASKER_FILE), AskerRecord);
+export const readAsker = (roundDir: string): Promise<AskerRecord | undefined> => readStateJson(path.join(roundDir, ASKER_FILE), AskerRecord);
 
 /** Writes the round's asker once; returns the asker the round keeps, undefined when its asker.json is not one. */
 export async function recordAsker(roundDir: string, asker: { seat: string; initiative: string | null }, now: Date): Promise<AskerRecord | undefined> {
