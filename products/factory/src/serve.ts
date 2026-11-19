@@ -49,6 +49,8 @@ import { openFramedHost, type FramedHostOptions } from "./shepherd/frames.js";
 import { GONE_SWEEP_MS, endRunsGoneElsewhere } from "./shepherd/gone-elsewhere.js";
 import type { ClearedMainGate } from "./shepherd/main-ci-cleared.js";
 import { startHeadMovedSweep, type HeadMovedSweepOptions } from "./shepherd/head-moved-sweep.js";
+import { byRecLogPath } from "./shepherd/by-rec-log.js";
+import { startByRecSweep } from "./shepherd/by-rec-sweep.js";
 import { startVisualDeliverySweep } from "./shepherd/visual-delivery-sweep.js";
 import { startRoundShipSweep } from "./shepherd/round-ship-sweep.js";
 import { recheckHeld, resyncShepherd, supersedeTransientGates } from "./shepherd/resync.js";
@@ -197,6 +199,7 @@ export async function startFactoryServer(options: FactoryServerOptions): Promise
   reconcilerRef.health = reconciler.health;
   const sweeps = [sweep, goneSweep, headMovedSweep, fixerSweep, ...packageSweeps, checkoutSweep, deploySweep, mainSweep];
   sweeps.push(digestSweep, ciTimingSweep, pacerSweep, notifySweep, deliverySweep, shipSweep, standingSweep, reconciler.sweep);
+  sweeps.push(services && startByRecSweep(host, services, () => options.routes.config?.get().shepherd?.autoByRec, byRecLogPath(stateDir), log));
   sweeps.push(markerGcSweep(options.routes.config?.get().markers, host.db, options.dbPath, log, options.now));
   if (bot.usage) sweeps.push(...startUsageLog(bot.usage, "bot", log));
   const close = () => closeServer({ sweeps, watches: [thaws, frames, loopDelay], mainWatch, ingress, daemon, unbindCarry, host }, log, options.shutdownGraceMs ?? SHUTDOWN_SWEEP_GRACE_MS);

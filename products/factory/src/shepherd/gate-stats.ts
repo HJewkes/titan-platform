@@ -1,6 +1,8 @@
 import type { GateRecord } from "@titan-design/hitl";
+import { BY_REC_RESOLVER } from "@titan-design/owner-queue";
 import { landGate, stepOf } from "../coordinator-evidence.js";
 import { groupBy, median, round } from "./owner-friction.js";
+import { BY_REC_CANCEL } from "./stale-gates.js";
 
 const HOUR_MS = 3_600_000;
 
@@ -10,7 +12,7 @@ const POLICY = /Policy ([\w-]+)\/([^:\s]+):/;
 export interface GateStatsRow {
   /** `<table>/<row>` from the prompt's `Policy` line, else `step/<step id>` for a gate that names none. */
   policyRow: string;
-  /** `owner-terminal`, `owner-remote`, `coordinator`, `delegate` (resolved under a grant) or `unanswered`; any other class reads as itself. */
+  /** `owner-terminal`, `owner-remote`, `coordinator`, `delegate` (resolved under a grant), `auto-by-rec` or `unanswered`; any other class reads as itself. */
   resolver: string;
   count: number;
   /** Resolved gates counted by the decision they carried, such as `merge`, `abandon`, `approve` or `other`. */
@@ -27,7 +29,11 @@ export function policyRow(gate: GateRecord): string {
   return match ? `${match[1]}/${match[2]}` : `step/${stepOf(gate.id)}`;
 }
 
+/** An approve-merge gate the by-rec sweep cancelled under MRG-AU-RB: the owner left it, and automation answered it. */
+export const isByRecResolve = (gate: GateRecord): boolean => gate.status === "cancelled" && gate.reason?.startsWith(BY_REC_CANCEL) === true;
+
 function resolverBucket(gate: GateRecord): string {
+  if (isByRecResolve(gate)) return BY_REC_RESOLVER.id;
   if (gate.status !== "resolved") return "unanswered";
   if (gate.resolvedEvidence?.kind === "delegate") return "delegate";
   return gate.resolvedBy?.class ?? "unrecorded";
@@ -38,6 +44,12 @@ function decisionOf(payload: unknown): string {
   if ("decision" in payload && typeof payload.decision === "string") return payload.decision;
   if ("approve" in payload && typeof payload.approve === "boolean") return payload.approve ? "approve" : "decline";
   return "other";
+}
+
+/** A by-rec cancel stands for a merge answer; any other gate that no one resolved carried no decision. */
+function decisionsOf(gate: GateRecord): string[] {
+  if (isByRecResolve(gate)) return ["merge"];
+  return gate.status === "resolved" ? [decisionOf(gate.payload)] : [];
 }
 
 /** A closed gate waited until it closed; a pending one is still waiting at `now`. */
@@ -59,8 +71,8 @@ function row(gates: readonly GateRecord[], now: number): GateStatsRow {
     policyRow: policyRow(gates[0]!),
     resolver: resolverBucket(gates[0]!),
     count: gates.length,
-    decisions: countBy(gates.filter((gate) => gate.status === "resolved").map((gate) => decisionOf(gate.payload))),
-    cancelledUnanswered: gates.filter((gate) => gate.status === "cancelled" || gate.status === "expired").length,
+    decisions: countBy(gates.flatMap(decisionsOf)),
+    cancelledUnanswered: gates.filter((gate) => (gate.status === "cancelled" && !isByRecResolve(gate)) || gate.status === "expired").length,
     pending: gates.filter((gate) => gate.status === "pending").length,
     medianHours: round(median(hours)),
     maxHours: round(hours.at(-1)!),

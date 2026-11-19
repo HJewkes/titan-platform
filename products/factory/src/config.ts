@@ -10,6 +10,7 @@ import { isRepoKey } from "./shepherd/seats.js";
 import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
+import { AutoByRecConfigSchema } from "./shepherd/by-rec-config.js";
 import { VisualGateSchema } from "./shepherd/visual-gate-config.js";
 import { RedSeatConfigSchema } from "./shepherd/red-seat-config.js";
 
@@ -268,6 +269,7 @@ export const FactoryConfigSchema = z.object({
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       checkCandidates: z.enum(["off", "record", "propose"]).optional(), // Reviewers' check candidates (TP-6482): absent means record; propose only records until B5.
       visualGate: VisualGateSchema.optional(),
+      autoByRec: AutoByRecConfigSchema.optional(), // TP-6772: the approve-merge by-rec sweep; absent means shadow at 24 h, `off` stops it.
       releaseAppLogin: z.string().regex(/^[^\s[\]]+\[bot\]$/, "must be an App's <app-slug>[bot] login").optional(), // Only a head this App pushed keeps the owner's release answer (TP-5606).
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer

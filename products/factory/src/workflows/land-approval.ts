@@ -22,13 +22,16 @@ export interface ApprovalQuestion {
 
 /**
  * `merge` approves only the head asked about; `merge-by-set` approves it too, but on a set the owner accepted at an earlier
- * head, so no head built on it inherits that approval; `failed` names why a check outside CI found that head red;
+ * head or by an auto-by-rec cancel, so no head built on it inherits that approval; `failed` names why a check outside CI found that head red;
  * `sendBack` is the owner's note for the implementer, and that head never merges.
  */
 export type ApprovalAnswer = "merge" | "merge-by-set" | "abandon" | { failed: string } | { sendBack: string };
 
 /** Marks a gate answer the approved-set carry gave, not the owner; land trusts it for its own head only. */
 export const SET_ANSWER_ORIGIN = "approved-set";
+
+/** Marks the merge answer an auto-by-rec cancel stands for (TP-6772): not the owner's either, so it covers its own head only. */
+export const BY_REC_ANSWER_ORIGIN = "auto-by-rec";
 
 /** Who an approval came from: a human at this head, or the approved set carried from an earlier one. */
 export type ApprovalSource = "human" | "set";
@@ -109,11 +112,13 @@ export function approveMergeGate(rule: PolicyRule, facts: ApproveMergeFacts = {}
     if (!answer.success) throw new Error(`approve-merge answer does not approve head ${question.headSha}: ${answer.error.message}`);
     const { decision, note } = answer.data as { decision: typeof answer.data.decision; note?: unknown };
     if (decision === SEND_BACK) return { sendBack: String(note) };
-    return decision === "merge" && bySet(data) ? "merge-by-set" : decision;
+    return decision === "merge" && headOnly(data) ? "merge-by-set" : decision;
   };
 }
 
-const bySet = (data: unknown): boolean => typeof data === "object" && data !== null && (data as { origin?: unknown }).origin === SET_ANSWER_ORIGIN;
+const HEAD_ONLY_ORIGINS: readonly unknown[] = [SET_ANSWER_ORIGIN, BY_REC_ANSWER_ORIGIN];
+
+const headOnly = (data: unknown): boolean => typeof data === "object" && data !== null && HEAD_ONLY_ORIGINS.includes((data as { origin?: unknown }).origin);
 
 export const DEVICE_CHECK = "device-check";
 
