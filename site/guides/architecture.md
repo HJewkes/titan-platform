@@ -128,6 +128,7 @@ graph TD
   codeGraph --> evidence
   codeGraph --> fixProof
   codeGraph --> retrieval
+  codeGraph --> reviewBurden
   codeGraph --> rpcProtocol
   codeGraph --> storeSqlite
   codeRead --> codeGraph

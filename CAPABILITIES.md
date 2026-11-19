@@ -458,10 +458,11 @@ You need to say how much a pull request asks of its reviewer, or whether a rever
 Key exports:
 
 - `config`: `resolveConfig`
+- `git-diff`: `parseNameStatus`
 - `path-class`: `classifyPath`, `pathClassifier`
 - `footer`: `hasContract`, `parseFooter`
 - `door`: `doorFacts`, `effectiveDoor`, `underDeclared`
-- `score`: `burdenFacts`, `burdenScore`, `scoreParts`, `unitOf`
+- `score`: `burdenFacts`, `burdenScore`, `scoreParts`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/review-burden)
 
 <a id="cap-rpc-protocol"></a>
