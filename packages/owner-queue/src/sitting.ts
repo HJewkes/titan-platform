@@ -3,7 +3,7 @@
  * through them: `<id>.step-<n>` beside the deposit, written once, so a second record keeps the first outcome. Every record
  * appends a line to `sittings.jsonl`. When the last step is recorded, the sitting closes with an answer file naming the
  * tally, so every reader that already treats an answered deposit as closed (the asker cap, the inbox, `inbox answer`)
- * treats a finished sitting the same way.
+ * treats a finished sitting the same way. That answer is class `asker`, which `recheck` never lets settle another item.
  *
  * `as` is self-declared, as in withdraw: the check stops a seat recording steps on another seat's sitting by mistake.
  */
@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { resolveDepositRef } from "./deposit-ref.js";
 import { errno } from "./errno.js";
-import { STEP_OUTCOMES, type OwnerItem, type StepOutcome } from "./schema.js";
+import { ASKER_ANSWER_CLASS, STEP_OUTCOMES, type OwnerItem, type StepOutcome } from "./schema.js";
 import { readAnswer, readSpool, stepFileName, writeAnswer } from "./spool.js";
 import { readWithdrawal } from "./withdraw.js";
 
@@ -112,7 +112,7 @@ async function closeWhenSat(dir: string, item: OwnerItem, as: string, at: string
   const outcomes = ((await withStepOutcomes(dir, item)).steps ?? []).map((step) => step.outcome);
   if (outcomes.some((outcome) => outcome === undefined)) return false;
   const tally = STEP_OUTCOMES.map((outcome) => `${outcomes.filter((each) => each === outcome).length} ${outcome}`).join(", ");
-  await writeAnswer(dir, item.id, { text: `sitting complete: ${tally}`, by: { class: "asker", id: as, channel: SITTING_CLOSE_CHANNEL }, at });
+  await writeAnswer(dir, item.id, { text: `sitting complete: ${tally}`, by: { class: ASKER_ANSWER_CLASS, id: as, channel: SITTING_CLOSE_CHANNEL }, at });
   return true;
 }
 

@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import type { OwnerItem, OwnerItemDeposit } from "@titan-design/owner-queue";
+import { askKey, consolidate, type OwnerItem, type OwnerItemDeposit } from "@titan-design/owner-queue";
 import { recordStep } from "@titan-design/owner-queue/sitting";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { INBOX_DEPOSIT, MAX_OPEN_DEPOSITS_PER_ASKER, inboxCommands } from "./inbox.js";
+import { spoolQueueItems } from "./approval-items.js";
 import { actionFor } from "./inbox-view.js";
 import type { ConsoleContext } from "./owner-guard.js";
 
@@ -53,6 +54,22 @@ describe("the per-asker cap and a sitting", () => {
     await recordStep(dir, id, 1, { outcome: "skipped", as: ASKER, actor: ASKER });
 
     await expect(file(plain("after-close"))).resolves.toMatchObject({ created: true });
+  });
+});
+
+describe("a closed sitting and other owner asks", () => {
+  it("leaves another seat's open ask with the same ask key in the flow when its asker closes the sitting", async () => {
+    const shared = askKey("unit-a/q1");
+    await writeDeposit(dir, { ...plain("other-ask"), asker: "seat-b", keys: [shared] });
+    const { id } = await file({ ...sitting("sit-1", [{ title: "Only", command: "example-cli only" }]), keys: [shared] });
+    await recordStep(dir, id, 1, { outcome: "done", as: ASKER, actor: ASKER });
+
+    const { open, answered } = await spoolQueueItems(dir);
+    const flow = consolidate(open, { answered });
+
+    expect(answered.map((item) => item.id)).toEqual([id]);
+    expect(flow.order.map((item) => item.asker)).toEqual(["seat-b"]);
+    expect(flow.dropped).toEqual([]);
   });
 });
 

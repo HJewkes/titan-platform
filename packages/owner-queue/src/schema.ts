@@ -73,6 +73,11 @@ const answerSchema = z.object({
 });
 
 export const STEP_OUTCOMES = ["done", "skipped"] as const;
+/**
+ * The `by.class` of an answer an item's own asker wrote, as when a sitting's last step closes it. It closes that one
+ * item only: the asker is self-declared, so the answer never settles or flags another item (`recheck`).
+ */
+export const ASKER_ANSWER_CLASS = "asker";
 export const MAX_SITTING_STEPS = 20;
 
 /** One owner step in a sitting: the command to paste, an optional typed op the console can tap, and how to tell it worked. */
