@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an attested closure is never compared with the lock",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "if (head.closure !== row.closure) return [",
+      "replace": "if (false) return [",
+      "kills": [
+        "an added row attesting a step unchanged at a closure the step has moved off fails"
+      ]
+    },
+    {
+      "name": "an attestation beside a version bump is accepted",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "before.bump !== head.bump)) return [",
+      "replace": "false)) return [",
+      "kills": [
+        "an added row attesting a step unchanged while the branch bumps its version fails"
+      ]
+    },
+    {
+      "name": "base rows are judged against the lock too",
+      "file": "scripts/step-closure-check.mjs",
+      "find": "row.pr === prNumber) && !baseAttestations.some((old) => sameRow(old, row)));",
+      "replace": "row.pr === prNumber));",
+      "kills": [
+        "a base row whose closure the step has since left is not re-judged"
+      ]
+    }
+  ]
+}
