@@ -797,8 +797,21 @@ first, grouped by day (`?days=1` to `30`, default 7). It merges three sources an
 - **The console's by-rec rows**: rounds and deposits, from `<state dir>/auto-by-rec.jsonl`.
 
 Each row shows its link, the recommendation and rationale, its opened and resolved times, its resolver and a way back.
-A merged PR links to its GitHub page, whose Revert button opens the revert PR. A live decision gets the overrule tap
-when TP-6778 lands. A tier-2 visual gate (D2) gets a frames slot, which TP-6777 fills.
+A merged PR, or a live gate whose PR is known, links to its GitHub page, whose Revert button opens the revert PR. A
+tier-2 visual gate (D2) gets a frames slot, which TP-6777 fills.
+
+A live round or deposit answer gets an Overrule tap (TP-6778). `log.overrule-options` (read) lists the item's picks
+with the one by-rec took marked, and says why the tap would be refused. `log.overrule` (owner-write, so only the
+owner's session cookie from another device) takes another pick. The resolved answer stays in place, because
+`feedback.json` and the spool answer are written once. Instead the console:
+
+- appends one `overruled` row to `auto-by-rec.jsonl`, naming both picks, with `overrule.by` the console's owner-remote;
+- records the pick in the decision log as an owner-remote answer;
+- tells the asker (the round's `asker.json` seat or the deposit's asker, else tp-operator) through the same seat
+  notifier as a round notice, naming both picks and asking it to reverse what it did on the first.
+
+A `wx` marker under `<state dir>/auto-by-rec/` makes the overrule once per decision; a second is refused. An
+overruled row shows both picks and no tap. A merge has no overrule; its row keeps the revert link.
 
 The header shows the policy's mode and wait, and the exclusions. The floor is owner-queue's `BY_REC_FLOOR`. It has no
 remove control, and each class names the owner-only change that removes it. The owner has not confirmed the floor yet,

@@ -48,7 +48,7 @@ describe("the log merge", () => {
     const rows = mergeLog({ ships: [], gateRows: [], consoleRows: [byRec({ subject: { source: "round", id: "r#q" }, mode: "shadow" }), byRec({ subject: { source: "round", id: "r#q" }, mode: "live" })], dayOf });
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ approval: "auto-by-rec", shadow: true, reverse: { kind: "overrule", task: "TP-6778" } });
+    expect(rows[0]).toMatchObject({ approval: "auto-by-rec", shadow: true, reverse: { kind: "overrule", source: "round", id: "r#q" } });
   });
 
   it("leaves skipped rows out and gives a shadow decision nothing to reverse", () => {
@@ -61,6 +61,21 @@ describe("the log merge", () => {
     const [row] = mergeLog({ ships: [ship(7, "reviewer")], gateRows: [byRec({ facts: { repo: "orbit/relay", pr: 7, decisionClass: "D2" }, mode: "live" })], consoleRows: [], dayOf });
 
     expect(row).toMatchObject({ visual: true, frames: null });
+  });
+
+  it("shows an overruled decision with both picks and no second overrule", () => {
+    const subject = { source: "deposit" as const, id: "dep-2" };
+    const overrule = { answer: "teal", by: { class: "owner-remote" as const, id: "example-console", channel: "console:log" } };
+    const rows = mergeLog({ ships: [], gateRows: [], consoleRows: [byRec({ subject, mode: "live" }), byRec({ subject, mode: "live", result: "overruled", resolvedAt: new Date(NOW - HOUR).toISOString(), overrule })], dayOf });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ key: "deposit:dep-2", overruled: { from: "merge", to: "teal" }, reverse: { kind: "none", reason: "you overruled it" } });
+  });
+
+  it("gives a live gate decision its PR's revert link, never an overrule", () => {
+    const [row] = mergeLog({ ships: [], gateRows: [gate(9, "live")], consoleRows: [], dayOf });
+
+    expect(row?.reverse).toEqual({ kind: "revert", href: "https://github.com/orbit/relay/pull/9" });
   });
 
   it("counts the digest line by approval", () => {

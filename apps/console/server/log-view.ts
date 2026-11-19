@@ -10,6 +10,7 @@ import { readByRecPolicy, readByRecRows } from "./by-rec-log.js";
 import { DEFAULT_DAY_START, dayWindow, type DayWindow } from "./coord-day.js";
 import { approvalOf, type ApprovalRead } from "./log-approval.js";
 import { logHeader, type LogHeader } from "./log-floor.js";
+import { logOverruleCommands, type OverruleDeps } from "./log-overrule.js";
 import type { GateRowsSource } from "./log-gate-rows.js";
 import { digestLine, logCounts, mergeLog, type LogCounts, type LogRow, type ShipInput } from "./log-rows.js";
 import { readCommand } from "./owner-guard.js";
@@ -22,6 +23,8 @@ export interface LogSource {
   gateRows: GateRowsSource;
   dayStart?: string;
   now?: () => number;
+  /** Absent, the overrule tap is not served (TP-6778). */
+  overrule?: OverruleDeps;
 }
 
 export interface LogView {
@@ -123,5 +126,6 @@ export function logCommands(shepherd: ShepherdSource, source: LogSource) {
       result: z.custom<LogView>(),
       run: ({ days }) => readLog(shepherd, source, days),
     }),
+    ...(source.overrule === undefined ? {} : logOverruleCommands(source.overrule)),
   };
 }

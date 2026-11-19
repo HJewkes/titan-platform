@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
-import { Alert, Badge, BadgeText, Button, ButtonText, Card, CardContent, EmptyState, HStack, Link, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
+import { Alert, Badge, BadgeText, Card, CardContent, EmptyState, HStack, Link, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
 import type { LogRow } from "../../server/log-rows.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
 import { parseRoute, open } from "../router.js";
 import { Spinner } from "../shell/Loading.js";
+import { OverruleTap } from "./LogOverrule.js";
 import { LogPolicyHeader } from "./LogPolicy.js";
 import { logTime } from "./log-format.js";
-import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
+import { PHONE_TAP_LINK } from "./phone.js";
 
 type LogView = ServedCommands["log.list"]["result"];
 
@@ -27,7 +28,7 @@ function daysFrom(query: string | undefined): number | undefined {
 /**
  * Decisions and ships (TP-6775): every merged PR and every auto-by-rec decision, newest first by day, with how each was
  * approved, the recommendation and its rationale, and the way to reverse it. The by-rec policy and its exclusion floor
- * head the page. Read only; the overrule tap arrives with TP-6778 and the visual rows' frames with TP-6777.
+ * head the page. A live round or deposit answer takes the Overrule tap (TP-6778); the visual rows' frames come with TP-6777.
  */
 export function LogPage({ query }: { query?: string }): ReactNode {
   const days = daysFrom(query);
@@ -91,6 +92,7 @@ function LogRowCard({ row }: { row: LogRow }): ReactNode {
           <RowTitle row={row} />
           <RowBadges row={row} />
           <Recommendation row={row} />
+          <Overruled row={row} />
           <Typography variant="caption" color="secondary" className="break-words">
             {[row.openedAt === undefined ? undefined : `Opened ${logTime(row.openedAt)}`, `Resolved ${logTime(row.resolvedAt)}`, `by ${row.resolver}`].filter(Boolean).join(" · ")}
           </Typography>
@@ -137,6 +139,16 @@ function Recommendation({ row }: { row: LogRow }): ReactNode {
   );
 }
 
+function Overruled({ row }: { row: LogRow }): ReactNode {
+  if (row.overruled === undefined) return null;
+  const { from, to, at } = row.overruled;
+  return (
+    <Typography variant="body2" className="break-words" testID={`log-overruled-picks-${row.key}`}>
+      {`Overruled ${logTime(at)}: auto-by-rec picked ${from}; you picked ${to}.`}
+    </Typography>
+  );
+}
+
 /** Slice G (TP-6777) fills this with the visual gate's before and after frames. */
 function FramesSlot({ row }: { row: LogRow }): ReactNode {
   return (
@@ -157,15 +169,6 @@ function Reverse({ row }: { row: LogRow }): ReactNode {
       </Link>
     );
   }
-  if (reverse.kind === "overrule") {
-    return (
-      <HStack gap={2} align="center" wrap>
-        <Button size="sm" variant="outline" isDisabled className={PHONE_TAP} testID={`log-overrule-${row.key}`}>
-          <ButtonText>Overrule</ButtonText>
-        </Button>
-        <Typography variant="caption" color="secondary">{`The overrule tap arrives with ${reverse.task}.`}</Typography>
-      </HStack>
-    );
-  }
+  if (reverse.kind === "overrule") return <OverruleTap rowKey={row.key} reverse={reverse} />;
   return <Typography variant="caption" color="secondary">{`Nothing to reverse: ${reverse.reason}.`}</Typography>;
 }

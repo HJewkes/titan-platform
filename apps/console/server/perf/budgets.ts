@@ -59,6 +59,7 @@ export const RPC_BUDGETS: readonly RpcBudget[] = [
   row("console.build"),
   row("coord.cards", { date: "2031-01-01" }, { maxMs: 100, maxBytes: 14 * KB, maxUpstreamCalls: 82, maxUpstreamCallsWarm: 1, maxUpstreamBytes: 920 * KB }),
   row("coord.pools", {}, { maxBytes: 4 * KB, maxUpstreamCalls: 0 }),
+  row("log.overrule-options", { source: "deposit", id: "deposit:perf" }, { maxUpstreamCalls: 0 }, "the fixture holds no live auto-by-rec answer to overrule"),
   row("log.list", { days: 7 }, { maxBytes: 64 * KB, maxUpstreamCalls: 81, maxUpstreamCallsWarm: 1, maxUpstreamBytes: 920 * KB }),
   row("coord.shipped", { date: "2031-01-01" }, { maxBytes: 12 * KB, maxUpstreamCalls: 81, maxUpstreamCallsWarm: 0, maxUpstreamBytes: 920 * KB }),
   row("gates.strip", RUN, { maxBytes: 1 * KB, maxUpstreamCalls: 4, maxUpstreamBytes: 135 * KB }),

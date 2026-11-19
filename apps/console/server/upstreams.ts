@@ -11,7 +11,8 @@ import { brokerVerdicter } from "./broker-verdict.js";
 import type { ConsoleSources } from "./commands.js";
 import { DEFAULT_CAP_EXEMPT_ASKERS, type ConsoleConfig } from "./config.js";
 import { dayStartFrom } from "./coord-day.js";
-import { createDecisionLog, type HumanOnly } from "./decision-log.js";
+import { createDecisionLog, type DecisionLog, type HumanOnly } from "./decision-log.js";
+import type { OverruleDeps } from "./log-overrule.js";
 import { factoryNeeds } from "./factory.js";
 import { timedFetch, type UpstreamObserver } from "./perf/timed-fetch.js";
 import { factoryGateAnswer } from "./gate-answer.js";
@@ -178,6 +179,18 @@ function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Lo
   });
 }
 
+/** The decision log every owner answer is recorded in, and the two sources that answer through it: round listeners and the log's overrule tap. */
+function ownerAnswerSourcesOf(config: ConsoleConfig, activeWork: ActiveWork, shepherd: ShepherdSource, logger: Logger): Pick<ConsoleSources, "decisionLog" | "listeners" | "log"> {
+  const decisionLog = createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger });
+  const log = { stateDir: config.stateDir, gateRows: factoryGateRows(config.factoryBin), dayStart: dayStartFrom(config.dayStart), overrule: overruleDepsOf(config, decisionLog) };
+  return { decisionLog, listeners: listenersOf(config, shepherd, logger), log };
+}
+
+/** The log's overrule tap records in the same decision log as every other owner answer, and tells the asker as a round notice does. */
+function overruleDepsOf(config: ConsoleConfig, decisionLog: DecisionLog): OverruleDeps {
+  return { stateDir: config.stateDir, inboxDir: config.inboxDir, roundsDir: config.roundsDir, decisionLog, ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }) };
+}
+
 function coordinatorOf(config: ConsoleConfig, shepherd: ShepherdSource, activeWork: ActiveWork): ConsoleSources["coordinator"] {
   return { roots: config.coordinatorRoots, dayStart: dayStartFrom(config.dayStart), cards: { shepherd, activeWork, eventsDbPath: config.agentChatEventsDbPath } };
 }
@@ -200,14 +213,12 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     coordinator: coordinatorOf(config, shepherd, activeWork),
     factory: factoryNeeds(config.factoryPort, undefined, recorder),
     hostSurfaces: config.hostSurfaces,
-    decisionLog: createDecisionLog({ stateDir: config.stateDir, decisionsFile: config.decisionsFile, humanOnly: humanOnlyFrom(activeWork), logger }),
-    listeners: listenersOf(config, shepherd, logger),
+    ...ownerAnswerSourcesOf(config, activeWork, shepherd, logger),
     ...(config.agentChatBin !== undefined && { videoNotify: seatNotifier(config.agentChatBin) }),
     ...(config.explainerBin !== undefined && { explainerBin: config.explainerBin }),
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
     shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
-    log: { stateDir: config.stateDir, gateRows: factoryGateRows(config.factoryBin), dayStart: dayStartFrom(config.dayStart) },
     ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
     ...(config.scorecardStore !== undefined && { scorecard: { storeFile: config.scorecardStore } }),
   };

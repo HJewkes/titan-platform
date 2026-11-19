@@ -393,7 +393,8 @@ declare const BY_REC_POLICY_SCHEMA = "titan/auto-by-rec-policy@1";
 declare const BY_REC_ROW_SCHEMA = "titan/auto-by-rec@1";
 declare const BY_REC_MODES: readonly ["off", "shadow", "live"];
 declare const BY_REC_SOURCES: readonly ["gate", "round", "deposit"];
-declare const BY_REC_RESULTS: readonly ["would-resolve", "resolved", "skipped", "failed"];
+/** `overruled` is the owner's later pick against a live `resolved` row (TP-6778); only it carries `overrule`. */
+declare const BY_REC_RESULTS: readonly ["would-resolve", "resolved", "skipped", "failed", "overruled"];
 /** The fields a policy exclusion can name; `hold`, `path` and `authority` match by prefix, the rest exactly. */
 declare const BY_REC_EXCLUDE_FIELDS: readonly ["source", "id", "class", "hold", "category", "by", "path", "authority"];
 /** Who an auto-by-rec resolution is attributed to: never the owner, never a coordinator delegate. */
@@ -443,7 +444,6 @@ declare const byRecPolicySchema: z.ZodObject<{
         note: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>>;
 }, z.core.$strict>;
-/** One auto-by-rec decision, written once per subject and mode: the facts read, what was done and why. */
 declare const byRecRowSchema: z.ZodObject<{
     schema: z.ZodLiteral<"titan/auto-by-rec@1">;
     subject: z.ZodObject<{
@@ -470,6 +470,7 @@ declare const byRecRowSchema: z.ZodObject<{
     }>;
     result: z.ZodEnum<{
         failed: "failed";
+        overruled: "overruled";
         resolved: "resolved";
         skipped: "skipped";
         "would-resolve": "would-resolve";
@@ -479,6 +480,14 @@ declare const byRecRowSchema: z.ZodObject<{
         class: z.ZodLiteral<"automation">;
         id: z.ZodLiteral<"auto-by-rec">;
     }, z.core.$strict>;
+    overrule: z.ZodOptional<z.ZodObject<{
+        answer: z.ZodString;
+        by: z.ZodObject<{
+            class: z.ZodLiteral<"owner-remote">;
+            id: z.ZodString;
+            channel: z.ZodString;
+        }, z.core.$strict>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 type ByRecPolicy = z.infer<typeof byRecPolicySchema>;
 type ByRecPolicyInput = z.input<typeof byRecPolicySchema>;
