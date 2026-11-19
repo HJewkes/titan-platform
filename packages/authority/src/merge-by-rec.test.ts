@@ -13,6 +13,19 @@ const APP = 15368;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const OPENED_AT = Date.UTC(2026, 0, 1);
 
+const WHEN: ConditionKind[] = [
+  "owner-gate-silent-24h",
+  "gate-recommends-merge",
+  "verdict-merge-at-head",
+  "required-contexts-green",
+  "no-non-green-run",
+  "merge-tree-clean",
+  "repo-not-frozen",
+  "no-protected-path-change",
+  "no-g10-hold",
+  "no-release-path",
+];
+
 // The row exactly as the owner approves it (TP-6765 plan, step OS1).
 const APPROVED_ROW = {
   id: "MRG-AU-RB",
@@ -21,21 +34,9 @@ const APPROVED_ROW = {
   verdict: "allow",
   condition:
     "Owner decision 2026-11-19 (TP-6765): an approve-merge gate whose recommended answer is merge and that the owner left unanswered for 24 h at the same head resolves to merge, logged as auto-by-rec. The dispatched reviewer's MERGE at the exact head and green required checks still hold at resolve time; no g10 hold, protected, release or authority path. Otherwise MRG-AU gates.",
-  when: [
-    "owner-gate-silent-24h",
-    "gate-recommends-merge",
-    "verdict-merge-at-head",
-    "required-contexts-green",
-    "no-non-green-run",
-    "merge-tree-clean",
-    "repo-not-frozen",
-    "no-protected-path-change",
-    "no-g10-hold",
-    "no-release-path",
-  ],
+  when: WHEN,
   evidence: ["E-gate", "E-gh", "E-rev"],
 };
-const WHEN = APPROVED_ROW.when as ConditionKind[];
 
 /** A gate left a day at its head with merge recommended, on a clean PR. Shepherd, not the reviewer, asks, and no seat grants merge-on-green, so MRG-AU-RV cannot match. */
 function byRecFacts(): MergeFacts {
