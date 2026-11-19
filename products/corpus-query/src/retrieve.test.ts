@@ -1,4 +1,6 @@
 import { openDatabase, type Db } from "@titan-design/store-sqlite";
+import { appendFileSync, truncateSync } from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildMatch } from "./match.js";
 import { displayRef } from "./display-ref.js";
@@ -101,6 +103,20 @@ describe("retrieve", () => {
     const [first] = retrieve(db, { termGroups: [["lantern"], ["won"]] }, { window: 1 }).passages;
 
     expect(readPassage(db, root, first!)).toEqual(["Mist.", "The lantern cup was won today.", "Calm."]);
+  });
+
+  it("throws instead of padding when the file was truncated after indexing", () => {
+    const [first] = retrieve(db, { termGroups: [["lantern"], ["won"]] }, { window: 1 }).passages;
+    truncateSync(path.join(root, "harbour-masters/book_01/chapter_01.txt"), 20);
+
+    expect(() => readPassage(db, root, first!)).toThrow(/changed since it was indexed/);
+  });
+
+  it("throws when the file was edited after indexing", () => {
+    const [first] = retrieve(db, { termGroups: [["lantern"], ["won"]] }, { window: 1 }).passages;
+    appendFileSync(path.join(root, "harbour-masters/book_01/chapter_01.txt"), "\n\nAdded later.");
+
+    expect(() => readPassage(db, root, first!)).toThrow(/changed since it was indexed/);
   });
 });
 
