@@ -8,7 +8,7 @@ import { isGithubPath } from "./ci-policy-read.js";
 export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
 
 /** A PR at one head; manifests are read at its merge base with `baseRef` and at `head`. */
-export interface ReleaseDiffTarget {
+interface ReleaseDiffTarget {
   repo: RepoSlug;
   head: string;
 }

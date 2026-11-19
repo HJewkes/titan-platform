@@ -20,22 +20,14 @@
       ]
     },
     {
-      "name": "the table stops holding store.ts, the hold writer",
+      "name": "the table stops holding take-verdict.ts and store.ts, the hold feeder and writer",
       "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": "\"store.ts\", ",
-      "replace": "",
+      "find": "\"take-verdict.ts\", \"store.ts\", \"events.ts\"",
       "kills": [
-        "the G10 hold table holds store.ts, which writes or feeds the hold without a value import from a root"
-      ]
-    },
-    {
-      "name": "the table stops holding take-verdict.ts, the caller of grant-withheld.ts",
-      "file": "products/factory/src/shepherd/g10-class-rules.ts",
-      "find": "\"take-verdict.ts\", ",
-      "replace": "",
-      "kills": [
+        "the G10 hold table holds store.ts, which writes or feeds the hold without a value import from a root",
         "the G10 hold table holds take-verdict.ts, which writes or feeds the hold without a value import from a root"
-      ]
+      ],
+      "replace": "\"events.ts\""
     },
     {
       "name": "the panel stops being held whole",
@@ -44,6 +36,15 @@
       "replace": "",
       "kills": [
         "the G10 hold table holds the panel module index.ts the hold and the sign-off run through"
+      ]
+    },
+    {
+      "name": "the release reads the changed paths by a type-only import",
+      "file": "products/factory/src/shepherd/g10-release.ts",
+      "find": "import { pinnedPaths } from \"./pr-changed-paths.js\";",
+      "replace": "import type { pinnedPaths } from \"./pr-changed-paths.js\";",
+      "kills": [
+        "the G10 hold table finds the modules the hold decision runs through"
       ]
     }
   ]
