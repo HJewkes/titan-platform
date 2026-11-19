@@ -490,6 +490,9 @@ importers:
       '@titan-design/retrieval':
         specifier: workspace:^
         version: link:../retrieval
+      '@titan-design/review-burden':
+        specifier: workspace:^
+        version: link:../review-burden
       '@titan-design/rpc-protocol':
         specifier: workspace:^
         version: link:../rpc-protocol
