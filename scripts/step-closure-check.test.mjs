@@ -70,9 +70,16 @@ function gitWithRefs(filesByRef) {
   };
 }
 
-function checkRows({ baseRows, headRows, prNumber, headFiles = fileRows(headRows) }) {
+/** The committed lock with each row's step at the row's closure, so the rows attest closures the steps have. */
+function lockOf(rows, version = { schemaHash: "schema-1", bump: 0 }) {
+  const steps = { "ci-wait": { closure: "closure-1", ...version } };
+  for (const { step, closure } of rows) steps[step] = { closure, ...version };
+  return JSON.stringify(steps);
+}
+
+function checkRows({ baseRows, headRows, prNumber, headFiles = fileRows(headRows), headLock = lockOf(headRows) }) {
   const git = gitWithRefs({ "origin/main": fileRows(baseRows) });
-  return runCheck({ git, ...tree({ [LOCK_PATH]: lock("closure-1"), ...headFiles }), check: passing, base: "origin/main", prNumber });
+  return runCheck({ git, ...tree({ [LOCK_PATH]: headLock, ...headFiles }), check: passing, base: "origin/main", prNumber });
 }
 
 it("an added attestation row naming another PR fails", () => {
@@ -121,7 +128,7 @@ const CHILD_PR = 8;
 function checkAgainstResolvedBase({ env, attestationsByRef, headRows }) {
   const byRef = Object.fromEntries(Object.entries(attestationsByRef).map(([ref, rows]) => [ref, fileRows(rows)]));
   const base = resolveBase([], env);
-  return runCheck({ git: gitWithRefs(byRef), ...tree({ [LOCK_PATH]: lock("closure-1"), ...fileRows(headRows) }), check: passing, base, prNumber: CHILD_PR });
+  return runCheck({ git: gitWithRefs(byRef), ...tree({ [LOCK_PATH]: lockOf(headRows), ...fileRows(headRows) }), check: passing, base, prNumber: CHILD_PR });
 }
 
 it("a PR stacked on a parent that added a row passes when judged against its own base", () => {
@@ -156,7 +163,8 @@ it("the base is argv, then CLOSURE_BASE, then the PR base, then origin/main", ()
 });
 
 it("a row in a file named for another PR fails, so each PR writes only its own file", () => {
-  const result = checkRows({ baseRows: [], headRows: [], prNumber: 8, headFiles: { [`${ATTESTATIONS_DIR}/9.json`]: JSON.stringify([row("ci-wait", CLOSURE_A, 8)]) } });
+  const misplaced = [row("ci-wait", CLOSURE_A, 8)];
+  const result = checkRows({ baseRows: [], headRows: [], prNumber: 8, headFiles: { [`${ATTESTATIONS_DIR}/9.json`]: JSON.stringify(misplaced) }, headLock: lockOf(misplaced) });
 
   expect(result.failures).toEqual([`${ATTESTATIONS_DIR}/9.json: a row names PR 8; it belongs in 8.json`]);
 });
