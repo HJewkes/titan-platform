@@ -227,6 +227,9 @@ interface UsageFold {
 /** Picks non-overlapping measurements: deltas win over snapshots, which describe the same spend. */
 declare function foldUsage(measurements: Iterable<UsageMeasurement>): UsageFold;
 
+/** Sorted keys, no whitespace, undefined members dropped; anything that would not survive JSON is refused. */
+declare function canonicalJson(value: unknown): string;
+
 /** Native conversation identity. Namespace identifies a host/account corpus, not a path. */
 interface ConversationIdentity {
     harness: string;
@@ -283,4 +286,4 @@ type UsageMeasurement = {
     sequence: number;
 });
 
-export { type AgentIdentity, CORRELATION_KEY_PATTERN, type ConversationIdentity, EXECUTION_PHASES, type ExecutionCorrelations, type ExecutionFencing, type ExecutionIdentity, type ExecutionOwnerFence, type ExecutionOwnerLease, type ExecutionPhase, type ExecutionReconcileOutcome, type ExecutionRecord, type ExecutionReducerOptions, type ExecutionTerminal, type ExecutionTransition, ExecutionTransitionError, type ExecutionTransitionErrorCode, type HandoffIdentity, type LifecycleExecutionTarget, MAX_CORRELATIONS, MAX_CORRELATION_VALUE_LENGTH, RESERVED_CORRELATION_PREFIXES, type SurfaceIdentity, TERMINAL_EXECUTION_PHASES, type TerminalExecutionPhase, type TokenCounts, type UsageFold, type UsageMeasurement, conversationItemRef, conversationRef, correlationKey, foldUsage, isTerminalExecutionPhase, reduceExecutionTransition, validateCorrelations };
+export { type AgentIdentity, CORRELATION_KEY_PATTERN, type ConversationIdentity, EXECUTION_PHASES, type ExecutionCorrelations, type ExecutionFencing, type ExecutionIdentity, type ExecutionOwnerFence, type ExecutionOwnerLease, type ExecutionPhase, type ExecutionReconcileOutcome, type ExecutionRecord, type ExecutionReducerOptions, type ExecutionTerminal, type ExecutionTransition, ExecutionTransitionError, type ExecutionTransitionErrorCode, type HandoffIdentity, type LifecycleExecutionTarget, MAX_CORRELATIONS, MAX_CORRELATION_VALUE_LENGTH, RESERVED_CORRELATION_PREFIXES, type SurfaceIdentity, TERMINAL_EXECUTION_PHASES, type TerminalExecutionPhase, type TokenCounts, type UsageFold, type UsageMeasurement, canonicalJson, conversationItemRef, conversationRef, correlationKey, foldUsage, isTerminalExecutionPhase, reduceExecutionTransition, validateCorrelations };
