@@ -20,18 +20,21 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
 - `evaluate(table, request)`: the decision for one request. No matching rule means deny.
   A tainted actor on a rule marked `taintEscalates` gets a gate only the owner at a
   terminal resolves.
-- The table holds 124 rules: 51 allow, 6 gate and 67 deny.
+- The table holds 125 rules: 52 allow, 6 gate and 67 deny.
 - The `decider` actor class may only `answer-question`, and only through ANS-DC-QA: the
   gate's rule kind is exactly `question` and its category's mode is exactly `auto`
   (`request.facts.question = { ruleKind, mode }`). Any other kind or mode, a missing fact or a
   tainted request is refused by ANS-DC. Every other action by `decider`, and `answer-question`
   by every other actor, is denied. `decider` is never in `RESOLVER_CLASSES`.
-- A rule with `when` (MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA today) applies only when every condition holds on
+- A rule with `when` (MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS, MRG-AU-RB and ANS-DC-QA today) applies only when every condition holds on
   `request.facts` and `request.tainted` is an own property set to exactly `false`; otherwise the pair's unconditional rule
   decides and the reason names what was unmet. `unmetConditions(when, facts)` lists the failing conditions.
   MRG-AU-RS never carries across a merge-up whose base side has a path that is or is under `packages/authority/`,
   `packages/tool-guard/`, `.github/` or `.codewatch/` (a symlink or submodule at that name counts), or is the file
   `.egress-allow`; `isCarryFencedPath(path)` is that test.
+  MRG-AU-RB merges an approve-merge gate the owner left 24 h at its head on a merge recommendation
+  (`facts.merge.ownerGate`, `holdClasses`, `headRef`); a g10 hold, a fenced, skill or release path
+  never matches.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
   and rebuilds them as plain data on null-prototype objects. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition instead of
   throwing, and so does a sparse array (a hole would read through to the prototype).

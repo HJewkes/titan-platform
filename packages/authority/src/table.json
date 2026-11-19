@@ -162,6 +162,30 @@
       ]
     },
     {
+      "id": "MRG-AU-RB",
+      "action": "merge",
+      "actor": "automation",
+      "verdict": "allow",
+      "condition": "Owner decision 2026-11-19 (TP-6765): an approve-merge gate whose recommended answer is merge and that the owner left unanswered for 24 h at the same head resolves to merge, logged as auto-by-rec. The dispatched reviewer's MERGE at the exact head and green required checks still hold at resolve time; no g10 hold, protected, release or authority path. Otherwise MRG-AU gates.",
+      "when": [
+        "owner-gate-silent-24h",
+        "gate-recommends-merge",
+        "verdict-merge-at-head",
+        "required-contexts-green",
+        "no-non-green-run",
+        "merge-tree-clean",
+        "repo-not-frozen",
+        "no-protected-path-change",
+        "no-g10-hold",
+        "no-release-path"
+      ],
+      "evidence": [
+        "E-gate",
+        "E-gh",
+        "E-rev"
+      ]
+    },
+    {
       "id": "MRG-DC",
       "action": "merge",
       "actor": "decider",
