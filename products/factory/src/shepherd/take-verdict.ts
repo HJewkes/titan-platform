@@ -9,6 +9,7 @@ import { attestUnmetSteps } from "./attest-read.js";
 import { AWAIT_VERDICT_STEP } from "./await-verdict.js";
 import { ciUnreadAsNone } from "./ci-unread.js";
 import { correctOnce } from "./correct-verdict.js";
+import { recordCheckCandidatesAt } from "./check-candidates-step.js";
 import { fileFollowUpsAt } from "./follow-ups-step.js";
 import { evidenceOrGate } from "./merge-evidence-gate.js";
 import type { MergeEvidenceInput } from "./merge-facts.js";
@@ -102,7 +103,9 @@ function limitHeld(ctx: WorkflowContext, target: ReviewTarget, result: AwaitedRe
  */
 export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, scope?: ScopeRound): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
   const taken = await settleAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);
-  if (!("held" in taken)) await fileFollowUpsAt(ctx, target, taken.awaited);
+  if ("held" in taken) return taken;
+  await fileFollowUpsAt(ctx, target, taken.awaited);
+  await recordCheckCandidatesAt(ctx, target, taken.awaited);
   return taken;
 }
 

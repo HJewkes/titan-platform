@@ -42,6 +42,7 @@ import type { MachineStopWatch } from "./machine-stop.js";
 import type { VisualReadsWiring } from "./visual-tier-guard.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { FOLLOW_UPS_STEPS, followUpsRoute, type FollowUpsWiring } from "./follow-ups-step.js";
+import { CHECK_CANDIDATES_STEPS, checkCandidatesRoute, type CheckCandidatesWiring } from "./check-candidates-step.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import type { HoldMember, PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelVerdictRoute, plannedPanel, proofPlanFields, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
@@ -79,6 +80,7 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...SCOPE_CHECK_STEPS,
   { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
   ...FOLLOW_UPS_STEPS,
+  ...CHECK_CANDIDATES_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -171,7 +173,7 @@ const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
   holds(intent)(agent) && (agent.presence !== "exited" || (agent.lastWrittenAt !== undefined && agent.lastWrittenAt >= intent.at));
 
 export interface ReviewWiring
-  extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, OwnerValidateTasksWiring, VisualReadsWiring, FollowUpsWiring, OwnDiffWiring {
+  extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, OwnerValidateTasksWiring, VisualReadsWiring, FollowUpsWiring, CheckCandidatesWiring, OwnDiffWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
@@ -333,6 +335,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     scopeCheckRoute(deps.now),
     reviewShadowRoute(deps.now, wiring),
     followUpsRoute(deps.now, wiring?.followUps),
+    checkCandidatesRoute(deps, wiring),
   ];
 };
 

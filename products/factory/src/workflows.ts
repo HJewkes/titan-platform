@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { measurementAuditWorkflow } from "./audit/workflow.js";
 import { deployCheckoutAncestry } from "./build-ancestry.js";
 import { deployCheckoutFor } from "./cli-service.js";
-import { configPath, factoryStateDir, loadConfig, readConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
+import { checkCandidatesMode, configPath, factoryStateDir, loadConfig, readConfig, type FactoryConfig, type ShepherdRepoConfig } from "./config.js";
 import { configRef, liveField, type ConfigRef } from "./config-ref.js";
 import { configuredMainWatch } from "./main-watch-ports.js";
 import { configuredMergeWake } from "./merge-wake.js";
@@ -103,7 +103,7 @@ function configuredReview(shepherd: FactoryConfig["shepherd"], config: ConfigRef
   const under = (configDir: string | undefined, fallbackConfigDirs?: () => readonly string[]) => agentChatReviewerDispatch({ agentChatBin, roles: configuredRoles(review), configDir, fallbackConfigDirs, cwdFor: (repo) => boundCheckout(seats(), repo, repos()), roster, gate, isFixer, onMachineHold: machineStop.note });
   const { primary: dispatch, accounts } = reviewAccounts(review, liveField(config, "shepherd.review.fallbackConfigDirs"), under, seatAlert(agentChatBin, seats, roster));
   const codewatch = review.codewatchRepos && codewatchReader(ghCodewatchReport(), review.codewatchRepos, cacheHeadLines({ ports: hostCarryPorts }));
-  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), visualTier: visualTierOf(config), deploySkew: deploySkew(), oldPath: judgeOldPath({ tags: activeWorkTaskTags({ origin: activeWorkOrigin(env) }) }), ownerValidateTasks: activeWorkTaskForApproval({ origin: activeWorkOrigin(env) }),followUps: liveFollowUpSinks(env), ...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }), ...workflowModeOf(review.workflow), ownDiff: true as const };
+  const wiring = { dispatch, lineage: dispatch.lineage, accounts, reader: transcriptReviewerReader({ roster: dispatch.roster }), timeoutMs: review.verdictTimeoutMs, sessionStartTimeoutMs: review.sessionStartTimeoutMs, reviewAppId: shepherd?.reviewCheck?.appId, roles: configuredRoles(review), machineStop, profileInstalled: (profile: string) => installedHeadless(profile), visualThreshold: visualThresholdOf(config), visualTier: visualTierOf(config), deploySkew: deploySkew(), oldPath: judgeOldPath({ tags: activeWorkTaskTags({ origin: activeWorkOrigin(env) }) }), ownerValidateTasks: activeWorkTaskForApproval({ origin: activeWorkOrigin(env) }),followUps: liveFollowUpSinks(env), checkCandidatesMode: () => checkCandidatesMode(config.get()),...(codewatch && { codewatch }), ...(review.panel && { panel: review.panel }), ...(review.scopedRereview && { scopedRereview: review.scopedRereview }), ...(review.scopeCheck && { scopeCheck: review.scopeCheck }), ...workflowModeOf(review.workflow), ownDiff: true as const };
   return withHoldAdversary(wiring, holdAdversary(review, config, under, wiring.profileInstalled));
 }
 

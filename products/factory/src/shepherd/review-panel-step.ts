@@ -12,6 +12,7 @@ import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, typ
 import { isAdversaryHold } from "./hold-slots.js";
 import { CORRECT_VERDICT_STEP, correctOnce } from "./correct-verdict.js";
 import { AuthoritySchema, Awaited, Dispatched } from "./review-schemas.js";
+import { recordCheckCandidatesAt } from "./check-candidates-step.js";
 import { fileFollowUpsAt } from "./follow-ups-step.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { MAX_NOT_STARTED_REVIEWS, REVIEW_STEP } from "./review-steps.js";
@@ -185,6 +186,7 @@ async function awaitMembers(ctx: WorkflowContext, target: ReviewTarget, members:
     const awaiting = { ...target, shape, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
     const awaited = await awaitMember(ctx, target, shape, awaiting);
     await fileFollowUpsAt(ctx, target, awaited, `:${shape}`);
+    await recordCheckCandidatesAt(ctx, target, awaited, `:${shape}`, shape);
     results.push({ shape, result: memberResultOf(awaited) });
   }
   return results;
