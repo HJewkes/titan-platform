@@ -89,6 +89,15 @@ export async function maxOnDiskTaskNumberFromFilenames(
   slug: string,
 ): Promise<number> {
   const dir = path.join(getInitiativeDir(slug), 'tasks');
+  // Archived tasks keep their ids: reissuing one would collide with its history.
+  const [live, archived] = await Promise.all([
+    maxFilenameNumber(prefix, dir),
+    maxFilenameNumber(prefix, path.join(dir, 'archive')),
+  ]);
+  return Math.max(live, archived);
+}
+
+async function maxFilenameNumber(prefix: string, dir: string): Promise<number> {
   let entries: string[];
   try {
     entries = await fs.readdir(dir);
