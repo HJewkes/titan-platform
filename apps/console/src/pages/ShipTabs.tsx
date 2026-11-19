@@ -14,6 +14,8 @@ const PR_TABS = [
   { key: "context", label: "Context" },
 ] as const;
 
+const DIFF_TAB = PR_TABS.findIndex((each) => each.key === "diff");
+
 /** The element id a blocker's link scrolls to; the page puts it on the question, Addressed tick, frame or round note. */
 export function shipTargetId(target: ShipBlockerTarget): string {
   if (target.kind === "question") return `ship-question-${target.id}`;
@@ -50,11 +52,13 @@ interface PrTabsProps {
   context: ReactNode;
   /** The Ship bar, under every tab. */
   bar: ReactNode;
+  /** Open on Diff, so the owner sees the changed images without hunting for them (TP-6759). */
+  diffFirst?: boolean;
 }
 
 /** The open tab, and a jump that opens the tab holding an element before it focuses it. */
-function useTabJump() {
-  const [tab, setTab] = useState(0);
+function useTabJump(first: number) {
+  const [tab, setTab] = useState(first);
   const [pending, setPending] = useState<string>();
   const root = useRef<HTMLDivElement>(null);
   // Focus waits for the render that shows the target's tab: a hidden element takes no focus.
@@ -72,8 +76,8 @@ function useTabJump() {
   return { tab, setTab, jump, root };
 }
 
-export function PrTabs({ pr, review, diff, context, bar }: PrTabsProps): ReactNode {
-  const { tab, setTab, jump, root } = useTabJump();
+export function PrTabs({ pr, review, diff, context, bar, diffFirst = false }: PrTabsProps): ReactNode {
+  const { tab, setTab, jump, root } = useTabJump(diffFirst ? DIFF_TAB : 0);
   const bodies = { review, diff, context };
   return (
     <ShipJump.Provider value={jump}>

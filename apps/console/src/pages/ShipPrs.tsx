@@ -150,6 +150,11 @@ function PrsHeading({ round, units }: { round: ValidRound; units: readonly PrUni
   );
 }
 
+/** A PR opens on Diff when one of its images changed; a PR with only unchanged images keeps Review first, as they sit folded away. */
+function hasChangedFrames(round: PrsState["round"], keys: ReadonlySet<string>): boolean {
+  return round.manifest.variants.some((variant) => keys.has(variant.key) && variant.image !== undefined && variant.change !== "unchanged");
+}
+
 function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNode {
   const { question, group } = unit;
   return (
@@ -163,6 +168,7 @@ function PrSection({ unit, state }: { unit: PrUnit; state: PrsState }): ReactNod
           </ShipTarget>
           <PrTabs
             pr={unit.pr}
+            diffFirst={hasChangedFrames(state.round, unit.keys)}
             review={<PrReview unit={unit} state={state} />}
             diff={<FrameFeedbackProvider value={state.side.frames}><Montages round={state.round} keys={unit.keys} merge={question.merge} /></FrameFeedbackProvider>}
             context={<ShipContext pr={unit.pr} group={group} />}
