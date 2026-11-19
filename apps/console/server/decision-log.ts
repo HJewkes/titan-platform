@@ -12,7 +12,7 @@ import { mkdir, open, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { LedgerRowSchema, isExcluded, type LedgerRowWire } from "@titan-design/decider";
-import { promptLine, type OwnerAnswer, type OwnerItem } from "@titan-design/owner-queue";
+import { BY_REC_RESOLVER, promptLine, type OwnerAnswer, type OwnerItem } from "@titan-design/owner-queue";
 
 export const ANSWERS_FILE = "answers.jsonl";
 /** Kept out of `answers.jsonl`, whose rows are all decider ledger rows. */
@@ -122,6 +122,12 @@ function ledgerAnswer(item: DecisionItem, answer: DecisionAnswer): string | null
   return answer.text ?? (answer.changeRequested ? "changes requested" : null);
 }
 
+/**
+ * An auto-by-rec answer is not the owner's, so it is ledgered as the decider's: the decider's scoring and feedback count only
+ * owner rows, and an overrule of it still reads as one. `by` in the row's extras names the automation exactly.
+ */
+const answeredBy = (answer: DecisionAnswer): LedgerRowWire["answered_by"] => (answer.by.class === BY_REC_RESOLVER.class ? "decider" : "owner-remote");
+
 function ledgerRow(item: DecisionItem, answer: DecisionAnswer, file: string) {
   const options = (item.options ?? []).map(({ label, description }) => (description === undefined ? { label } : { label, description }));
   const recommendedId = item.recommended?.optionId;
@@ -140,7 +146,7 @@ function ledgerRow(item: DecisionItem, answer: DecisionAnswer, file: string) {
     recommended: item.options?.find((option) => option.id === recommendedId)?.label ?? null,
     answer: ledgerAnswer(item, answer),
     free_text: answer.text ?? null,
-    answered_by: "owner-remote",
+    answered_by: answeredBy(answer),
     route: item.route?.target ?? null,
   };
   const extras = { item: { id: item.id, sources: item.sources, kind: item.kind, door: item.door, keys: item.keys }, by: answer.by, decisions: decisionsClass(item, answer) };

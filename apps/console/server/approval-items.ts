@@ -3,7 +3,7 @@
  * deposits from the inbox spool. Each leg answers `{ open, answered, withdrawn, gaps }` and never throws,
  * so one bad file costs a gap line, never the queue. Gap lines name a round, file or item, never its contents.
  */
-import { answeredFromFeedback, collapseRepeats, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
+import { answeredFromFeedback, BY_REC_RESOLVER, collapseRepeats, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
 import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
 import { readWithdrawal } from "@titan-design/owner-queue/withdraw";
 import { reviewManifest, type ReviewManifest } from "./round-schema.js";
@@ -86,7 +86,7 @@ async function spoolItem(dir: string, item: OwnerItem, items: QueueItems): Promi
   try {
     const answer = await readAnswer(dir, item.id);
     if (answer === undefined) items.open.push(item);
-    else items.answered.push({ ...item, status: "answered", answer });
+    else items.answered.push({ ...item, status: answer.by.class === BY_REC_RESOLVER.class ? "decided" : "answered", answer });
   } catch {
     items.gaps.push(`${item.id}: its answer file is malformed`);
     items.open.push(item);
