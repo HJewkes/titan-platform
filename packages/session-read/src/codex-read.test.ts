@@ -180,6 +180,21 @@ describe("readCodexObservations", () => {
     expect(sortedById([...first.observations, ...second.observations])).toEqual(sortedById(full.observations));
   });
 
+  it("converges across a chunk ending between a canonical message and its later projection", async () => {
+    const projectionIndex = records.findIndex((record) => objectAt(record, "payload").type === "agent_message" && objectAt(record, "payload").message === "Working.");
+    const swapped = records.splice(projectionIndex, 2);
+    records.splice(projectionIndex, 0, defined(swapped[1]), defined(swapped[0]));
+    writeFileSync(filePath, renderCodexRollout(records), "utf8");
+    const split = codexOffsetAfter(records, projectionIndex + 1);
+
+    const full = await collect(source);
+    const first = await collect(source, { untilByteOffset: split });
+    const second = await collect(source, { from: first.done.resumeBoundary });
+
+    expect(second.done.restartedFromZero).toBe(false);
+    expect(sortedById([...first.observations, ...second.observations])).toEqual(sortedById(full.observations));
+  });
+
   it("withholds an incomplete final record and reads it after completion", async () => {
     const future = records.at(-1)!;
     writeFileSync(filePath, `${renderCodexRollout(records.slice(0, -1))}${JSON.stringify(future)}`, "utf8");
