@@ -28,6 +28,7 @@ interface World {
   wakes: WakeRequest[];
   /** Every seat notice sent, as `seat: text`. */
   told: string[];
+  ticks: TickGate;
 }
 
 interface Wiring {
@@ -36,6 +37,33 @@ interface Wiring {
   freeze: FreezeStoreRef;
   wakes: WakeRequest[];
   told: string[];
+  ticks?: TickGate;
+}
+
+/**
+ * Each injected sleep is a real 1 ms, so a wait loop left alone reaches its limit within a few hundred ms of wall time
+ * and the run goes round again. A held gate parks every sleep until `release`, so a wait ticks only when the test says.
+ */
+interface TickGate {
+  hold(): void;
+  release(): void;
+  passed(): Promise<void>;
+}
+
+function tickGate(): TickGate {
+  let held: { done: Promise<void>; open: () => void } | undefined;
+  return {
+    hold: () => {
+      let open = () => {};
+      const done = new Promise<void>((resolve) => (open = resolve));
+      held = { done, open };
+    },
+    release: () => {
+      held?.open();
+      held = undefined;
+    },
+    passed: () => held?.done ?? Promise.resolve(),
+  };
 }
 
 /** `firstId` keeps each sha's job ids apart, as GitHub's are, so each job's steps are its own. */
@@ -68,11 +96,11 @@ function jobsFailAt(fake: FakeGitHub, firstId: number, step = TEST_STEP, ids: re
  * Every wake is unhandled and the repo has no single seat, so a wake ends at the ci-failed gate and only a run whose
  * policy names a seat is told. A second host on the same `dbPath` stands in for a restart.
  */
-function openHost({ fake, ref, freeze, wakes, told }: Wiring, dbPath = ":memory:"): FactoryHost {
+function openHost({ fake, ref, freeze, wakes, told, ticks = tickGate() }: Wiring, dbPath = ":memory:"): FactoryHost {
   const phases: ShepherdPhases = { wake: async (_ctx, request) => (wakes.push(request), { kind: "unhandled", reason: "no agent in this test" }), review: async () => ({ kind: "none" }) };
   const exitNotice: ExitNoticePorts = { seatFor: () => undefined, lastReport: async () => undefined, send: async (seat, text) => void told.push(`${seat}: ${text}`) };
   let clock = 0;
-  const routes = factoryRoutesFor({ port: githubPort(fake.wire), mergeUpTree: () => fake.cleanMergeTree, store: ref, freeze, exitNotice, now: () => clock, sleep: async (ms, signal) => ((clock += ms), sleep(1, signal)) });
+  const routes = factoryRoutesFor({ port: githubPort(fake.wire), mergeUpTree: () => fake.cleanMergeTree, store: ref, freeze, exitNotice, now: () => clock, sleep: async (ms, signal) => ((clock += ms), await ticks.passed(), sleep(1, signal)) });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   hosts.push(host);
   return host;
@@ -86,9 +114,10 @@ function world(prFailing: readonly string[], mainFailing: readonly string[], dbP
   [HEAD_JOBS, RED_JOBS, BASE_JOBS].forEach((firstId) => jobsFailAt(fake, firstId));
   fake.addPr({ headSha: H1 });
   let clock = 0;
-  const wiring: Wiring = { fake, ref: shepherdStoreRef(), freeze: freezeStoreRef(() => clock++), wakes: [], told: [] };
+  const ticks = tickGate();
+  const wiring: Wiring = { fake, ref: shepherdStoreRef(), freeze: freezeStoreRef(() => clock++), wakes: [], told: [], ticks };
   const host = openHost(wiring, dbPath);
-  return { host, fake, store: wiring.ref.get(), freeze: wiring.freeze, wakes: wiring.wakes, told: wiring.told };
+  return { host, fake, store: wiring.ref.get(), freeze: wiring.freeze, wakes: wiring.wakes, told: wiring.told, ticks };
 }
 
 function start(w: World, policy: EffectivePolicy = OWNER_GATE_POLICY): string {
@@ -468,13 +497,16 @@ describe("a ci-red wake on a PR whose base head is red", () => {
   it("ends the run when the PR is closed during the base wait", async () => {
     const w = world(["validate"], []);
     baseFails(w, ["validate"]);
+    w.ticks.hold();
     const runId = start(w);
     await waitingOnBase(w, runId);
 
     w.fake.pr(1).state = "closed";
+    w.ticks.release();
 
     await vi.waitFor(() => expect(w.host.runtime.status(runId)?.status).toBe("completed"));
     expect(resultOf(w, runId, "sh-base-wait:0")).toMatchObject({ result: { baseMoved: false, headSha: H1 } });
+    expect(resultOf(w, runId, "sh-base-wait:0")).not.toHaveProperty("result.expired");
     expect(w.wakes).toEqual([]);
   });
 
