@@ -1,3 +1,4 @@
+import { CodexProjectionBuffer } from "./codex-projections.js";
 import { CALL_TYPES, RESULT_TYPES, readCanonicalMessage, selectedValue } from "./codex-values.js";
 import { SessionIdentityError } from "./recent-claude.js";
 import { asObject, booleanOrNull } from "./text.js";
@@ -8,9 +9,7 @@ import { observed, oneLine, parseRecentRecord, renderedValue, text, truncate, un
 
 interface Candidate {
   turn: RecentSessionTurn;
-  sequence: number;
-  projectionKey?: string;
-  canonicalKey?: string;
+  superseded?: boolean;
 }
 
 export function parseRecentCodex(
@@ -26,8 +25,7 @@ export function parseRecentCodex(
 class RecentCodexCollector {
   private readonly errors: RecentFormatResult["errors"] = [];
   private readonly candidates: Candidate[] = [];
-  private segment = 0;
-  private sequence = 0;
+  private readonly projections = new CodexProjectionBuffer<Candidate>();
   private model: RecentObservedValue<string> | undefined;
   private branch: RecentObservedValue<string> | undefined;
 
@@ -62,7 +60,7 @@ class RecentCodexCollector {
   result(): RecentFormatResult {
     const malformed = this.errors.some((error) => error.kind === "malformed_record");
     return {
-      turns: deduplicateProjections(this.candidates),
+      turns: this.candidates.filter((item) => !item.superseded).map((item) => item.turn),
       model: this.model ?? unknownValue(this.truncatedBefore, malformed),
       branch: this.branch ?? unknownValue(this.truncatedBefore, malformed),
       errors: this.errors,
@@ -79,19 +77,16 @@ class RecentCodexCollector {
 
   private eventMessage(payload: Json | null, timestamp: string | null, line: RecentSourceLine): void {
     const subtype = text(payload?.type);
-    if (subtype === "task_started") {
-      this.segment += 1;
-      return;
-    }
     if (subtype === "task_complete" || subtype === "turn_aborted") {
-      this.segment += 1;
+      this.projections.drain();
       return;
     }
     if (subtype !== "user_message" && subtype !== "agent_message") return;
     const value = text(payload?.message) ?? text(payload?.text);
     if (!value) return;
     const role = subtype === "user_message" ? "user" : "assistant";
-    this.add(messageTurn(role, value, timestamp, "projection-fallback", line), { projectionKey: this.key(role, value) });
+    const candidate = this.add(messageTurn(role, value, timestamp, "projection-fallback", line));
+    if (!this.projections.addProjection(role, value, candidate)) candidate.superseded = true;
   }
 
   private responseItem(payload: Json | null, timestamp: string | null, line: RecentSourceLine): void {
@@ -99,19 +94,19 @@ class RecentCodexCollector {
     const message = readCanonicalMessage(payload, subtype);
     if (message) {
       const value = message.parts.map((part) => part.text).join("\n");
-      this.add(messageTurn(message.role, value, timestamp, "canonical", line), { canonicalKey: this.key(message.role, value) });
+      const projection = this.projections.addCanonical(message.role, value);
+      if (projection) projection.superseded = true;
+      this.add(messageTurn(message.role, value, timestamp, "canonical", line));
       return;
     }
     if (CALL_TYPES.has(subtype)) this.add(toolCallTurn(payload, subtype, timestamp, line));
     if (RESULT_TYPES.has(subtype)) this.add(toolResultTurn(payload, timestamp, line));
   }
 
-  private add(turn: RecentSessionTurn, keys: Pick<Candidate, "projectionKey" | "canonicalKey"> = {}): void {
-    this.candidates.push({ turn, sequence: this.sequence++, ...keys });
-  }
-
-  private key(role: "user" | "assistant", value: string): string {
-    return `${this.segment}\u0000${role}\u0000${value}`;
+  private add(turn: RecentSessionTurn): Candidate {
+    const candidate: Candidate = { turn };
+    this.candidates.push(candidate);
+    return candidate;
   }
 }
 
@@ -164,24 +159,6 @@ function toolResultTurn(payload: Json | null, timestamp: string | null, line: Re
     toolResultError: error,
     evidence: line.evidence,
   };
-}
-
-function deduplicateProjections(candidates: readonly Candidate[]): RecentSessionTurn[] {
-  const canonical = new Map<string, number>();
-  for (const item of candidates) {
-    if (item.canonicalKey) canonical.set(item.canonicalKey, (canonical.get(item.canonicalKey) ?? 0) + 1);
-  }
-  return candidates
-    .filter((item) => !item.projectionKey || !consume(canonical, item.projectionKey))
-    .sort((left, right) => left.sequence - right.sequence)
-    .map((item) => item.turn);
-}
-
-function consume(counts: Map<string, number>, key: string): boolean {
-  const count = counts.get(key) ?? 0;
-  if (count <= 0) return false;
-  counts.set(key, count - 1);
-  return true;
 }
 
 function updateObserved(
