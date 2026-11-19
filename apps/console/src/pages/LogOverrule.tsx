@@ -23,31 +23,43 @@ const NOTICE: Record<Overruled["notice"], string> = {
   "not-wired": "no seat notifier is set, so tell the asker by hand",
 };
 
+const isObject = (data: unknown): data is Record<string, unknown> => typeof data === "object" && data !== null;
+const isOptions = (data: unknown): data is Options => isObject(data) && Array.isArray(data.options) && "refusal" in data;
+const isOverruled = (data: unknown): data is Overruled => isObject(data) && typeof data.from === "string" && typeof data.to === "string" && typeof data.notice === "string" && data.notice in NOTICE;
+const UNEXPECTED = "the console answered an unexpected shape";
+
+/** The tap's two calls: `log.overrule-options` loads the picks, `log.overrule` sends the owner's. Null on a snapshot page. */
+function useOverrule(reverse: Overrulable): { state: TapState; load: () => Promise<void>; send: (optionId: string) => Promise<void> } | null {
+  const source = useAnswerSource();
+  const invalidate = useInvalidate();
+  const [state, setState] = useState<TapState>({ status: "idle" });
+  useWait(state.status === "loading" || state.status === "sending", true);
+  if (source === null) return null;
+  const subject = { source: reverse.source, id: reverse.id };
+  const load = async (): Promise<void> => {
+    setState({ status: "loading" });
+    const envelope = await source.call("log.overrule-options", subject);
+    if (!envelope.ok) return setState({ status: "failed", error: envelope.error });
+    setState(isOptions(envelope.data) ? { status: "picking", options: envelope.data } : { status: "failed", error: UNEXPECTED });
+  };
+  const send = async (optionId: string): Promise<void> => {
+    setState({ status: "sending" });
+    const envelope = await source.call("log.overrule", { ...subject, optionId });
+    if (!envelope.ok) return setState({ status: "failed", error: envelope.error });
+    setState(isOverruled(envelope.data) ? { status: "done", result: envelope.data } : { status: "failed", error: UNEXPECTED });
+    invalidate(["log.list"]);
+  };
+  return { state, load, send };
+}
+
 /**
  * The Overrule tap (TP-6778) on a round or deposit auto-by-rec answered: it lists the item's other picks, and the one the
  * owner takes goes to `log.overrule`, which records it and tells the asker to reverse. The first press only loads picks.
  */
 export function OverruleTap({ rowKey, reverse }: { rowKey: string; reverse: Overrulable }): ReactNode {
-  const source = useAnswerSource();
-  const invalidate = useInvalidate();
-  const [state, setState] = useState<TapState>({ status: "idle" });
-  useWait(state.status === "loading" || state.status === "sending", true);
-  const subject = { source: reverse.source, id: reverse.id };
-  const load = async (): Promise<void> => {
-    if (source === null) return;
-    setState({ status: "loading" });
-    const envelope = await source.call("log.overrule-options", subject);
-    setState(envelope.ok ? { status: "picking", options: envelope.data as Options } : { status: "failed", error: envelope.error });
-  };
-  const send = async (optionId: string): Promise<void> => {
-    if (source === null) return;
-    setState({ status: "sending" });
-    const envelope = await source.call("log.overrule", { ...subject, optionId });
-    if (!envelope.ok) return setState({ status: "failed", error: envelope.error });
-    setState({ status: "done", result: envelope.data as Overruled });
-    invalidate(["log.list"]);
-  };
-  if (source === null) return <OverruleButton rowKey={rowKey} isDisabled note="Overrule from the live console." />;
+  const tap = useOverrule(reverse);
+  if (tap === null) return <OverruleButton rowKey={rowKey} isDisabled note="Overrule from the live console." />;
+  const { state, load, send } = tap;
   if (state.status === "done") return <Alert status="success" message={`Overruled: ${state.result.from} → ${state.result.to}; ${NOTICE[state.result.notice]}.`} testID={`log-overruled-${rowKey}`} />;
   if (state.status === "picking") return <Picks rowKey={rowKey} options={state.options} onPick={(id) => void send(id)} />;
   return (
