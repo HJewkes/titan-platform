@@ -32,8 +32,7 @@ export class WorkflowRuntime {
   private readonly reconcileTimeoutMs: number;
   private readonly now: () => number;
   private readonly baseDeps: Omit<ContextDeps, "save" | "recovered">;
-  private isQuiesced = false;
-  private isStopped = false;
+  private mode: "running" | "stopped" | "quiesced" = "running";
 
   constructor(private readonly options: WorkflowRuntimeOptions) {
     this.store = new WorkflowRunStore(options.db, options.runTable);
@@ -71,7 +70,7 @@ export class WorkflowRuntime {
     const run = newRun(randomUUID(), name, params, workflow.version);
     const insert = this.options.db.transaction((): WorkflowRun | null => {
       this.store.create(run);
-      const claimed = this.isQuiesced || this.isStopped ? null : this.claim(run.id);
+      const claimed = this.mode !== "running" ? null : this.claim(run.id);
       if (claimed === undefined) throw new Error(`could not claim new workflow ${run.id}`);
       options.onStart?.(run.id);
       return claimed;
@@ -83,14 +82,14 @@ export class WorkflowRuntime {
 
   /** `exclude` leaves those runs unclaimed this call, for a caller that is not yet sure they are its to drive. */
   async hydrate(options: { exclude?: ReadonlySet<string> } = {}): Promise<string[]> {
-    if (this.isQuiesced || this.isStopped) return [];
+    if (this.mode !== "running") return [];
     const candidates = this.store.listByStatus(ACTIVE_STATUSES).filter((run) => !options.exclude?.has(run.id) && !this.held.has(run));
     const settled = await Promise.allSettled(candidates.map((run) => this.hydrateOne(run)));
     return settled.flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : []);
   }
 
   private async hydrateOne(snapshot: WorkflowRun): Promise<string | null> {
-    if (this.live.has(snapshot.id) || this.isStopped) return null;
+    if (this.live.has(snapshot.id)) return null;
     const workflow = this.workflows.get(snapshot.workflowName);
     if (!workflow) return null;
     const run = this.claim(snapshot.id);
@@ -102,7 +101,7 @@ export class WorkflowRuntime {
     if (run.status === "cancelling") controller.abort(new WorkflowCancelledError(run.id, run.error ?? "cancelled"));
     try {
       const recovered = await this.reconcile(run, controller.signal);
-      if (!recovered || this.stopped()) {
+      if (!recovered || this.mode !== "running") {
         clearInterval(renewTimer);
         this.release(run);
         return null;
@@ -192,7 +191,7 @@ export class WorkflowRuntime {
   }
 
   shutdown(): void {
-    this.isStopped = true;
+    if (this.mode === "running") this.mode = "stopped";
     for (const live of this.live.values()) {
       clearInterval(live.renewTimer);
       live.controller.abort(new RuntimeShutdown());
@@ -203,17 +202,11 @@ export class WorkflowRuntime {
 
   /** Stops admission for a planned handoff: live runs are released and new ones are left for the successor to drive. */
   quiesce(): void {
-    this.isQuiesced = true;
+    this.mode = "quiesced";
     this.shutdown();
   }
 
-  private stopped(): boolean {
-    return this.isStopped;
-  }
-
-  quiesced(): boolean {
-    return this.isQuiesced;
-  }
+  quiesced(): boolean { return this.mode === "quiesced"; }
 
   private finish(run: WorkflowRun, status: "completed" | "failed" | "cancelled", error: string | null): void {
     this.dropLive(run.id);
@@ -269,7 +262,7 @@ export class WorkflowRuntime {
     this.save(run);
     this.cancelGates(runId, reason);
     if (live) live.controller.abort(new WorkflowCancelledError(runId, reason));
-    else if (options.abandon || (!this.isQuiesced && Object.keys(run.activeSteps).length === 0)) this.finish(run, "cancelled", reason);
+    else if (options.abandon || (this.mode !== "quiesced" && Object.keys(run.activeSteps).length === 0)) this.finish(run, "cancelled", reason);
     else this.release(run);
   }
 

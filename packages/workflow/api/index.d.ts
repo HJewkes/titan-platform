@@ -735,8 +735,7 @@ declare class WorkflowRuntime {
     private readonly reconcileTimeoutMs;
     private readonly now;
     private readonly baseDeps;
-    private isQuiesced;
-    private isStopped;
+    private mode;
     constructor(options: WorkflowRuntimeOptions);
     /** `version` pins new runs to this definition (hydrate parks a run pinned to another); `strictReplay` parks a replay that goes live with recorded results unread. */
     register(name: string, fn: WorkflowFn, options?: {
