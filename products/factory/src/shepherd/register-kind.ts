@@ -19,7 +19,7 @@ export const TEST_ONLY_HINT =
   "hint: this PR changes only tests; re-register with --kind test-only. A flaky-test fix adds no <test>.mutations.json: with noReproProceed on, its vacuous fix-proof goes on to review, and any mutation spec keeps it NO_REPRO";
 
 /** The hint reads the same diff facts the guard does, so it never suggests a move the register would refuse. */
-export async function testOnlyHint(services: ShepherdServices, registration: Registration): Promise<string | undefined> {
+async function testOnlyHint(services: ShepherdServices, registration: Registration): Promise<string | undefined> {
   if (registration.kind !== "correctness" || registration.pr === null) return undefined;
   const diff = await testOnlyDiff(services.port, registration.repo, registration.pr, registration.headSha ?? undefined);
   return diff.kind === "test-only" ? TEST_ONLY_HINT : undefined;
