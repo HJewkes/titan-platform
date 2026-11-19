@@ -16,6 +16,7 @@ const OPENED_AT = Date.UTC(2026, 0, 1);
 const WHEN: ConditionKind[] = [
   "owner-gate-silent-24h",
   "gate-recommends-merge",
+  "resolver-is-dispatched-reviewer",
   "verdict-merge-at-head",
   "required-contexts-green",
   "no-non-green-run",
@@ -33,16 +34,16 @@ const APPROVED_ROW = {
   actor: "automation",
   verdict: "allow",
   condition:
-    "Owner decision 2026-11-19 (TP-6765): an approve-merge gate whose recommended answer is merge and that the owner left unanswered for 24 h at the same head resolves to merge, logged as auto-by-rec. The dispatched reviewer's MERGE at the exact head and green required checks still hold at resolve time; no g10 hold, protected, release or authority path. Otherwise MRG-AU gates.",
+    "Owner decision 2026-11-19 (TP-6765): an approve-merge gate whose recommended answer is merge and that the owner left unanswered for 24 h at the same head resolves to merge, logged as auto-by-rec. The MERGE at the exact head comes from the reviewer Shepherd dispatched, and it and green required checks still hold at resolve time; no g10 hold, protected, release or authority path. Otherwise MRG-AU gates.",
   when: WHEN,
   evidence: ["E-gate", "E-gh", "E-rev"],
 };
 
-/** A gate left a day at its head with merge recommended, on a clean PR. Shepherd, not the reviewer, asks, and no seat grants merge-on-green, so MRG-AU-RV cannot match. */
+/** A gate left a day at its head with merge recommended, on a clean PR, by the dispatched reviewer. No seat grants merge-on-green, so MRG-AU-RV cannot match. */
 function byRecFacts(): MergeFacts {
   return {
     head: HEAD,
-    resolver: { agentId: "shepherd", sessionId: "serve-1" },
+    resolver: { agentId: "rv-1", sessionId: "session-1" },
     dispatchedReviewer: { agentId: "rv-1", sessionId: "session-1" },
     verdict: { value: "MERGE", head: HEAD },
     requiredContexts: ["check"],
@@ -85,6 +86,8 @@ const ONE_FALSE: [string, ConditionKind, (facts: MergeFacts) => void][] = [
   ["the gate recommends abandon", "gate-recommends-merge", (f) => { gate(f).recommended = "abandon"; }],
   ["the gate recommends nothing", "gate-recommends-merge", (f) => { gate(f).recommended = null; }],
   ["the gate recommends MERGE in upper case", "gate-recommends-merge", (f) => { gate(f).recommended = "MERGE"; }],
+  ["the MERGE came from an agent Shepherd did not dispatch", "resolver-is-dispatched-reviewer", (f) => { f.resolver = { agentId: "shepherd", sessionId: "serve-1" }; }],
+  ["the MERGE came from a successor session of the dispatched reviewer", "resolver-is-dispatched-reviewer", (f) => { f.resolver.sessionId = "session-2"; }],
   ["the reviewer's MERGE is at an older head", "verdict-merge-at-head", (f) => { f.verdict.head = OLD_HEAD; }],
   ["the reviewer said FIX_FIRST", "verdict-merge-at-head", (f) => { f.verdict.value = "FIX_FIRST"; }],
   ["a required context has no run", "required-contexts-green", (f) => { f.requiredContexts.push("e2e"); }],
@@ -99,6 +102,13 @@ const ONE_FALSE: [string, ConditionKind, (facts: MergeFacts) => void][] = [
 describe("MRG-AU-RB: automation merges an approve-merge gate left 24 h on a merge recommendation", () => {
   it("is the row the owner approved, word for word", () => {
     expect(DEFAULT_TABLE.rules.find((rule) => rule.id === "MRG-AU-RB")).toEqual(APPROVED_ROW);
+  });
+
+  it("keeps every MRG-AU-RV condition but the seat grant", () => {
+    const whenOf = (id: string) => DEFAULT_TABLE.rules.find((rule) => rule.id === id)?.when ?? [];
+    const shared = whenOf("MRG-AU-RV").filter((condition) => condition !== "seat-grants-merge-on-green-approve");
+    expect(shared).toContain("resolver-is-dispatched-reviewer");
+    expect(whenOf("MRG-AU-RB")).toEqual(expect.arrayContaining(shared));
   });
 
   it("allows the merge when every condition holds, and only then", () => {

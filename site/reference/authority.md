@@ -165,10 +165,12 @@ end the carry for almost every merge-up. `isCarryFencedPath(path)` exports that 
 caller can refuse the carry before it asks.
 
 MRG-AU-RB (owner decision of 2026-11-19, TP-6765) allows an automation merge when the owner left
-an approve-merge gate unanswered for 24 hours on a merge recommendation. It needs no seat grant and
-no reviewer as the resolver; the gate is cancelled as `auto-by-rec`, and automation still resolves no
-gate. It keeps MRG-AU-RV's `verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`,
-`merge-tree-clean`, `repo-not-frozen` and `no-protected-path-change`, and adds four conditions:
+an approve-merge gate unanswered for 24 hours on a merge recommendation. It needs no seat grant;
+the gate is cancelled as `auto-by-rec`, and automation still resolves no gate. It keeps every other
+MRG-AU-RV condition: `resolver-is-dispatched-reviewer` (the stored MERGE came from the reviewer
+Shepherd dispatched, so a gate opened because another agent gave the verdict stays the owner's),
+`verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`, `merge-tree-clean`,
+`repo-not-frozen` and `no-protected-path-change`, and adds four conditions:
 
 - `owner-gate-silent-24h`: the `ownerGate` fact names `facts.head` as its `head`, `pending` is exactly
   `true`, and `observedAt - openedAt` is at least 24 hours. Both are positive integer epoch

@@ -33,7 +33,7 @@ canResolve(DEFAULT_TABLE, "MRG-CO", { class: "coordinator", tainted: false }); /
   `packages/tool-guard/`, `.github/` or `.codewatch/` (a symlink or submodule at that name counts), or is the file
   `.egress-allow`; `isCarryFencedPath(path)` is that test.
   MRG-AU-RB merges an approve-merge gate the owner left 24 h at its head on a merge recommendation
-  (`facts.merge.ownerGate`, `holdClasses`, `headRef`); a g10 hold, a fenced, skill or release path
+  (`facts.merge.ownerGate`, `holdClasses`, `headRef`), keeping every MRG-AU-RV condition but the seat grant; a g10 hold, a fenced, skill or release path
   never matches.
   `evaluate` reads each request field once, then copies the facts with `structuredClone`
   and rebuilds them as plain data on null-prototype objects. Facts holding a function, a `toJSON` method, a Proxy, a Map, a Set, a Date, a BigInt, a cycle or a throwing getter fail every condition instead of
