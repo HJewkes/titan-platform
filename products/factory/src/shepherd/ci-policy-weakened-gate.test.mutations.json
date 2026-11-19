@@ -23,7 +23,7 @@
     {
       "name": "an approval given at a ci-policy-weakened gate is kept to follow",
       "file": "products/factory/src/shepherd/approval-carry.ts",
-      "find": "if (ciPolicyWeakened) approved = undefined;\n    else if",
+      "find": "if (ciPolicyWeakened || merged?.origin === BY_REC_ANSWER_ORIGIN) approved = undefined;\n    else if",
       "replace": "if",
       "kills": [
         "an owner merge approval meeting a CI-policy-weakened gate does not follow an approval given at a ci-policy-weakened gate to a later head's gate"

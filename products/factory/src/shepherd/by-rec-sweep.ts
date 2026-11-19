@@ -23,7 +23,7 @@ export interface ByRecSweepDeps extends ByRecReads {
 }
 
 /** What one tick did with a gate past its wait: the row it wrote, or why it left the gate to the owner. */
-export type ByRecOutcome = { gateId: string; row: ByRecRow } | { gateId: string; skip: string };
+type ByRecOutcome = { gateId: string; row: ByRecRow } | { gateId: string; skip: string };
 
 /**
  * One pass over the pending approve-merge gates (TP-6772). A gate past its wait whose facts, read afresh, satisfy the
@@ -90,8 +90,8 @@ function factsOf({ land, merge, subject }: ByRecRead, rule: string, headRef: str
 }
 
 /** Starts the by-rec sweep under serve; it logs each row it writes, and each reason it leaves a gate to the owner once per process. */
-export function startByRecSweep(host: FactoryHost, services: ShepherdServices, config: () => AutoByRecConfig | undefined, logPath: string, log: Logger): Sweep {
-  const deps: ByRecSweepDeps = { host, services, config, logPath, now: services.now ?? Date.now, warn: (line) => log.warn({}, line) };
+export function startByRecSweep(host: FactoryHost, services: ShepherdServices, where: Pick<ByRecSweepDeps, "config" | "logPath" | "now">, log: Logger): Sweep {
+  const deps: ByRecSweepDeps = { host, services, ...where, warn: (line) => log.warn({}, line) };
   const told = new Set<string>();
   const tick = async (): Promise<void> => {
     for (const outcome of await sweepByRec(deps)) {

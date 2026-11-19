@@ -30,7 +30,7 @@ export function policyRow(gate: GateRecord): string {
 }
 
 /** An approve-merge gate the by-rec sweep cancelled under MRG-AU-RB: the owner left it, and automation answered it. */
-export const isByRecResolve = (gate: GateRecord): boolean => gate.status === "cancelled" && gate.reason?.startsWith(BY_REC_CANCEL) === true;
+const isByRecResolve = (gate: GateRecord): boolean => gate.status === "cancelled" && gate.reason?.startsWith(BY_REC_CANCEL) === true;
 
 function resolverBucket(gate: GateRecord): string {
   if (isByRecResolve(gate)) return BY_REC_RESOLVER.id;

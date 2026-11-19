@@ -9,9 +9,8 @@ import type { FactoryHost, PendingGate } from "../host.js";
 import { readRequiredChecks } from "../required-checks.js";
 import { verdictAt } from "../verdict-at.js";
 import { withoutEditRunSkips } from "./fix-proof-jobs.js";
-import { holdClassOf } from "./g10-release.js";
 import { gatedRule } from "./head-moved.js";
-import { OWNER_HOLD_CLASS } from "./hold-reason.js";
+import { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { MergeEvidenceSchema } from "./review-schemas.js";
@@ -41,7 +40,7 @@ export interface ByRecRead {
   reviewer: string;
 }
 
-export type ByRecReadResult = ByRecRead | { skip: string };
+type ByRecReadResult = ByRecRead | { skip: string };
 
 interface Known {
   gate: GateRecord;
@@ -116,15 +115,21 @@ function ownerGateOf(gate: GateRecord, head: string, now: number): OwnerGateFact
   return { head, pending: gate.status === "pending", recommended: recommendedOption(gate) ?? null, openedAt: Date.parse(gate.createdAt), observedAt: now };
 }
 
-export function recommendedOption(gate: Pick<GateRecord, "questions">): string | undefined {
+function recommendedOption(gate: Pick<GateRecord, "questions">): string | undefined {
   return gate.questions?.flatMap((question) => question.options).find((option) => option.recommended === true)?.id;
 }
 
+/**
+ * A hold reason's class is its text before the first `:`, the shape `shepherd hold` enforces (hold-reason.ts). Read here
+ * rather than imported from the g10 release, so this sweep, which only reads holds, stays out of the hold's own import graph.
+ */
+const classOf = (reason: string | null): string => (reason?.includes(":") ? reason.slice(0, reason.indexOf(":")) : "unclassified");
+
 /** Every hold on the run, by class; a hold whose reason names no class reads as `unclassified`, never as no hold. */
 function holdClassesOf(registration: Registration, parked: { reason: string } | null): string[] {
-  const top = registration.held && registration.ownerHold === null ? [holdClassOf(registration.holdReason) ?? "unclassified"] : [];
+  const top = registration.held && registration.ownerHold === null ? [classOf(registration.holdReason)] : [];
   const owner = registration.ownerHold === null ? [] : [OWNER_HOLD_CLASS];
-  const under = parked === null ? [] : [holdClassOf(parked.reason) ?? "unclassified"];
+  const under = parked === null ? [] : [classOf(parked.reason)];
   return [...top, ...owner, ...under];
 }
 

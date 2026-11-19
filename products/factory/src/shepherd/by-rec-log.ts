@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { byRecRowSchema, type ByRecRow } from "@titan-design/owner-queue";
 
 /** One `titan/auto-by-rec@1` row per line, beside the factory database; `shepherd by-rec` and the console log page read it. */
-export const BY_REC_LOG = "auto-by-rec.jsonl";
+const BY_REC_LOG = "auto-by-rec.jsonl";
 
 export const byRecLogPath = (stateDir: string): string => join(stateDir, BY_REC_LOG);
 
