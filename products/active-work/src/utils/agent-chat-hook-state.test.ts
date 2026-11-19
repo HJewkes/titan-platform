@@ -4,6 +4,7 @@ import {
   stashSpawnContext,
   takeSpawnContext,
 } from './agent-chat-hook-state.js';
+import { useTempStateRoot } from '../test-support/temp-state-root.js';
 
 const base = {
   slug: 'demo-initiative',
@@ -14,6 +15,8 @@ const base = {
   profile: null,
   briefing: null,
 };
+
+useTempStateRoot();
 
 describe('agent-chat hook state', () => {
   it('round-trips a stashed spawn context and deletes it on read', async () => {
