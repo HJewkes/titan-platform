@@ -332,6 +332,21 @@ describe("the planner", () => {
     expect(resumed!.args[resumed!.args.indexOf("--message") + 1]).toContain(resumeContract);
   });
 
+  it("asks, like the implementer, for the ```json fence the answer parser reads", async () => {
+    const p = ports();
+    const { tree } = await p.allocTree({ runId: "run-1", ideaId: "i-aaa", base: bases[0]!, lane: 1 }, signal);
+    behave(nameFor(tree, 1, "i-aaa"), { commit: true, turns: [implemented()] });
+    behave(plannerName("run-1"), { turns: [final("p1", '{"add": []}')] });
+    const input = { runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA };
+
+    await p.implement(request(tree, "i-aaa"), signal);
+    await p.plan({ ...input, round: 1, mode: "spawn" }, signal);
+    await p.plan({ ...input, round: 2, mode: "resume" }, signal);
+
+    const [implementer, spawned, resumed] = spawns();
+    for (const brief of [implementer!.brief, spawned!.brief, resumed!.args[resumed!.args.indexOf("--message") + 1]]) expect(brief).toContain("one ```json fenced block");
+  });
+
   it("parses a final answer longer than the transcript reader's span cap", async () => {
     const p = ports();
     const name = plannerName("run-1");
@@ -361,7 +376,7 @@ describe("the planner", () => {
 
     const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA, round: 1, mode: "spawn" }, signal);
 
-    expect(planned).toMatchObject({ ops: {}, malformed: expect.stringContaining("[final-message] the agent's last message is not JSON"), agent: name });
+    expect(planned).toMatchObject({ ops: {}, malformed: expect.stringContaining("[final-message] the agent's last message has no ```json fenced block"), agent: name });
   });
 
   it("gets a second round-1 turn naming the quota its first answer missed", async () => {

@@ -67,16 +67,21 @@ export async function awaitTurn(chat: AgentChat, name: string, signal: AbortSign
   return { row, text, usage: sumUsage(delta.requests) };
 }
 
-/** The final message must exist and parse; `name` names the agent in the error. */
+/** How every brief whose answer goes through `finalOf` words the answer, since only a `json`-tagged fence is read. */
+export const ANSWER_FENCE = "one ```json fenced block";
+
+/** The final message must exist and end in a parseable ```json block; `name` names the agent in the error. */
 export function finalOf(name: string, text: string | undefined): unknown {
   if (text === undefined) throw new Error(`[final-message] ${name} exited without an assistant message`);
+  const excerpt = text.trim().slice(0, 120);
+  let parsed: unknown;
   try {
-    const parsed = lastFencedJson(text);
-    if (parsed !== undefined) return parsed;
+    parsed = lastFencedJson(text);
   } catch {
-    // an unparseable fence is reported the same way as a missing one
+    throw new Error(`[final-message] the agent's last message is not JSON: ${excerpt}`);
   }
-  throw new Error(`[final-message] the agent's last message is not JSON: ${text.trim().slice(0, 120)}`);
+  if (parsed === undefined) throw new Error(`[final-message] the agent's last message has no \`\`\`json fenced block: ${excerpt}`);
+  return parsed;
 }
 
 export async function awaitAgent(chat: AgentChat, name: string, signal: AbortSignal, from?: { path?: string; offset: number }): Promise<AgentResult> {

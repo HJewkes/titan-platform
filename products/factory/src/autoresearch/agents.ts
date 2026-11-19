@@ -9,7 +9,7 @@ import { dispatchToAgentChat, listAgents, resumeAgent } from "@titan-design/agen
 import { resolveLimits, type ParsedLimits } from "@titan-design/agent-dispatch/limits";
 import { createWorktreeAllocator, type WorktreeAllocator } from "@titan-design/worktree";
 import { z } from "zod";
-import { awaitAgent, awaitTurn, finalOf, hasResponded, rosterRow, transcriptEnd, type AgentChat, type AgentResult } from "./agent-run.js";
+import { ANSWER_FENCE, awaitAgent, awaitTurn, finalOf, hasResponded, rosterRow, transcriptEnd, type AgentChat, type AgentResult } from "./agent-run.js";
 import { loadWaitPort, staggerLatch, type LoadWaitOptions } from "./load-wait.js";
 import { plannerResumeBrief, plannerSpawnBrief } from "./planner-brief.js";
 import { execGit } from "./ratchet.js";
@@ -110,7 +110,7 @@ async function untilResponded(host: Host, name: string, responded: () => void, s
 }
 
 function implementBrief(input: ImplementRequest): string {
-  return `${input.brief}\n\nWork in ${input.tree}, on top of ${input.base}. Commit there, then end with one \`\`\`json fenced block: {"head": "<commit sha>", "lesson": "<one line>"}.`;
+  return `${input.brief}\n\nWork in ${input.tree}, on top of ${input.base}. Commit there, then end with ${ANSWER_FENCE}: {"head": "<commit sha>", "lesson": "<one line>"}.`;
 }
 
 async function explore(host: Host, input: ImplementRequest, signal: AbortSignal): Promise<Done> {
