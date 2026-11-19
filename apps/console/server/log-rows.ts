@@ -171,9 +171,9 @@ export function logCounts(rows: readonly LogRow[]): LogCounts {
   return { ships: rows.filter((row) => row.kind === "ship").length, byApproval, decisions, shadow: rows.filter((row) => row.shadow || row.approval === "shadow").length };
 }
 
-/** The digest line: one sentence of counts and the page link. */
+/** The digest line's counts, one sentence; the surface that shows it adds the link to #/log. */
 export function digestLine(counts: LogCounts): string {
   const { owner, reviewer, plan, unrecorded } = counts.byApproval;
   const shipped = `${counts.ships} shipped (${owner} by you, ${reviewer} by reviewer, ${plan} by plan approval, ${counts.byApproval["auto-by-rec"]} by rec${unrecorded > 0 ? `, ${unrecorded} not recorded` : ""})`;
-  return `Decisions and ships: ${shipped}, ${counts.decisions} decided by rec, ${counts.shadow} shadow would-have. See #/log.`;
+  return `Decisions and ships: ${shipped}, ${counts.decisions} decided by rec, ${counts.shadow} shadow would-have.`;
 }

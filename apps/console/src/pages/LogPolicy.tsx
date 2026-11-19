@@ -35,18 +35,27 @@ export function LogPolicyHeader({ header }: { header: LogHeader }): ReactNode {
   );
 }
 
+/** Floor classes that share a way out, in the floor's own order, so the owner reads each route once. */
+function byRemoval(floor: LogHeader["floor"]): [removeBy: string, classes: LogHeader["floor"]][] {
+  const groups = new Map<string, LogHeader["floor"]>();
+  for (const each of floor) groups.set(each.removeBy, [...(groups.get(each.removeBy) ?? []), each]);
+  return [...groups];
+}
+
 function FloorList({ header }: { header: LogHeader }): ReactNode {
   return (
-    <VStack gap={2} testID="log-floor">
-      <Typography variant="subtitle2">Never by rec (the floor, in code)</Typography>
-      {header.floor.map((floor) => (
-        <VStack key={floor.reason} gap={0} className="min-w-0" testID={`log-floor-${floor.reason}`}>
-          <Typography variant="body2" className="break-words">
-            {floor.label}
-          </Typography>
+    <VStack gap={3} testID="log-floor">
+      <Typography variant="subtitle2">{`Never by rec: the floor, in code (${header.floor.length})`}</Typography>
+      {byRemoval(header.floor).map(([removeBy, classes]) => (
+        <VStack key={removeBy} gap={1} className="min-w-0">
           <Typography variant="caption" color="secondary" className="break-words">
-            {`To remove: ${floor.removeBy}`}
+            {`To remove: ${removeBy}`}
           </Typography>
+          {classes.map((floor) => (
+            <Typography key={floor.reason} variant="body2" className="break-words" testID={`log-floor-${floor.reason}`}>
+              {`· ${floor.label}`}
+            </Typography>
+          ))}
         </VStack>
       ))}
     </VStack>

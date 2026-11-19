@@ -6,6 +6,16 @@ import { SNAPSHOT_FORMAT, snapshotKey, type Snapshot } from "@titan-design/rpc-c
 import { LOG_ANSWERS } from "../server/twin/log.js";
 import { renderPage } from "./render-page.test-helpers.js";
 
+const NOW = Date.parse("2031-03-05T12:00:00.000Z");
+
+function inboxRow(id: string, byRec?: { at: string; mode: "shadow" | "live" }): Record<string, unknown> {
+  return {
+    id, sources: [{ system: "deposit", ref: `builder/${id}` }], kind: "decide", door: "two-way", summary: `Ask ${id}`, context: "", keys: [], personal: false,
+    lens: "blocking-agent", unblocks: [], openedAt: new Date(NOW - 3_600_000).toISOString(), status: "open", section: "blocking", evidence: undefined,
+    action: { kind: "answer-deposit" }, ...(byRec && { byRec }),
+  };
+}
+
 afterEach(cleanup);
 
 /** The twin's synthetic log: #41 merged by rec (a visual gate), #38 by reviewer with a shadow row, a live deposit and a shadow round. */
@@ -19,7 +29,8 @@ describe("the decisions and ships page", () => {
     renderPage(snapshot(), "#/log");
 
     const floor = await screen.findByTestId("log-floor");
-    expect(within(floor).getByTestId("log-floor-g10-hold").textContent).toContain("To remove: an owner-approved PR");
+    expect(within(floor).getByTestId("log-floor-g10-hold").textContent).toContain("Any g10 hold");
+    expect(floor.textContent).toContain("To remove: an owner-approved PR");
     expect(within(floor).queryAllByRole("button")).toEqual([]);
     expect(screen.getByTestId("log-floor-unconfirmed")).toBeTruthy();
     expect(screen.getByTestId("log-added-category-naming").textContent).toContain("names stay the owner's");
@@ -44,5 +55,16 @@ describe("the decisions and ships page", () => {
     const decision = screen.getByTestId("log-row-deposit:dep-ceiling");
     expect(within(decision).getByTestId("log-overrule-deposit:dep-ceiling")).toBeTruthy();
     expect(screen.queryByTestId("log-frames-orbit/relay#36")).toBeNull();
+  });
+});
+
+describe("the inbox by-rec countdown", () => {
+  it("inbox countdown shows only on eligible items", async () => {
+    const items = [inboxRow("dep-eligible", { at: "2031-03-06T02:00:00.000Z", mode: "live" }), inboxRow("dep-waits")];
+    const answer = successEnvelope({ items, planningCount: 0, gaps: [], fyiCount: 0, readAt: new Date(NOW).toISOString(), derived: [], nudges: [] });
+    renderPage({ format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: answer } }, "#/inbox");
+
+    expect((await screen.findByTestId("inbox-by-rec-dep-eligible")).textContent).toMatch(/^Goes with rec at /);
+    expect(within(screen.getByTestId("inbox-row-dep-waits")).queryByText(/with rec at/)).toBeNull();
   });
 });

@@ -66,7 +66,7 @@ describe("the log merge", () => {
   it("counts the digest line by approval", () => {
     const rows = mergeLog({ ships: [ship(7, "reviewer"), ship(8, "owner")], gateRows: [gate(7, "shadow")], consoleRows: [byRec({ subject: { source: "deposit", id: "d" }, mode: "live" })], dayOf });
 
-    expect(digestLine(logCounts(rows))).toBe("Decisions and ships: 2 shipped (1 by you, 1 by reviewer, 0 by plan approval, 0 by rec), 1 decided by rec, 1 shadow would-have. See #/log.");
+    expect(digestLine(logCounts(rows))).toBe("Decisions and ships: 2 shipped (1 by you, 1 by reviewer, 0 by plan approval, 0 by rec), 1 decided by rec, 1 shadow would-have.");
   });
 });
 
