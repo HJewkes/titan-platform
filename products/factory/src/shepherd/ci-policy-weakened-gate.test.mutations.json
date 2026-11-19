@@ -12,21 +12,23 @@
       ]
     },
     {
-      "name": "an earlier approval stands at a ci-policy-weakened gate",
+      "name": "the follow drops the equal-finding check",
       "file": "products/factory/src/shepherd/approval-carry.ts",
-      "find": "const standing = !isSkillPathGate(prompt) && !ciPolicyWeakened && carry.reviewedMerge(asked);",
-      "replace": "const standing = !isSkillPathGate(prompt) && carry.reviewedMerge(asked);",
+      "find": " && approved.ciPolicy === gate.ciPolicy ? approved",
+      "replace": " ? approved",
       "kills": [
-        "an owner merge approval meeting a CI-policy-weakened gate asks the owner again at a ci-policy-weakened gate, even when the head is an empty-remerge merge-up"
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the weakened keys at the new head differ from those the owner approved"
       ]
     },
     {
-      "name": "an approval given at a ci-policy-weakened gate is kept to follow",
+      "name": "a D21 approval follows the ordinary remerge and fix-carry proofs",
       "file": "products/factory/src/shepherd/approval-carry.ts",
-      "find": "if (ciPolicyWeakened || merged?.origin === BY_REC_ANSWER_ORIGIN) approved = undefined;\n    else if",
-      "replace": "if",
+      "find": "  if (from.ciPolicy !== undefined) return ciPolicyProof(ctx, carry.target, bases.carrying ?? bases.ownMergeUp, from.head, head);\n",
+      "replace": "",
       "kills": [
-        "an owner merge approval meeting a CI-policy-weakened gate does not follow an approval given at a ci-policy-weakened gate to a later head's gate"
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the head carries a fix commit after the merge-up",
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the merge-up brings a carry-fenced path from main",
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the merge-up brings a repo skill path from main"
       ]
     },
     {
