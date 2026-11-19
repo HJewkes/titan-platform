@@ -537,7 +537,9 @@ interface Recheck {
  * other-head answer on the same `ask:` key flags `conflict` when it is not the item's
  * recommendation and `reasked` when it is or there is none. Sharing only a `component:`,
  * `token:` or `topic:` key flags `related-answer` and never drops. Answers are the items
- * carrying an `answer`; others are ignored. Output is sorted, so input order never changes it.
+ * carrying an `answer`; others are ignored. An answer the item's own asker wrote (`ASKER_ANSWER_CLASS`, a sitting's
+ * closing tally) is no one's decision, so it neither drops nor flags anything. Output is sorted, so input order never
+ * changes it.
  */
 declare function recheck(open: readonly OwnerItem[], answered: readonly OwnerItem[]): Recheck;
 
