@@ -255,6 +255,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         remoteControl: z.ZodBoolean;
         briefPath: z.ZodString;
         briefSha256: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"host-command">;
+        command: z.ZodEnum<{
+            "broker-restart-window": "broker-restart-window";
+        }>;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
@@ -516,6 +521,11 @@ declare const ownerItemSchema: z.ZodObject<{
         remoteControl: z.ZodBoolean;
         briefPath: z.ZodString;
         briefSha256: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"host-command">;
+        command: z.ZodEnum<{
+            "broker-restart-window": "broker-restart-window";
+        }>;
     }, z.core.$strict>], "kind">>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;

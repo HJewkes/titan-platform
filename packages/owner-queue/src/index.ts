@@ -18,7 +18,7 @@ export { audienceOf, forAudience } from "./audience.js";
 export { DEPOSIT_LENS, depositItemId, fromDeposit, ownerItemDepositSchema } from "./deposit.js";
 export type { OwnerItemDeposit } from "./deposit.js";
 export { HOLD_CLASSES, MERGE_WAITS, opKeys, ownerOpSchema } from "./op.js";
-export type { OwnerOp, OwnerOpKind } from "./op.js";
+export type { HostCommand, OwnerOp, OwnerOpKind } from "./op.js";
 export { byRecDecision, byRecSubjectOfItem } from "./by-rec.js";
 export type { ByRecDecision } from "./by-rec.js";
 export { BY_REC_FLOOR, floorReason, isGuardPath } from "./by-rec-floor.js";
