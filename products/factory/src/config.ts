@@ -271,11 +271,9 @@ export const FactoryConfigSchema = z.object({
       visualGate: VisualGateSchema.optional(),
       releaseAppLogin: z.string().regex(/^[^\s[\]]+\[bot\]$/, "must be an App's <app-slug>[bot] login").optional(), // Only a head this App pushed keeps the owner's release answer (TP-5606).
       /**
-       * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
-       * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
-       * `actionsDir` also mounts `POST /owner/console-action`, which resolves an approve-merge gate as owner-remote from the
-       * console inbox's action record read out of that dir; absent means that route 404s. `branchPrefixes` are the branches a
-       * console delete-branch op may name, in `shepherd.repos` only; absent means `scratch/` alone (TP-3620 Q4).
+       * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer in `roundsDir`; no token,
+       * as for gateNotify. `actionsDir` also mounts `POST /owner/console-action`, which acts on the console's action record in that dir. Absent, each
+       * route 404s. `branchPrefixes` are the branches a delete-branch op may name, in `shepherd.repos` only; absent means `scratch/` alone.
        */
       consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional(), branchPrefixes: z.array(BranchPrefixSchema).min(1).optional() }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
