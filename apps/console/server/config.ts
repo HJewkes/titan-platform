@@ -49,9 +49,8 @@ export interface ConsoleConfig extends BlockerConfig, CoordinatorDayConfig, Scor
   agentChatEventsDbPath: string;
   /** The agent-chat CLI that tells a seat its decision round was answered; absent, no seat is told. */
   agentChatBin?: string;
-  /** The explainer CLI the theater's props panel reads beat props through; absent, the panel shows a gap line. */
+  /** The explainer CLI the theater's props panel reads beat props through, and the titan-factory CLI #/log reads Shepherd's by-rec rows through; absent, each shows a gap line. */
   explainerBin?: string;
-  /** The titan-factory CLI the #/log page reads Shepherd's by-rec rows through; absent, the page shows a gap line for them. */
   factoryBin?: string;
   /** Which seat owns the agents named `<prefix>-...`. */
   seatPrefixes: SeatPrefix[];
@@ -238,21 +237,15 @@ function agentChatBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: Is
   return { startupWarnings: [`${AGENT_CHAT_NOT_FOUND} (looked for "${named}")`] };
 }
 
-/** Resolved once, as agent-chat is. A relative path is kept so the props panel's gap line names it; not found leaves it unset. */
-function explainerBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "explainerBin"> {
-  const bin = resolveCommand(expandHome(env.TITAN_CONSOLE_EXPLAINER_BIN || "explainer", home), env.PATH, isExecutable);
-  return bin === null ? {} : { explainerBin: bin };
-}
-
-/** Resolved once, as explainer is; not found leaves it unset and the log page names the setting. */
-function factoryBinFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "factoryBin"> {
-  const bin = resolveCommand(expandHome(env.TITAN_CONSOLE_FACTORY_BIN || "titan-factory", home), env.PATH, isExecutable);
-  return bin === null ? {} : { factoryBin: bin };
+/** Resolved once, as agent-chat is: explainer for the props panel, titan-factory for #/log. Not found leaves each unset. */
+function optionalBins(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "explainerBin" | "factoryBin"> {
+  const [explainerBin, factoryBin] = ([["TITAN_CONSOLE_EXPLAINER_BIN", "explainer"], ["TITAN_CONSOLE_FACTORY_BIN", "titan-factory"]] as const).map(([variable, name]) => resolveCommand(expandHome(env[variable] || name, home), env.PATH, isExecutable));
+  return { ...(explainerBin && { explainerBin }), ...(factoryBin && { factoryBin }) };
 }
 
 /** The CLIs the console runs, each resolved on PATH once at start. */
 function cliBinsFrom(env: NodeJS.ProcessEnv, home: string, isExecutable: IsExecutable): Pick<ConsoleConfig, "agentChatBin" | "explainerBin" | "factoryBin" | "startupWarnings"> {
-  return { ...agentChatBinFrom(env, home, isExecutable), ...explainerBinFrom(env, home, isExecutable), ...factoryBinFrom(env, home, isExecutable) };
+  return { ...agentChatBinFrom(env, home, isExecutable), ...optionalBins(env, home, isExecutable) };
 }
 
 /** Settings that are each valid but unsafe or ambiguous together. */

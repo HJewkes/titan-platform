@@ -33,7 +33,7 @@ export interface LogView {
   readAt: string;
 }
 
-export const DEFAULT_LOG_DAYS = 7;
+const DEFAULT_LOG_DAYS = 7;
 const MAX_LOG_DAYS = 30;
 const DAY_MS = 86_400_000;
 

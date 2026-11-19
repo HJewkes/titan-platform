@@ -8,13 +8,13 @@ import { execFile } from "node:child_process";
 import { z } from "zod";
 import { byRecRowSchema, type ByRecRow } from "@titan-design/owner-queue";
 
-export const FACTORY_NOT_FOUND = "titan-factory is not on PATH, so Shepherd's by-rec rows are not shown; set TITAN_CONSOLE_FACTORY_BIN to its absolute path";
+const FACTORY_NOT_FOUND = "titan-factory is not on PATH, so Shepherd's by-rec rows are not shown; set TITAN_CONSOLE_FACTORY_BIN to its absolute path";
 const CLI_TIMEOUT_MS = 20_000;
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 /** What the CLI needs to find its database and run node; the daemon's own settings, tokens included, stay behind. */
 const CHILD_ENV = ["PATH", "HOME", "USER", "LANG", "LC_ALL", "TMPDIR", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME"];
 
-export interface GateRowsRead {
+interface GateRowsRead {
   rows: ByRecRow[];
   gaps: string[];
 }

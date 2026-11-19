@@ -11,7 +11,7 @@ import type { ByRecRow } from "@titan-design/owner-queue";
 export type Approval = "owner" | "reviewer" | "plan" | "auto-by-rec" | "unrecorded";
 
 /** The slice that wires the overrule tap; until it lands a decision row names it instead of a control. */
-export const OVERRULE_TASK = "TP-6778";
+const OVERRULE_TASK = "TP-6778";
 
 export interface ShipInput {
   repo: string;
@@ -49,7 +49,7 @@ export interface LogRow {
   frames: null;
 }
 
-export interface LogInput {
+interface LogInput {
   ships: readonly ShipInput[];
   /** Shepherd's by-rec rows, from `shepherd by-rec --json`. */
   gateRows: readonly ByRecRow[];

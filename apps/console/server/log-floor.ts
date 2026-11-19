@@ -5,7 +5,7 @@
  */
 import { BY_REC_FLOOR, type ByRecExclusion, type ByRecPolicy } from "@titan-design/owner-queue";
 
-export interface FloorClass {
+interface FloorClass {
   reason: string;
   label: string;
   removeBy: string;

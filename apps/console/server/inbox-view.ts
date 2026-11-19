@@ -24,7 +24,7 @@ import { readQueueRounds } from "./rounds.js";
 import type { ShepherdSource } from "./shepherd.js";
 import { withShownReads, type ShownReads } from "./inbox-shown-reads.js";
 import type { ShipLineage } from "./ship-lineage.js";
-import { inboxReadCache, viewRows, type InboxReadCache, type ViewRows } from "./inbox-rows.js";
+import { byInboxOrder, inboxReadCache, viewRows, type InboxReadCache, type ViewRows } from "./inbox-rows.js";
 
 export type WatchRow = Awaited<ReturnType<ShepherdSource["list"]>>[number];
 
@@ -296,13 +296,6 @@ function inboxItem(item: OwnerItem, { rows, strips, liveAgents, now }: Joins): P
   return { item: placed, pin: pinOf(item, row), ...(head !== undefined && { head }) };
 }
 
-/** Blocking before planning, newest first inside each; the id breaks a tie so a poll never reshuffles. */
-function byInboxOrder(a: InboxItem, b: InboxItem): number {
-  if (a.section !== b.section) return a.section === "blocking" ? -1 : 1;
-  const opened = Date.parse(b.openedAt) - Date.parse(a.openedAt);
-  return opened !== 0 ? opened : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-}
-
 const byRunId = (rows: readonly WatchRow[]): Map<string, WatchRow> => new Map(rows.map((row) => [row.runId.toLowerCase(), row]));
 
 export function inboxItems(order: readonly OwnerItem[], rows: readonly WatchRow[], { strips = new Map(), liveAgents, now = Date.now() }: ItemFacts = {}): InboxItem[] {
@@ -340,8 +333,7 @@ async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: 
     agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
   ]);
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
-  const at = now();
-  const placed = await withByRecCountdown(inboxItems(approvals.flow.order, live.value, { liveAgents, now: at }), sources.inbox.byRecStateDir, at);
+  const placed = await withByRecCountdown(inboxItems(approvals.flow.order, live.value, { liveAgents, now: now() }), sources.inbox.byRecStateDir, now());
   const byRun = byRunId(live.value);
   const items = await withShownReads(placed, (item) => rowOfItem(item, byRun), sources.rounds.lineage, reads);
   return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };
