@@ -43,5 +43,6 @@ export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, d
   const deploy = { stateDir: deployStateDir, ports: systemPauseClearPorts() };
   const hostPorts = systemHostCommandPorts();
   const policy = branches === undefined ? {} : { branches };
-  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, agentChatBin, hostPorts, activeRoot, ...policy });
+  const shepherdDeps = { port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze };
+  mountConsoleAction(app, { host, ...shepherdDeps, actionsDir, stateDir, deploy, now, log, agentChat, agentChatBin, hostPorts, activeRoot, ...policy });
 }
