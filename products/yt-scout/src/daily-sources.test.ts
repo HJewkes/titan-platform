@@ -1,7 +1,9 @@
+import { appendFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sourceCardLoaders } from "./daily-sources.js";
 import { tempTree, VALID_WATCHLIST, type TempTree } from "./fixtures.test-helpers.js";
+import { appendRows } from "./rows.js";
 import { scoreVideo } from "./score.js";
 import type { ScoreRunner } from "./seams.js";
 import { parseWatchlist } from "./watchlist.js";
@@ -61,5 +63,16 @@ describe("sourceCardLoaders", () => {
     const [only] = await loaders.cards();
 
     expect(only?.digestPath).toBe(path.join(tree.root, "out/confTalks/abc123def45.digest.md"));
+  });
+
+  it("reads past a detect fallback row, a torn line and a row without a video", async () => {
+    const loaders = await scoreInto("out/confTalks/talk.md", "cards/abc123def45.score.json");
+    const rowsDir = path.join(tree.root, "rows");
+    appendRows(rowsDir, [{ v: 1, video_id: null, source: "confTalks", step: "detect", attempt: 1, started_at: "2026-10-30T04:00:00.000Z", ms: 5, outcome: "fallback", error_class: "rss_fallback" }]);
+    appendFileSync(path.join(rowsDir, "steps-2026-10.jsonl"), '{"v":1,"video_id":\n');
+
+    await expect(loaders.cards()).resolves.toHaveLength(1);
+    await expect(loaders.findCard("abc123def45")).resolves.toBeDefined();
+    await expect(loaders.stats()).resolves.toMatchObject({ failed: 0 });
   });
 });
