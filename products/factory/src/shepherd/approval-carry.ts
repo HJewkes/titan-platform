@@ -5,6 +5,7 @@ import { stepIdMatches } from "../definition.js";
 import { SEND_BACK } from "../gate-brief.js";
 import { ownerAtHeadRowsIn, type OwnerAtHeadRow } from "../owner-at-head.js";
 import { SET_ANSWER_ORIGIN, step } from "../workflows/land.js";
+import { BY_REC_ANSWER_ORIGIN } from "../workflows/land-approval.js";
 import { approvedSetFollow, spendOnOwnerAnswer, type SetCarry } from "./approved-set-carry.js";
 import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
 import { fixCarryStep } from "./fix-carry.js";
@@ -146,7 +147,8 @@ export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowConte
     const answer = followed ?? bySet ?? (await assisted(stepId, prompt, options));
     if (!followed && !bySet) spendOnOwnerAnswer(carry, stepId, prompt);
     const merged = MergeAnswer.safeParse(answer.data).data;
-    if (ciPolicyWeakened) approved = undefined;
+    // An auto-by-rec merge (TP-6772) is no owner answer: it covers its own head, and a later head waits at its own gate.
+    if (ciPolicyWeakened || merged?.origin === BY_REC_ANSWER_ORIGIN) approved = undefined;
     else if (merged?.headSha === asked) approved = { head: asked, base, origin: merged.origin === SET_ANSWER_ORIGIN ? SET_ANSWER_ORIGIN : "answer" };
     else if (SendBackAnswer.safeParse(answer.data).success) approved = undefined;
     return answer;

@@ -2,6 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import type { StepResult, WorkflowContext } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import { followingApprovals } from "./approval-carry.js";
+import { BY_REC_ANSWER_ORIGIN } from "../workflows/land-approval.js";
 import type { FixCarryResult } from "./fix-carry.js";
 import type { OwnMergeUpResult } from "./own-merge-up.js";
 import type { RemergeResult } from "./remerge-carry.js";
@@ -73,6 +74,16 @@ describe("an approve-merge answer following the head", () => {
 
     expect(r.gates).toEqual([APPROVED, MERGED_UP, LATER]);
     expect(r.steps.some((step) => step.stepId === `sh-approval-carry:${LATER}`)).toBe(false);
+  });
+
+  it("carries no auto-by-rec merge to a later head: the owner never answered it", async () => {
+    const r = rig({ answer: (head) => ({ decision: "merge", headSha: head, ...(head === APPROVED && { origin: BY_REC_ANSWER_ORIGIN }) }) });
+
+    await r.ask("approve-merge", landPrompt(APPROVED));
+    await r.ask("approve-merge:1", landPrompt(MERGED_UP));
+
+    expect(r.gates).toEqual([APPROVED, MERGED_UP]);
+    expect(r.steps.some((step) => step.stepId === `sh-remerge:${MERGED_UP}`)).toBe(false);
   });
 
   it("answers the gate at the approved head plus an empty-remerge merge of the base without asking the owner", async () => {
