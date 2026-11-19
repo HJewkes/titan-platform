@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { Db } from "@titan-design/store-sqlite";
 import { displayRef } from "./display-ref.js";
 import { SPAN_FIELD, chapterOwnerRef, openSpans, readSpanText } from "./index-corpus.js";
@@ -97,8 +100,10 @@ export function retrieve(db: Db, terms: MatchTerms, { window = DEFAULT_WINDOW, e
 
 /** Re-read a passage's paragraphs from the corpus files by byte range. */
 export function readPassage(db: Db, root: string, passage: Passage): string[] {
-  const row = db.prepare<[string], { source_id: number; rel_path: string }>("SELECT source_id, rel_path FROM chapter WHERE id = ?").get(passage.chapterId);
+  const row = db.prepare<[string], { source_id: number; rel_path: string; sha256: string }>("SELECT source_id, rel_path, sha256 FROM chapter WHERE id = ?").get(passage.chapterId);
   if (!row) throw new Error(`passage ${passage.id} is not in the index`);
+  const actual = createHash("sha256").update(readFileSync(path.join(root, row.rel_path))).digest("hex");
+  if (actual !== row.sha256) throw new Error(`${row.rel_path} changed since it was indexed; re-run index`);
   return db
     .prepare<[number, string], { byte_offset: number; byte_length: number }>("SELECT byte_offset, byte_length FROM search_span WHERE source_id = ? AND field = ? ORDER BY byte_offset")
     .all(row.source_id, SPAN_FIELD)
