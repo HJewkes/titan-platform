@@ -343,6 +343,17 @@ describe("the planner", () => {
     expect(planned.ops).toEqual({ add: [], analysis: [analysis] });
   });
 
+  it("reads the json answer when a ts block comes before it", async () => {
+    const p = ports();
+    const name = plannerName("run-1");
+    const text = "Sketch:\n```ts\nconst x = 1;\n```\nAnswer:\n```json\n{\"add\": []}\n```";
+    behave(name, { turns: [assistantLine("p1", text, { read: 0, w5m: 0, w1h: 0 })] });
+
+    const planned = await p.plan({ runId: "run-1", digest: partialFake<Digest>(), violations: [], quota: QUOTA, round: 1, mode: "spawn" }, signal);
+
+    expect(planned.ops).toEqual({ add: [] });
+  });
+
   it("reports a final message with no JSON as malformed rather than failing the step", async () => {
     const p = ports();
     const name = plannerName("run-1");

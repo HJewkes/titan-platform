@@ -110,7 +110,7 @@ async function untilResponded(host: Host, name: string, responded: () => void, s
 }
 
 function implementBrief(input: ImplementRequest): string {
-  return `${input.brief}\n\nWork in ${input.tree}, on top of ${input.base}. Commit there, then end with one JSON block: {"head": "<commit sha>", "lesson": "<one line>"}.`;
+  return `${input.brief}\n\nWork in ${input.tree}, on top of ${input.base}. Commit there, then end with one \`\`\`json fenced block: {"head": "<commit sha>", "lesson": "<one line>"}.`;
 }
 
 async function explore(host: Host, input: ImplementRequest, signal: AbortSignal): Promise<Done> {
