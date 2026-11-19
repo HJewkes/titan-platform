@@ -341,10 +341,13 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   if (shortfall) return shortfall;
   const retryable = ctx.iteration(`${PANEL_VERDICT_STEP}:${target.head}`) < MAX_NOT_STARTED_REVIEWS;
   const merged = panelMerge(verdict, results, memberProfiles(members));
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results)), panel: merged };
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results)), ...adversaryMerged(merged) };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;
 }
+
+/** A withheld panel keeps its members only when the adversary said MERGE, the one verdict a g10-adversary release reads from it (TP-6767). */
+const adversaryMerged = (merged: PanelMerge): { panel?: PanelMerge } => (merged.members.some((m) => m.shape === "adversary" && m.verdict === "MERGE") ? { panel: merged } : {});
 
 /** The adversary member's MERGE as the evidence step judges its `Attests:` and `Authority:` lines, and whether the plan had an adversary at all. */
 function adversaryAttest(intent: PanelIntent, merged: PanelMerge): Omit<AttestVerdicts, "attests"> {

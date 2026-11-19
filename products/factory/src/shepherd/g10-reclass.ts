@@ -32,8 +32,8 @@ export async function reclassUnread(deps: ReclassDeps, input: ReclassInput, sign
   const pause = (ms: number) => deps.sleep(ms, signal);
   const from = registration.held ? registration.holdReason : null;
   if (!from || !isUnreadRegistrationHold(from)) return classHead(deps, input, pause);
-  const { repo, pr, base } = registration;
-  const target = { repo, pr, head: input.head, pause, ...(base !== null && { base }) };
+  const { repo, pr, base, branch } = registration;
+  const target = { repo, pr, head: input.head, pause, ...(base !== null && { base }), ...(branch !== null && { branch }) };
   const wanted = await g10HoldAt(deps.port, target, deps.prFiles);
   if (wanted !== undefined) return { reclassed: false, kept: wanted };
   const placed = deps.store.get().reclassIfHeld(input.runId, from, () => undefined, { actor: SHEPHERD_ACTOR, headSha: input.head });

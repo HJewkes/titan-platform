@@ -472,7 +472,7 @@ what is on main today; the rows marked *planned* are decided but not built.
 | --- | --- | --- |
 | Ordinary change under an `auto` policy | no row below matches | a reviewer `MERGE` at the head and green required checks (`MRG-AU-RV`) |
 | Visual-path change, `shepherd.visualGate: async` | the seat's `visual_paths` globs; recorded as `visualChanged` | the same reviews and green CI; no owner sign-off; the [feedback sheet](#visual-baselines) follows the merge |
-| Authority, security or policy change | `SHEPHERD_CLASS_RULES` path tables, or a `security` kind | `g10-adversary`: two independent reviewer `MERGE`s, then the seat releases the hold |
+| Authority, security or policy change | `SHEPHERD_CLASS_RULES` path tables, or a `security` kind | `g10-adversary`: Shepherd's adversary member's clean `MERGE` releases the hold under `shepherd.gateReset.twoMergeRelease: on`; a flagged verdict leaves it to the owner or the seat |
 | Low-tier policy touch | `lowTierPolicyTouch` in `g10-low-tier.ts` (named policy tables only, never a file in the classifier's own import closure) | Ships in shadow: stays `g10-adversary` and names the low tier. Under `shepherd.gateReset.lowTierPolicy: on`, an owner config edit, `g10-review`: one opus `MERGE` at the head releases the hold |
 | Over 400 changed lines, or a store migration | line count, path table | `g10-review`: one opus `MERGE` releases the hold |
 | `owner-gate` seat policy, visual path under `visualGate: owner`, or `gate-2-visual` | registration, seat policy | the owner's `approve-merge` answer |
@@ -653,7 +653,7 @@ A fresh reviewer is spawned under a name nobody has held, and a standing reviewe
 resumed. A run held with `hold --reviewer <name>` starts no reviewer of its own. It takes the
 newest verdict that reviewer gave at the head, so a `FIX_FIRST` from it wakes the
 implementer. Shepherd never reads a reviewer's name out of the hold's reason text. A
-`g10-adversary:` hold is the exception: it needs two independent `MERGE`s, so Shepherd
+`g10-adversary:` hold is the exception: it needs Shepherd's own adversary review, so Shepherd
 still spawns its own reviewer, and the named reviewer's verdict only satisfies the hold
 (`adoptedReviewer` in `products/factory/src/shepherd/external-review.ts`). A seat can also
 ask for Shepherd's own review with [`shepherd review`](#own-review).
@@ -1632,8 +1632,18 @@ event on record, or whose history cannot be read, may be one of them, so it stay
 When Shepherd's own update-branch then moves the head by a clean merge-up of main, that
 `MERGE` stands at the new head: the step releases the hold there once its checks are green,
 with no fresh review and no seat release. A head reached by any other move, or carried by the
-remerge rule, needs a fresh review first. A `g10-adversary:` hold never releases itself; the
-seat releases it.
+remerge rule, needs a fresh review first.
+
+Under `shepherd.gateReset.twoMergeRelease: on`, a `g10-adversary:` hold with no named reviewer
+releases itself when the adversary member's verdict at the PR's head is clean: a `MERGE` whose
+`Authority:` line reads `unchanged` or `tightened`, with the required checks green there and no
+change to the owner's rule file in the diff (TP-6767). The correctness reviewer's verdict is not
+read for this; it still decides the merge. A panel that withholds its verdict because another
+member gave none still records the adversary's `MERGE`, so it can release the hold. A
+`FIX_FIRST`, a `widened` line or no `Authority:` line is flagged, and the hold stays for the
+owner or the seat. The release event's actor is `shepherd:verdict:<agentId>/<sessionId>`, the
+adversary verdict it acted on (TP-2360). When the release uncovers a `g10-review` hold parked
+under it, the run judges that hold at once on the opus `MERGE` it already has (TP-3317).
 
 A restart replays each recorded `sh-g10-release` answer rather than asking again. When the newest
 answer at the head being merged was no, the merge waiting on the hold ends once at its first
@@ -1696,6 +1706,14 @@ path of a file GitHub reports as renamed or copied, is matched against `SHEPHERD
 policy, authority or security path, or a `security` kind, takes `g10-adversary`. More than 400
 changed lines or a store migration takes `g10-review`. A file list Shepherd cannot read whole
 takes `g10-adversary`.
+
+A changesets "Version Packages" pull request is not held when its diff is version-only (TP-6767):
+the PR's head is `changeset-release/main` in the same repo, every file is one `pnpm
+version-packages` writes (a modified `package.json`, a `CHANGELOG.md`, a removed
+`.changeset/*.md`, the regenerated catalog), and each manifest, parsed at the merge base and at
+the head, changes only its `version` and the ranges of packages the release bumps. A `package.json`
+or `CHANGELOG.md` under a security path then holds nothing. Any other file, any other manifest
+edit, or a read that fails keeps the hold the paths ask for.
 
 A policy touch that is low tier by its paths can take `g10-review` instead (TP-5403), so one opus
 `MERGE` at its head with green checks releases it and no owner gate is raised. This ships in shadow:

@@ -124,7 +124,11 @@ const AdversaryInput = z.looseObject({
   ...{ runId: z.string(), repo: z.string(), pr: z.number(), head: z.string(), rule: z.literal(TWO_MERGE_RULE) },
   ...{ adversary: ReviewerMergeSchema, checks: ChecksSchema, mergeUp: MergeUpSchema.optional() },
 });
-const G10ReleaseResult = z.looseObject({ released: z.boolean(), head: z.string(), verdict: G10VerdictSchema.optional(), wouldRelease: z.boolean().optional(), gating: z.string().nullable().optional() });
+const G10ReleaseResult = z.looseObject({
+  ...{ released: z.boolean(), head: z.string(), verdict: G10VerdictSchema.optional(), wouldRelease: z.boolean().optional() },
+  /** The hold an adversary release left gating; absent on a step recorded before TP-3317, which the run then never re-judges. */
+  gating: z.string().nullable().optional(),
+});
 
 /** True when the run recorded a hold event under exactly `reason`; false when it did not or the history cannot be read. */
 function holdRecorded(store: ShepherdStore, runId: string, reason: string | null): boolean {
