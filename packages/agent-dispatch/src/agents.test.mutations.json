@@ -43,8 +43,8 @@
     {
       "name": "the plain-roster fallback claims a complete lineage",
       "file": "packages/agent-dispatch/src/agents.ts",
-      "find": "return { rows: await listAgents(agentChatBinPath, timeoutMs), complete: false };",
-      "replace": "return { rows: await listAgents(agentChatBinPath, timeoutMs), complete: true };",
+      "find": "return { rows: await listAgents(agentChatBinPath, timeoutMs, {}, signal), complete: false };",
+      "replace": "return { rows: await listAgents(agentChatBinPath, timeoutMs, {}, signal), complete: true };",
       "kills": [
         "listAgentLineage falls back to the plain roster, marked incomplete, on an agent-chat that predates the flag"
       ]
