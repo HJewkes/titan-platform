@@ -77,13 +77,20 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   });
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
-  const relay = relayEvents(handle.hub, sources, config, logger);
+  const background = startBackground(handle.hub, sources, config, logger);
+  return { ...handle, close: async () => closeAll([background.close(), handle.close()], perf) };
+}
+
+/** The events relay and the hourly deposit by-rec sweep (TP-6774); closing stops the sweep and ends the relay. */
+function startBackground(hub: DaemonHandle["hub"], sources: KeptSources, config: ConsoleConfig, logger: Logger): EventsRelay {
+  const relay = relayEvents(hub, sources, config, logger);
   const byRec = startDepositByRecSweep({ stateDir: config.stateDir, inboxDir: config.inboxDir, ...(sources.decisionLog && { decisionLog: sources.decisionLog }), logger });
-  const close = async (): Promise<void> => {
-    byRec.stop();
-    await closeAll([relay.close(), handle.close()], perf);
+  return {
+    close: () => {
+      byRec.stop();
+      return relay.close();
+    },
   };
-  return { ...handle, close };
 }
 
 async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promise<void> {
