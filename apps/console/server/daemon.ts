@@ -78,9 +78,8 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   });
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
-  const relay = relayEvents(handle.hub, sources, config, logger);
-  const byRec = byRecRounds(sources, config, logger);
-  return { ...handle, close: async () => (byRec.close(), closeAll([relay.close(), handle.close()], perf)) };
+  const background = [relayEvents(handle.hub, sources, config, logger), byRecRounds(sources, config, logger)];
+  return { ...handle, close: async () => closeAll([...background.map((each) => each.close()), handle.close()], perf) };
 }
 
 async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promise<void> {
@@ -89,9 +88,10 @@ async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promis
 }
 
 /** The rounds by-rec sweep (TP-6773) answers through the same pipeline as `rounds.submit`, so it drops the inbox's kept reads too. */
-function byRecRounds(sources: KeptSources, config: ConsoleConfig, logger: Logger): { close: () => void } {
+function byRecRounds(sources: KeptSources, config: ConsoleConfig, logger: Logger): { close: () => Promise<void> } {
   const submit = submitPipeline(sources.rounds, sources.decisionLog, sources.listeners, sources.inbox.dir, sources.inboxCache.invalidate);
-  return startByRecRounds({ dir: sources.rounds.dir, stateDir: config.stateDir, submit, logger });
+  const timer = startByRecRounds({ dir: sources.rounds.dir, stateDir: config.stateDir, submit, logger });
+  return { close: async () => timer.close() };
 }
 
 function perfCommandList(perf: PerfRecorder, commandNames: () => readonly string[]): ClassedCommand[] {
