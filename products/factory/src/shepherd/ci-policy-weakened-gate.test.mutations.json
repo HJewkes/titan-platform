@@ -12,21 +12,61 @@
       ]
     },
     {
-      "name": "an earlier approval stands at a ci-policy-weakened gate",
+      "name": "an earlier approval stands at a ci-policy-weakened gate with no finding",
       "file": "products/factory/src/shepherd/approval-carry.ts",
-      "find": "const standing = !isSkillPathGate(prompt) && !ciPolicyWeakened && carry.reviewedMerge(asked);",
-      "replace": "const standing = !isSkillPathGate(prompt) && carry.reviewedMerge(asked);",
+      "find": "(!gate.ciPolicyWeakened || gate.ciPolicy !== undefined) && ",
+      "replace": "",
       "kills": [
         "an owner merge approval meeting a CI-policy-weakened gate asks the owner again at a ci-policy-weakened gate, even when the head is an empty-remerge merge-up"
       ]
     },
     {
-      "name": "an approval given at a ci-policy-weakened gate is kept to follow",
+      "name": "an approval given at a ci-policy-weakened gate is kept without its finding",
       "file": "products/factory/src/shepherd/approval-carry.ts",
-      "find": "if (ciPolicyWeakened) approved = undefined;\n    else if",
-      "replace": "if",
+      "find": "if (!gate.ciPolicyWeakened) return { head: gate.head, base: gate.base, origin };",
+      "replace": "return { head: gate.head, base: gate.base, origin };",
       "kills": [
-        "an owner merge approval meeting a CI-policy-weakened gate does not follow an approval given at a ci-policy-weakened gate to a later head's gate"
+        "an owner merge approval meeting a CI-policy-weakened gate does not follow an approval given at a ci-policy-weakened gate to a later head's gate",
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) an owner merge at a ci-policy-weakened gate follows one clean merge-up to the next ci-policy-weakened gate with no new gate"
+      ]
+    },
+    {
+      "name": "the follow drops the equal-finding check",
+      "file": "products/factory/src/shepherd/approval-carry.ts",
+      "find": " && approved.ciPolicy === gate.ciPolicy ? approved",
+      "replace": " ? approved",
+      "kills": [
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the weakened keys at the new head differ from those the owner approved"
+      ]
+    },
+    {
+      "name": "a D21 approval follows the ordinary remerge and fix-carry proofs",
+      "file": "products/factory/src/shepherd/approval-carry.ts",
+      "find": "  if (from.ciPolicy !== undefined) return ciPolicyProof(ctx, carry.target, bases.carrying ?? bases.ownMergeUp, from.head, head);\n",
+      "replace": "",
+      "kills": [
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the head carries a fix commit after the merge-up",
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the merge-up brings a carry-fenced path from main",
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the merge-up brings a repo skill path from main"
+      ]
+    },
+    {
+      "name": "a D21 follow ignores a repo skill on the base side",
+      "file": "products/factory/src/shepherd/approval-carry.ts",
+      "find": "return own && skillPathsIn(own.mainPaths).length === 0 ? own : undefined;",
+      "replace": "return own;",
+      "kills": [
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again when the merge-up brings a repo skill path from main"
+      ]
+    },
+    {
+      "name": "the finding ignores the gate's other owner-at-head rows",
+      "file": "products/factory/src/shepherd/approval-carry.ts",
+      "find": "if (rows?.length !== 1 || rows[0] !== \"ci-policy-weakened\") return undefined;",
+      "replace": "",
+      "kills": [
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again at a files-unread gate after a ci-policy-weakened approval",
+        "an owner merge at a ci-policy-weakened gate following clean merge-ups (556(3)) asks again at a ci-policy-malformed gate after a ci-policy-weakened approval"
       ]
     },
     {

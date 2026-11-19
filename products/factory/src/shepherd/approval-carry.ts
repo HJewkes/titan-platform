@@ -48,8 +48,30 @@ function holdsOwnerAtHeadRow(prompt: string, row: OwnerAtHeadRow): boolean {
 /** The owner reviews a skill diff at its own head, so a skill-path gate is never answered by an earlier approval. */
 const isSkillPathGate = (prompt: string): boolean => holdsOwnerAtHeadRow(prompt, "skill-path");
 
-/** Only the owner accepts a weaker CI policy, and only at the head they read it at, so a D21 approval follows to no head. */
+/** Only the owner accepts a weaker CI policy, so a D21 gate is answered only by an approval given on the same finding. */
 const isCiPolicyWeakenedGate = (prompt: string): boolean => holdsOwnerAtHeadRow(prompt, "ci-policy-weakened");
+
+/** How land's D21 card line opens (gate-brief.ts `d21Line`); the keys after it are the finding the owner read. */
+const CI_POLICY_FINDING_LEAD = "Class D21 (CI policy weakened): ";
+
+/**
+ * The CI-policy finding of a gate whose marker names ci-policy-weakened and no other owner-at-head row: every D21 card line,
+ * so a line posing as one can only make two findings differ. Undefined for any other gate, or a D21 gate with no card.
+ */
+function ciPolicyFindingIn(prompt: string): string | undefined {
+  const rows = ownerAtHeadRowsIn(prompt);
+  if (rows?.length !== 1 || rows[0] !== "ci-policy-weakened") return undefined;
+  const lines = prompt.split("\n").slice(1).filter((line) => line.startsWith(CI_POLICY_FINDING_LEAD));
+  return lines.length > 0 ? lines.join("\n") : undefined;
+}
+
+/** The land gate being asked: its head, the base it names, and its D21 row with the finding an approval must match. */
+interface LandGate {
+  head: string;
+  base: string | undefined;
+  ciPolicyWeakened: boolean;
+  ciPolicy: string | undefined;
+}
 
 interface Followed {
   rule: string;
@@ -64,6 +86,8 @@ interface Approved {
   head: string;
   base: string | undefined;
   origin: "answer" | typeof SET_ANSWER_ORIGIN;
+  /** The CI-policy finding of the D21 gate the owner answered; such an approval follows only to a gate with the same one. */
+  ciPolicy?: string;
 }
 
 /** A proof whose paths hold a repo skill, or that names no paths at all, would carry an approval onto a diff the owner has not seen. */
@@ -97,11 +121,22 @@ async function setOriginProof(ctx: WorkflowContext, carry: ApprovalCarry, baseRe
 }
 
 /**
+ * 556(3): a D21 approval follows only Shepherd's own clean merge-up, the one proof that names what the base side changed,
+ * and only when that holds no carry-fenced path (`ownMergeUpProof`) and no repo skill.
+ */
+async function ciPolicyProof(ctx: WorkflowContext, target: CarryTarget, baseRef: string | undefined, fromHead: string, head: string): Promise<Followed | undefined> {
+  if (baseRef === undefined) return undefined;
+  const own = await ownMergeUpProof(ctx, target, baseRef, fromHead, head);
+  return own && skillPathsIn(own.mainPaths).length === 0 ? own : undefined;
+}
+
+/**
  * The proof for the approval's origin and the run's kind: a set-origin approval follows only the own-merge-up rule under any
  * kind that follows at all; an owner's, the remerge and merge-up rules for a carrying kind, else the own-merge-up rule, else none.
  */
 async function followedProof(ctx: WorkflowContext, carry: ApprovalCarry, from: Approved, head: string): Promise<Followed | undefined> {
   const bases = await followBases(ctx, carry.target, `approve:${head}`);
+  if (from.ciPolicy !== undefined) return ciPolicyProof(ctx, carry.target, bases.carrying ?? bases.ownMergeUp, from.head, head);
   if (from.origin === SET_ANSWER_ORIGIN) return setOriginProof(ctx, carry, bases.carrying ?? bases.ownMergeUp, from.head, head);
   if (bases.carrying !== undefined) return followProof(ctx, carry.target, bases.carrying, from.head, head);
   return bases.ownMergeUp === undefined ? undefined : ownMergeUpProof(ctx, carry.target, bases.ownMergeUp, from.head, head);
@@ -120,12 +155,25 @@ async function followedAnswer(ctx: WorkflowContext, carry: ApprovalCarry, from: 
   return { stepId, iteration: 0, agentId: null, signal: null, completedAt: "", data: { decision: followed.decision, headSha: followed.headSha, ...origin } };
 }
 
+/** What a gate's answer leaves to follow: a merge at its head, kept with its D21 finding; a send-back or a D21 gate's other answer clears it. */
+function approvalAfter(current: Approved | undefined, answer: StepResult, gate: LandGate): Approved | undefined {
+  const merged = MergeAnswer.safeParse(answer.data).data;
+  if (merged?.headSha === gate.head) {
+    const origin = merged.origin === SET_ANSWER_ORIGIN ? SET_ANSWER_ORIGIN : "answer";
+    if (!gate.ciPolicyWeakened) return { head: gate.head, base: gate.base, origin };
+    return gate.ciPolicy !== undefined && origin === "answer" ? { head: gate.head, base: gate.base, origin, ciPolicy: gate.ciPolicy } : undefined;
+  }
+  if (gate.ciPolicyWeakened) return undefined;
+  return SendBackAnswer.safeParse(answer.data).success ? undefined : current;
+}
+
 /**
  * Wraps `assisted` so a merge answer at land's gate, the owner's or a review round's ship pick, follows to a later gate at a
  * head that is the approved head plus one merge of the base whose remerge-diff is empty or touches only declared generated
  * files, or a head whose whole tree equals the approved head merged with the base (any fixer commit in between re-asks, TP-3070). A security run follows only
  * Shepherd's own clean merge-up whose base side touches none of the PR's files and no carry-fenced path (`ownMergeUp`). A skill-path gate, or a proof whose paths hold a repo skill, asks again.
- * A CI-policy-weakened gate asks again, and its own approval follows to no later gate. Any other head, a kind that
+ * An owner's answer at a CI-policy-weakened gate follows only to a later such gate with the same finding and no other
+ * owner-at-head row, over Shepherd's own clean merge-up (556(3)); any other D21 gate asks again. Any other head, a kind that
  * follows nothing, an escalation, a gate on another base or a head without a standing MERGE asks again. With no approval to
  * follow, a visual gate at a head that commits exactly the set the owner accepted at a red head is answered by that set.
  * That approval follows only Shepherd's own merge-up whose base side matches no visual glob (VQ3 b). A release run follows
@@ -137,18 +185,14 @@ export function followingApprovals(ctx: WorkflowContext, assisted: WorkflowConte
   return async (stepId, prompt, options) => {
     const asked = landGateHead(stepId, prompt);
     if (asked === undefined) return assisted(stepId, prompt, options);
-    const base = landGateBase(prompt);
-    const ciPolicyWeakened = isCiPolicyWeakenedGate(prompt);
-    const standing = !isSkillPathGate(prompt) && !ciPolicyWeakened && carry.reviewedMerge(asked);
-    const from = standing && approved !== undefined && approved.head !== asked && approved.base === base ? approved : undefined;
+    const gate: LandGate = { head: asked, base: landGateBase(prompt), ciPolicyWeakened: isCiPolicyWeakenedGate(prompt), ciPolicy: ciPolicyFindingIn(prompt) };
+    const standing = !isSkillPathGate(prompt) && (!gate.ciPolicyWeakened || gate.ciPolicy !== undefined) && carry.reviewedMerge(asked);
+    const from = standing && approved !== undefined && approved.head !== asked && approved.base === gate.base && approved.ciPolicy === gate.ciPolicy ? approved : undefined;
     const followed = from === undefined ? undefined : await followedAnswer(ctx, carry, from, asked);
-    const bySet = followed || !standing ? undefined : await approvedSetFollow(ctx, carry.target, carry, { stepId, prompt, head: asked, base });
+    const bySet = followed || !standing || gate.ciPolicyWeakened ? undefined : await approvedSetFollow(ctx, carry.target, carry, { stepId, prompt, head: asked, base: gate.base });
     const answer = followed ?? bySet ?? (await assisted(stepId, prompt, options));
     if (!followed && !bySet) spendOnOwnerAnswer(carry, stepId, prompt);
-    const merged = MergeAnswer.safeParse(answer.data).data;
-    if (ciPolicyWeakened) approved = undefined;
-    else if (merged?.headSha === asked) approved = { head: asked, base, origin: merged.origin === SET_ANSWER_ORIGIN ? SET_ANSWER_ORIGIN : "answer" };
-    else if (SendBackAnswer.safeParse(answer.data).success) approved = undefined;
+    approved = approvalAfter(approved, answer, gate);
     return answer;
   };
 }
