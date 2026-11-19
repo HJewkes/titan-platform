@@ -99,7 +99,8 @@ function limitHeld(ctx: WorkflowContext, target: ReviewTarget, result: AwaitedRe
  * final message gets one correction turn. A reviewer stopped by its account's usage limit, read on time, late or as the
  * correction's reply, is held on `account` until the reset, never handed to a fresh reviewer. An own MERGE a seat WAIT held
  * has its verdict already, so it is neither read late nor corrected. A scoped fix round's FIX_FIRST is checked against its scope.
- * A settled verdict's Follow-ups block is filed here, so every caller, the panel's correctness member included, files it.
+ * A settled verdict's Follow-ups block is filed and its Check-candidates recorded here, so every caller, the panel's
+ * correctness member included, does both.
  */
 export async function takeAwaited(ctx: WorkflowContext, target: ReviewTarget, awaiting: AwaitVerdictInput | ExternalAwaiting, dispatchedReviewer: AgentIdentity | undefined, account: string, scope?: ScopeRound): Promise<{ held: Verdict } | { awaited: AwaitedResult }> {
   const taken = await settleAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);

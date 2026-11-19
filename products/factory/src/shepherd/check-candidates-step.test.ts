@@ -18,6 +18,9 @@ function verdict(extra: Record<string, unknown> = {}, agentId = "reviewer-1") {
   return { kind: "verdict" as const, verdict: "FIX_FIRST" as const, head: HEAD, locator: partialFake<SourceTextLocator>(), reviewer: { agentId, sessionId: `s-${agentId}` }, ...extra };
 }
 
+/** The step's own input, written by `recordCheckCandidatesAt` in the same test, so an object is all this checks. */
+const isBodyInput = (value: unknown): value is Parameters<typeof checkCandidatesBody>[2] => typeof value === "object" && value !== null;
+
 function harness(files: () => Promise<PrFile[]>, options: { mode?: Mode; recordedNext?: string } = {}) {
   const db = openDatabase(":memory:");
   runMigrations(db, [checkCandidatesMigration(1)]);
@@ -28,7 +31,8 @@ function harness(files: () => Promise<PrFile[]>, options: { mode?: Mode; recorde
   const dispatch = async (stepId: string, _template: string, sent: { vars: Record<string, string> }) => {
     dispatched.push(stepId);
     const input: unknown = JSON.parse(Object.values(sent.vars)[0] ?? "{}");
-    return { data: { result: await checkCandidatesBody(deps, () => options.mode ?? "record", input as never) } };
+    if (!isBodyInput(input)) throw new Error("the step sent no input object");
+    return { data: { result: await checkCandidatesBody(deps, () => options.mode ?? "record", input) } };
   };
   const ctx = Object.assign(partialFake<WorkflowContext>(), { runId: "run-7", dispatch, historyNext: () => options.recordedNext });
   return { ctx, table, dispatched };

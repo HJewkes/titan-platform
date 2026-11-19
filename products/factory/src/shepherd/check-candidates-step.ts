@@ -49,7 +49,7 @@ function areaOfPath(path: string): string {
 }
 
 /** The area with the most added and deleted lines; on a tie the one listed first keeps it. */
-export function areaOf(files: readonly PrFile[]): string | undefined {
+function areaOf(files: readonly PrFile[]): string | undefined {
   const lines = new Map<string, number>();
   for (const file of files) {
     const area = areaOfPath(file.path);
@@ -60,10 +60,14 @@ export function areaOf(files: readonly PrFile[]): string | undefined {
   return best?.[0];
 }
 
+/** Undefined once `ms` passes; the abandoned read is left to settle on its own, unread. */
 function withinMs<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expiry = new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), ms).unref()));
-  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+  const limit = AbortSignal.timeout(ms);
+  return new Promise<T | undefined>((resolve, reject) => {
+    const expire = () => resolve(undefined);
+    limit.addEventListener("abort", expire, { once: true });
+    work.then(resolve, reject).finally(() => limit.removeEventListener("abort", expire));
+  });
 }
 
 type FilesDeps = Pick<ShepherdDeps, "port" | "store" | "prFiles">;
@@ -72,7 +76,7 @@ type FilesDeps = Pick<ShepherdDeps, "port" | "store" | "prFiles">;
 async function prAreaOf(deps: FilesDeps, input: CandidatesInput, timeoutMs: number): Promise<string | undefined> {
   try {
     const base = registeredBase(deps.store, input.runId);
-    const target = { repo: input.repo as CandidateInput["repo"], pr: input.pr, head: input.head, ...(base !== undefined && { base }) };
+    const target = { repo: input.repo, pr: input.pr, head: input.head, ...(base !== undefined && { base }) };
     const files = await withinMs(prFilesOf(deps.port, target, deps.prFiles), timeoutMs);
     return files && areaOf(files);
   } catch {
@@ -81,7 +85,7 @@ async function prAreaOf(deps: FilesDeps, input: CandidatesInput, timeoutMs: numb
 }
 
 function rowsOf(input: CandidatesInput, area: string | undefined): CandidateInput[] {
-  const where = { runId: input.runId, repo: input.repo as CandidateInput["repo"], pr: input.pr, head: input.head, area: area ?? null, member: input.member };
+  const where = { runId: input.runId, repo: input.repo, pr: input.pr, head: input.head, area: area ?? null, member: input.member };
   return (input.checkCandidates ?? []).map(({ classKey, route, sketch }) => ({ ...where, classKey, route, sketch, locator: `${input.repo}#${input.pr}@${input.head.slice(0, 12)}` }));
 }
 

@@ -77,10 +77,8 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...CI_UNREAD_STEPS,
   ...PANEL_STEPS,
   ...NO_REVIEWER_STEPS,
-  ...SCOPE_CHECK_STEPS,
-  { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
-  ...FOLLOW_UPS_STEPS,
-  ...CHECK_CANDIDATES_STEPS,
+  ...SCOPE_CHECK_STEPS, { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
+  ...FOLLOW_UPS_STEPS, ...CHECK_CANDIDATES_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -334,8 +332,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     ...noReviewerRoutes(deps, wiring?.accounts?.alert),
     scopeCheckRoute(deps.now),
     reviewShadowRoute(deps.now, wiring),
-    followUpsRoute(deps.now, wiring?.followUps),
-    checkCandidatesRoute(deps, wiring),
+    followUpsRoute(deps.now, wiring?.followUps), checkCandidatesRoute(deps, wiring),
   ];
 };
 
