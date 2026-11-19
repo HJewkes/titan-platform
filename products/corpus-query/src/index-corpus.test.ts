@@ -52,6 +52,14 @@ describe("indexCorpus", () => {
     expect(stats).toMatchObject({ documents: 3, indexed: 3, unchanged: 0, removed: 0, skipped: 1, paragraphs: 5 });
   });
 
+  it("throws on a short read instead of padding with NULs", () => {
+    indexCorpus(db, root, archiveLayout);
+    const [span] = paragraphsOf("northwind/01/01");
+    fs.truncateSync(path.join(root, span!.relPath), span!.byteOffset + 2);
+
+    expect(() => readSpanText(root, span!.relPath, span!.byteOffset, span!.byteLength)).toThrow(/shorter than the index expects/);
+  });
+
   it("re-reads each span from its byte range as the exact paragraph, multibyte text included", () => {
     indexCorpus(db, root, archiveLayout);
 
