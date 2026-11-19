@@ -98,7 +98,7 @@ export type Verdict =
   | { kind: "MERGE"; /** Set only when `review.panel` is `on` and the head's intent recorded a plan. */ panel?: PanelMerge; headSha: string; evidence: unknown; /** The profile Shepherd spawned the reviewer with; absent for an external, resumed or carried verdict. */ reviewerProfile?: string; /** The reviewed head this MERGE was carried from across a clean merge-up of the base. */ mergeUpFrom?: string; /** The reviewer's OWNER-BRIEF block, shown on an approve-merge gate at this head. */ ownerBrief?: OwnerBrief }
   | { kind: "FIX_FIRST"; headSha: string; text: string; closer?: "yes" | "no" }
   | { kind: "NO_REPRO"; headSha: string; result: unknown }
-  | { kind: "none"; cause?: NoVerdictCause; reason?: string; seatHeld?: SeatHeld };
+  | { kind: "none"; cause?: NoVerdictCause; reason?: string; seatHeld?: SeatHeld; /** The members that did answer a panel that withheld its verdict, so the adversary's own MERGE can still release its hold (TP-6767). */ panel?: PanelMerge };
 
 /** `shepherd.visualSetCarry`: whether a red head failing only its seat's baseline check asks the owner to accept CI's set. */
 export type VisualSetCarry = "off" | "shadow" | "on";

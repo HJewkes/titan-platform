@@ -7,7 +7,8 @@ import { AUTO, HEAD, PR, plannedRun } from "./plan-approval.scene.test-helpers.j
 /**
  * TP-5407 (gate model S3b): the adversary's `Authority:` line reaches the owner-tier row. Each scene runs the real
  * shepherd-pr workflow on a fake GitHub with a g10-adversary hold, so the panel plans an adversary member beside correctness
- * and the hold releases on their two MERGEs. Under `ownerTier: on`, widened or missing stops for the owner at merge.
+ * and the hold releases on the adversary's clean MERGE (TP-6767). Under `ownerTier: on`, widened or missing stops for the owner at merge;
+ * a widened line also keeps the hold.
  */
 const SECURITY = "packages/tool-guard/src/deny-rules.ts";
 const PLAIN = "packages/demo/src/plain.ts";
@@ -93,11 +94,14 @@ describe("under ownerTier on", () => {
 });
 
 describe("under ownerTier shadow", () => {
-  it("widened merges and its evidence records the would-gate", async () => {
+  it("widened keeps the g10-adversary hold for the owner, and its evidence records the would-gate", async () => {
     const scene = heldRun(adversaryLines("widened"), "shadow");
 
-    await mergedClear(scene);
+    await vi.waitFor(() => expect(scene.host.runtime.status(scene.runId)?.currentStep).toBe("merge:0"), { timeout: 20_000 });
 
+    expect(releaseRule(scene)).toMatchObject({ released: false });
+    expect(scene.store.get().byRun(scene.runId)).toMatchObject({ held: true, holdReason: HELD });
+    expect(scene.fake.effects.merge).toBe(0);
     expect(postedEvidence(scene)).toMatchObject({
       authorityLine: "widened",
       ownerTier: { mode: "shadow", rows: ["Authority widened"] },

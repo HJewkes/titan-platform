@@ -276,7 +276,7 @@ function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string 
 }
 
 /** Names the seat that withheld the verdict, so a round where every dispatched member answered never reads as a silent reviewer. */
-function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Verdict {
+function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Extract<Verdict, { kind: "none" }> {
   if (verdict.outcome === "timeout") return { kind: "none", cause: "timeout", reason: "a blocking panel member gave no verdict" };
   const shortfall = "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned";
   const reason = verdict.fixProofShortfall === true ? shortfall : "a blocking panel member gave no verdict";
@@ -340,8 +340,8 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   const shortfall = proofShortfall(verdict, target.head, base.fixProof);
   if (shortfall) return shortfall;
   const retryable = ctx.iteration(`${PANEL_VERDICT_STEP}:${target.head}`) < MAX_NOT_STARTED_REVIEWS;
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results));
   const merged = panelMerge(verdict, results, memberProfiles(members));
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results)), panel: merged };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;
 }
