@@ -1,4 +1,5 @@
 import type { Logger } from "@titan-design/daemon";
+import type { PullRequest } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../context.js";
@@ -6,6 +7,7 @@ import { stepOf } from "../coordinator-evidence.js";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { classifyRegistered, restartRegistered, type Registered } from "./commands.js";
 import { mergeOnOwnerAnswer, type DivergedHeld, type DivergedMerge } from "./diverged-merge.js";
+import { hasStackedLeft, stackedLeft, type StackedLeft } from "./diverged-stacked.js";
 import type { RegisterArgs } from "./register-args.js";
 import { DIVERGED_PR_CLOSED, isReplayDiverged } from "./restart.js";
 import type { ShepherdServices } from "./services.js";
@@ -14,14 +16,14 @@ import { SEAT_STEPS } from "./waiting.js";
 
 interface DivergedSweep {
   restarted: DivergedRestart[];
-  /** Runs cancelled because their pull request is no longer open. */
-  ended: Array<{ runId: string; reason: string }>;
+  /** Runs cancelled because their pull request is no longer open; a merged one names the stacked children it left. */
+  ended: Array<{ runId: string; reason: string } & StackedLeft>;
   /** Runs whose pull request the sweep read as no longer open, whether or not their cancel went through. */
   closed: string[];
   /** Runs left parked because an owner gate is pending on them: a restart cancels the gate and the new run never asks again. */
   kept: Array<{ runId: string; gateId: string }>;
   /** Runs merged at the head the owner approved while they were parked; a restart would have spent that answer (TP-3918). */
-  merged: DivergedMerge[];
+  merged: Array<DivergedMerge & StackedLeft>;
   /** Runs left parked on an owner's merge answer because the land loop's merge guard holds their PR (TP-5802). */
   held: DivergedHeld[];
   /** A run the sweep could not read or restart; it stays parked for the next sweep. */
@@ -61,7 +63,7 @@ async function classifyOrHold(ctx: FactoryContext, restarted: Registered, head: 
  * A pending owner gate keeps the run parked: the restart would cancel it and the new run never asks again. An owner merge
  * answered while it was parked merges at the approved head instead, when that head still stands and land's checks pass.
  */
-async function restartOrKeep(ctx: FactoryContext, store: ShepherdStore, known: Registration, run: WorkflowRun, head: string, sweep: DivergedSweep): Promise<void> {
+async function restartOrKeep(ctx: FactoryContext, store: ShepherdStore, known: Registration, run: WorkflowRun, pr: PullRequest, sweep: DivergedSweep): Promise<void> {
   const gateId = pendingOwnerGate(ctx.host, known.runId);
   if (gateId !== undefined) {
     sweep.kept.push({ runId: known.runId, gateId });
@@ -69,14 +71,14 @@ async function restartOrKeep(ctx: FactoryContext, store: ShepherdStore, known: R
   }
   const carried = await mergeOnOwnerAnswer(ctx.host, ctx.shepherd!, known, run);
   if (carried !== undefined) {
-    if ("merged" in carried) sweep.merged.push(carried.merged);
+    if ("merged" in carried) sweep.merged.push({ ...carried.merged, ...(await stackedLeft(ctx.shepherd!, known.repo, pr)) });
     else sweep.held.push(carried.held);
     return;
   }
   const restarted = await restartRegistered(ctx, store, known, argsOf(known), known.policy);
   if (!restarted.created) return;
   sweep.restarted.push({ runId: known.runId, newRunId: restarted.runId });
-  await classifyOrHold(ctx, restarted, head);
+  await classifyOrHold(ctx, restarted, pr.headSha);
 }
 
 /**
@@ -99,10 +101,10 @@ export async function restartDivergedRuns(ctx: FactoryContext, closing: () => bo
         sweep.closed.push(known.runId);
         const reason = DIVERGED_PR_CLOSED;
         ctx.host.runtime.cancel(known.runId, reason, { abandon: true });
-        sweep.ended.push({ runId: known.runId, reason });
+        sweep.ended.push({ runId: known.runId, reason, ...(pr.merged ? await stackedLeft(services, known.repo, pr) : {}) });
         continue;
       }
-      await restartOrKeep(ctx, store, known, run, pr.headSha, sweep);
+      await restartOrKeep(ctx, store, known, run, pr, sweep);
     } catch (error) {
       sweep.errors.push({ runId: known.runId, cause: error instanceof Error ? error.message : String(error) });
     }
@@ -140,6 +142,7 @@ export async function restartDivergedLogged(host: FactoryHost, services: Shepher
     for (const run of restarted) log.info({ ...run }, "restarted a replay-diverged run");
     for (const run of ended) log.info({ ...run }, "ended a replay-diverged run whose PR is no longer open");
     for (const run of merged) log.info({ ...run }, "merged a replay-diverged run at the head its owner approved while it was parked");
+    for (const run of [...ended, ...merged].filter(hasStackedLeft)) log.warn({ ...run }, "a merged replay-diverged run left stacked children to retarget: its sh-stack-children never ran");
     for (const run of kept) log.warn({ ...run }, "left a replay-diverged run parked: its owner gate is still pending");
     for (const run of held) log.warn({ ...run }, "left a replay-diverged run parked: the merge guard holds its PR");
     for (const run of errors) log.warn({ ...run }, "left a replay-diverged run parked: it could not be restarted");

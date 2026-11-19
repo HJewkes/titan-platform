@@ -262,8 +262,14 @@ export class WorkflowRuntime {
     this.save(run);
     this.cancelGates(runId, reason);
     if (live) live.controller.abort(new WorkflowCancelledError(runId, reason));
-    else if (options.abandon || (this.mode !== "quiesced" && Object.keys(run.activeSteps).length === 0)) this.finish(run, "cancelled", reason);
+    else if (options.abandon || (this.mode !== "quiesced" && Object.keys(run.activeSteps).length === 0)) this.abandon(run, reason);
     else this.release(run);
+  }
+
+  /** Each step dropped unsettled gets its own `step_abandoned` event, the only record left once `finish` clears them. */
+  private abandon(run: WorkflowRun, reason: string): void {
+    for (const step of Object.values(run.activeSteps)) this.baseDeps.emit({ type: "step_abandoned", runId: run.id, stepId: step.stepId, reason: `cancelled: ${reason}` });
+    this.finish(run, "cancelled", reason);
   }
 
   /** Records `data` as step `stepId` of a finished run, a fact learnt after it ended; false when the run is unfinished or already has it. */

@@ -135,6 +135,23 @@ describe("workflow definition version pinning", () => {
     expect(await successor.hydrate()).toEqual([]);
   });
 
+  it("records each in-flight step an abandon drops as a step_abandoned event before the run is cancelled", async () => {
+    const db = makeDb();
+    const runId = await inFlightRun(db);
+    const events: WorkflowEvent[] = [];
+    const second = runtime(db, events, cancelledOnReconcile);
+    second.register("wf", oneDispatch, { version: "2" });
+    await second.hydrate();
+
+    second.cancel(runId, "replay diverged; PR closed", { abandon: true });
+
+    const ends = events.filter((event) => event.type === "step_abandoned" || event.type === "workflow_cancelled");
+    expect(ends).toMatchObject([
+      { type: "step_abandoned", runId, stepId: "work", reason: "cancelled: replay diverged; PR closed" },
+      { type: "workflow_cancelled", runId },
+    ]);
+  });
+
   it("finishes a run that was already cancelling before the definition changed", async () => {
     const db = makeDb();
     const runId = await inFlightRun(db);
