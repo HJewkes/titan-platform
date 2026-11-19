@@ -7,7 +7,8 @@
       "find": "this.usage.set(id, { u: rec(m.usage), model: str(m.model), at });",
       "replace": "this.usage.set(`${id}${this.usage.size}`, { u: rec(m.usage), model: str(m.model), at });",
       "kills": [
-        "context-audit report sums each role's spend once per message id and leaves out transcripts older than the window"
+        "context-audit report sums each role's spend once per message id and leaves out transcripts older than the window",
+        "context-audit report reports the last line's output tokens for a response written over several lines"
       ]
     },
     {
