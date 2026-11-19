@@ -113,8 +113,18 @@ describe("byRecDecision clock", () => {
     expect(decision).toEqual({ eligible: false, reason: "floor:on-silence-wait" });
   });
 
-  it("refuses an unreadable open time", () => {
-    expect(byRecDecision(subject({ openedAt: "yesterday" }), after(48 * HOUR), policy())).toEqual({ eligible: false, reason: "bad-opened-at" });
+  it.each(["yesterday", "0", "1", "2026-03-01", "2026-03-01T00:00:00"])("refuses an open time that is not a strict ISO date-time with offset: %s", (openedAt) => {
+    expect(byRecDecision(subject({ openedAt }), after(48 * HOUR), policy())).toEqual({ eligible: false, reason: "bad-opened-at" });
+  });
+
+  it("accepts an open time with a non-Z offset", () => {
+    const decision = byRecDecision(subject({ openedAt: "2026-03-01T01:00:00+01:00" }), after(24 * HOUR), policy());
+
+    expect(decision).toMatchObject({ eligible: true, at: "2026-03-02T00:00:00.000Z" });
+  });
+
+  it("refuses when the current time is invalid", () => {
+    expect(byRecDecision(subject(), new Date("garbage"), policy())).toEqual({ eligible: false, reason: "bad-now" });
   });
 
   it("names the recommender when no rationale was given", () => {

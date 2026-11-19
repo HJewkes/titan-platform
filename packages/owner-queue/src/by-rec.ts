@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { floorReason, type ByRecSubject } from "./by-rec-floor.js";
 import type { ByRecExclusion, ByRecPolicy } from "./by-rec-schema.js";
 import type { OwnerItem } from "./schema.js";
@@ -7,6 +8,7 @@ export type ByRecDecision =
   | { eligible: false; reason: string; at?: string };
 
 const HOUR_MS = 3_600_000;
+const strictTimestamp = z.iso.datetime({ offset: true });
 const PREFIX_FIELDS = new Set<ByRecExclusion["field"]>(["hold", "path", "authority"]);
 
 function valuesOf(subject: ByRecSubject, field: ByRecExclusion["field"]): readonly string[] {
@@ -49,6 +51,24 @@ function policyReason(subject: ByRecSubject, policy: ByRecPolicy): string | unde
   return belowConfidence(subject, policy) ? "below-confidence" : undefined;
 }
 
+/** `Date.parse` accepts junk such as "0" (2000-01-01), so only a strict ISO date-time with offset counts as a time. */
+function openedMs(openedAt: string): number | undefined {
+  return strictTimestamp.safeParse(openedAt).success ? Date.parse(openedAt) : undefined;
+}
+
+/**
+ * The time the subject became eligible, or the refusal. A NaN comparison is always false, so an unreadable time would
+ * otherwise fall through to eligible.
+ */
+function clockDecision(subject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision | string {
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs)) return { eligible: false, reason: "bad-now" };
+  const opened = openedMs(subject.openedAt);
+  if (opened === undefined || !Number.isFinite(opened)) return { eligible: false, reason: "bad-opened-at" };
+  const at = new Date(opened + waitHours(subject, policy) * HOUR_MS).toISOString();
+  return nowMs < Date.parse(at) ? { eligible: false, reason: "too-early", at } : at;
+}
+
 /**
  * Whether a subject resolves to its recommendation now. Pure: the sweep re-reads every fact, calls this, and acts or
  * logs. Shadow mode decides the same way as live; only the sweep's action differs. A skip that is only waiting on the
@@ -57,10 +77,8 @@ function policyReason(subject: ByRecSubject, policy: ByRecPolicy): string | unde
 export function byRecDecision(subject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision {
   const reason = policyReason(subject, policy);
   if (reason !== undefined) return { eligible: false, reason };
-  const opened = Date.parse(subject.openedAt);
-  if (Number.isNaN(opened)) return { eligible: false, reason: "bad-opened-at" };
-  const at = new Date(opened + waitHours(subject, policy) * HOUR_MS).toISOString();
-  if (now.getTime() < Date.parse(at)) return { eligible: false, reason: "too-early", at };
+  const at = clockDecision(subject, now, policy);
+  if (typeof at !== "string") return at;
   const recommendation = subject.recommendation ?? { answer: "", by: "" };
   const rationale = recommendation.rationale?.trim() || `recommended by ${recommendation.by}`;
   return { eligible: true, at, answer: recommendation.answer, rationale };
