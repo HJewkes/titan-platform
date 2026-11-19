@@ -11,8 +11,8 @@
     {
       "name": "span read ignores the offset",
       "file": "products/active-work/src/search/context-tiers.ts",
-      "find": "buffer.length, byteOffset)",
-      "replace": "buffer.length, 0)",
+      "find": "[0, byteOffset, Math.min",
+      "replace": "[0, 0, Math.min",
       "kills": ["hitTiers tier 2 reads exactly byteLength bytes at byteOffset"]
     },
     {
