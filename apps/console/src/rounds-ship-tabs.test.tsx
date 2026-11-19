@@ -84,6 +84,7 @@ describe("Review, Diff and Context tabs on a Ship round (decision 167)", { timeo
 
   it("gives each PR of a two-PR round its own tabs and Ship bar", async () => {
     await renderTwoPr();
+    openTab("Review", "example/tiles#1");
 
     openTab("Diff", "example/panels#2");
 
@@ -92,6 +93,19 @@ describe("Review, Diff and Context tabs on a Ship round (decision 167)", { timeo
     expect(within(panel("review", "example/tiles#1")).getByText("Keep the stripe colour?")).toBeTruthy();
     expect(getButton("Ship example/panels#2", prRoot("example/panels#2"))).toBeTruthy();
     expect(getButton("Ship example/tiles#1", prRoot("example/tiles#1"))).toBeTruthy();
+  });
+});
+
+describe("which tab a PR opens on (TP-6759)", { timeout: RENDER_TIMEOUT_MS }, () => {
+  const unchangedPanels = (manifest: Manifest): Manifest => ({ ...manifest, variants: manifest.variants.map((each) => (each.key.startsWith("panel") || each.key.startsWith("badge") ? { ...each, change: "unchanged" as const } : each)) });
+
+  it("opens a PR with changed images on Diff, and one with only unchanged images on Review", async () => {
+    await renderTwoPr(unchangedPanels);
+
+    expect(shown(panel("diff", "example/tiles#1"))).toBe(true);
+    expect(shown(panel("review", "example/tiles#1"))).toBe(false);
+    expect(shown(panel("review", "example/panels#2"))).toBe(true);
+    expect(shown(panel("diff", "example/panels#2"))).toBe(false);
   });
 });
 
@@ -199,6 +213,7 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
       ],
     });
     const cards = (pr: string) => queryAllByRoleFast("checkbox", "Round 1 feedback addressed", panel("review", pr));
+    for (const pr of ["example/tiles#1", "example/panels#2"]) openTab("Review", pr);
 
     expect(cards("example/tiles#1")).toHaveLength(1);
     expect(cards("example/panels#2")).toHaveLength(1);
@@ -216,7 +231,9 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
     ];
     const card = (pr: string) => getByRoleFast("checkbox", "Round 1 feedback addressed", panel("review", pr));
     const shipOff = (pr: string) => getButton(`Ship ${pr}`, prRoot(pr)).getAttribute("aria-disabled") === "true";
+    const reviewFirst = (): void => ["example/tiles#1", "example/panels#2"].forEach((pr) => openTab("Review", pr));
     await renderTwoPr(undefined, { priorFeedback });
+    reviewFirst();
 
     fireEvent.click(card("example/tiles#1"));
 
@@ -224,6 +241,7 @@ describe("Ship bar blockers link to what they name (harness PrTabs ShipBar)", { 
     expect([shipOff("example/tiles#1"), shipOff("example/panels#2")]).toEqual([false, true]);
     cleanup();
     await renderTwoPr(undefined, { priorFeedback });
+    reviewFirst();
     expect([card("example/tiles#1"), card("example/panels#2")].map((each) => each.getAttribute("aria-checked"))).toEqual(["true", "false"]);
   });
 
