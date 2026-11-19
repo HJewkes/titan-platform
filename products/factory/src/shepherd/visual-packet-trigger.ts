@@ -59,14 +59,19 @@ export interface PacketRun extends GateRun {
  */
 export function packetTriggering(run: PacketRun, assisted: WorkflowContext["assisted"]): WorkflowContext["assisted"] {
   return async (stepId, prompt, options) => {
-    const packet = await packetBeforeGate(run, stepId, prompt);
+    const packet = await recordPacket(run, stepId, prompt);
     if (packet?.event !== "visual-run-empty" || packet.headSha === undefined) return assisted(stepId, prompt, options);
     return routeEmptyVisualRun(run, stepId, packet.headSha, packet.reason ?? "the pr-visual run was empty", (note) => assisted(stepId, `${prompt}${note}`, options));
   };
 }
 
-/** Records a visual gate's packet step and returns it with its head; any other gate, or a step skipped, records nothing. */
-export async function packetBeforeGate(run: Pick<PacketRun, "ctx" | "target" | "ownerGateReason">, stepId: string, prompt: string): Promise<(PacketResult & { headSha?: string }) | undefined> {
+/** Records a visual gate's packet step; any other gate records nothing. */
+export async function packetBeforeGate(run: Pick<PacketRun, "ctx" | "target" | "ownerGateReason">, stepId: string, prompt: string): Promise<void> {
+  await recordPacket(run, stepId, prompt);
+}
+
+/** The packet step a visual gate recorded, with its head; any other gate, or a step skipped, records nothing. */
+async function recordPacket(run: Pick<PacketRun, "ctx" | "target" | "ownerGateReason">, stepId: string, prompt: string): Promise<(PacketResult & { headSha?: string }) | undefined> {
   const headSha = isVisualGate(stepId, prompt, run.ownerGateReason());
   if (headSha === undefined) return undefined;
   const packet = await triggerPacket(run, stepId, headSha);
