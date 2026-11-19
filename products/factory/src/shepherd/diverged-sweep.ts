@@ -1,5 +1,5 @@
 import type { Logger } from "@titan-design/daemon";
-import type { PullRequest } from "@titan-design/github";
+import type { PullRequest, RepoSlug } from "@titan-design/github";
 import type { WorkflowRun } from "@titan-design/workflow";
 import type { FactoryHost } from "../host.js";
 import type { FactoryContext } from "../context.js";
@@ -7,12 +7,34 @@ import { stepOf } from "../coordinator-evidence.js";
 import { SHEPHERD_ACTOR } from "./events.js";
 import { classifyRegistered, restartRegistered, type Registered } from "./commands.js";
 import { mergeOnOwnerAnswer, type DivergedHeld, type DivergedMerge } from "./diverged-merge.js";
-import { hasStackedLeft, stackedLeft, type StackedLeft } from "./diverged-stacked.js";
 import type { RegisterArgs } from "./register-args.js";
 import { DIVERGED_PR_CLOSED, isReplayDiverged } from "./restart.js";
+import { errorClass } from "./error-class.js";
 import type { ShepherdServices } from "./services.js";
+import { stackChildren } from "./stack-land.js";
 import type { Registration, ShepherdStore } from "./store.js";
 import { SEAT_STEPS } from "./waiting.js";
+
+/**
+ * The open PRs still based on a merged parent's branch, which its abandoned run's sh-stack-children never restacked
+ * or retargeted: `stacked` names them, `stackedUnread` why they could not be listed. Empty when there are none.
+ */
+interface StackedLeft {
+  stacked?: number[];
+  stackedUnread?: string;
+}
+
+/** A diverged run's abandon drops its post-merge tail, so the sweep lists the children that tail would have moved. */
+async function stackedLeft(services: ShepherdServices, repo: RepoSlug, parent: PullRequest): Promise<StackedLeft> {
+  try {
+    const children = await stackChildren(services, { repo, parentPr: parent.number, parentHeadRef: parent.headRef, parentHeadRepo: parent.headRepo });
+    return children.length > 0 ? { stacked: children.map((child) => child.pr) } : {};
+  } catch (error) {
+    return { stackedUnread: errorClass(error) };
+  }
+}
+
+const hasStackedLeft = (left: StackedLeft): boolean => left.stacked !== undefined || left.stackedUnread !== undefined;
 
 interface DivergedSweep {
   restarted: DivergedRestart[];
