@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Exec } from "@titan-design/fix-proof";
 import { filterPrivate, type ExclusionPolicy } from "../private/exclusion.js";
 import { localCloneGit, type BundleGit } from "../review-pr/bundle.js";
 import { buildCorrectedRef, fixTests, laterFixCandidates, type FixSource, type indexCorpus } from "./later-fix.js";
 import { screenLaterFix } from "./later-fix-screen.js";
+import { ensureScratchClone } from "./scratch-clone.js";
 import type { screenCase } from "./screen.js";
 import type { CorpusV3Row } from "./select.js";
 import { implementCaseId, type ImplementTaskSource, type LaterFixAttachment } from "./write-case.js";
@@ -39,20 +39,14 @@ export interface LaterFixManifest {
 
 type Outcome = { ok: true; attachment: LaterFixAttachment } | { ok: false; reason: string };
 
-const CLONE_TIMEOUT_MS = 10 * 60_000;
-const REPO_NAME = /^[\w-][\w.-]*\/[\w-][\w.-]*$/;
-
 /** The same `.scratch/<owner>/<repo>` clone the primary screen made, so a corrected reference never lands in the owner's clone. */
-async function scratchCloneOf(repo: string, ctx: LaterFixContext): Promise<string> {
-  if (!REPO_NAME.test(repo)) throw new Error(`repo is not owner/name: ${JSON.stringify(repo)}`);
-  const clone = join(ctx.outDir, ".scratch", repo);
-  if (existsSync(clone)) return clone;
-  const local = ctx.cloneFor(repo);
-  if (local === undefined) throw new Error(`no local clone for ${repo}`);
-  mkdirSync(dirname(clone), { recursive: true });
-  const result = await ctx.exec("git", ["clone", "--quiet", "--shared", "--no-checkout", "--", local, clone], { cwd: dirname(clone), timeoutMs: CLONE_TIMEOUT_MS });
-  if (result.status !== 0) throw new Error(`scratch clone of ${repo} failed (exit ${result.status ?? "signal"}): ${result.stderr.trim()}`);
-  return clone;
+function scratchCloneOf(repo: string, ctx: LaterFixContext): Promise<string> {
+  const sourceOf = (): string => {
+    const local = ctx.cloneFor(repo);
+    if (local === undefined) throw new Error(`no local clone for ${repo}`);
+    return local;
+  };
+  return ensureScratchClone({ repo, outDir: ctx.outDir, exec: ctx.exec, sourceOf });
 }
 
 // Ignoring a source empties its list, so a PR both lists name still counts under the source that was kept.
