@@ -282,6 +282,11 @@ declare const ownerCardSchema: zod.ZodObject<{
             remoteControl: zod.ZodBoolean;
             briefPath: zod.ZodString;
             briefSha256: zod.ZodOptional<zod.ZodString>;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"host-command">;
+            command: zod.ZodEnum<{
+                "broker-restart-window": "broker-restart-window";
+            }>;
         }, zod_v4_core.$strict>], "kind">>;
         verify: zod.ZodOptional<zod.ZodString>;
         outcome: zod.ZodOptional<zod.ZodEnum<{
@@ -1204,6 +1209,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
             remoteControl: z.ZodBoolean;
             briefPath: z.ZodString;
             briefSha256: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"host-command">;
+            command: z.ZodEnum<{
+                "broker-restart-window": "broker-restart-window";
+            }>;
         }, z.core.$strict>], "kind">>;
         verify: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>>;
@@ -1411,6 +1421,11 @@ declare const itemStepSchema: z.ZodObject<{
         remoteControl: z.ZodBoolean;
         briefPath: z.ZodString;
         briefSha256: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"host-command">;
+        command: z.ZodEnum<{
+            "broker-restart-window": "broker-restart-window";
+        }>;
     }, z.core.$strict>], "kind">>;
     verify: z.ZodOptional<z.ZodString>;
     outcome: z.ZodOptional<z.ZodEnum<{
@@ -1686,6 +1701,11 @@ declare const ownerItemSchema: z.ZodObject<{
             remoteControl: z.ZodBoolean;
             briefPath: z.ZodString;
             briefSha256: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"host-command">;
+            command: z.ZodEnum<{
+                "broker-restart-window": "broker-restart-window";
+            }>;
         }, z.core.$strict>], "kind">>;
         verify: z.ZodOptional<z.ZodString>;
         outcome: z.ZodOptional<z.ZodEnum<{

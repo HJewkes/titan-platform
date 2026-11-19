@@ -365,6 +365,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
             remoteControl: z.ZodBoolean;
             briefPath: z.ZodString;
             briefSha256: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"host-command">;
+            command: z.ZodEnum<{
+                "broker-restart-window": "broker-restart-window";
+            }>;
         }, z.core.$strict>], "kind">>;
         verify: z.ZodOptional<z.ZodString>;
     }, z.core.$strict>>>;
@@ -572,6 +577,11 @@ declare const itemStepSchema: z.ZodObject<{
         remoteControl: z.ZodBoolean;
         briefPath: z.ZodString;
         briefSha256: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"host-command">;
+        command: z.ZodEnum<{
+            "broker-restart-window": "broker-restart-window";
+        }>;
     }, z.core.$strict>], "kind">>;
     verify: z.ZodOptional<z.ZodString>;
     outcome: z.ZodOptional<z.ZodEnum<{
@@ -847,6 +857,11 @@ declare const ownerItemSchema: z.ZodObject<{
             remoteControl: z.ZodBoolean;
             briefPath: z.ZodString;
             briefSha256: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"host-command">;
+            command: z.ZodEnum<{
+                "broker-restart-window": "broker-restart-window";
+            }>;
         }, z.core.$strict>], "kind">>;
         verify: z.ZodOptional<z.ZodString>;
         outcome: z.ZodOptional<z.ZodEnum<{
