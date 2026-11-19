@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { caseExists, readStoredCard, type CardFile } from "./eval-cases.js";
 import { rescore, type RescoreInput } from "./rescore.js";
 import { totalOf } from "./score-card.js";
 import { transcriptForScoring } from "./score.js";
-import { writeCase } from "./step-rows.js";
+import { readStepRows, writeCase } from "./step-rows.js";
 
 const AUDIT_SAMPLE = 5;
 /** A difference this large in total files a case even when both totals fall on the same side. */
@@ -22,14 +22,10 @@ export interface AuditCandidate {
 
 /** Scored cards come from the step rows: the latest `score` row per video that kept a card. The transcript sits beside it as `<id>.md`. */
 export function auditCandidates(rowsDir: string, since: Date, casesDir: string): AuditCandidate[] {
-  if (!existsSync(rowsDir)) return [];
   const latest = new Map<string, string>();
-  for (const f of readdirSync(rowsDir).filter((n) => n.startsWith("steps-")).sort()) {
-    for (const line of readFileSync(path.join(rowsDir, f), "utf8").split("\n").filter(Boolean)) {
-      const row = RowSchema.parse(JSON.parse(line));
-      const kept = row.step === "score" && (row.outcome === "ok" || row.outcome === "fallback") && row.output_path;
-      if (kept && new Date(row.started_at) >= since) latest.set(row.video_id, row.output_path!);
-    }
+  for (const row of readStepRows(rowsDir, RowSchema)) {
+    const kept = row.step === "score" && (row.outcome === "ok" || row.outcome === "fallback") && row.output_path;
+    if (kept && new Date(row.started_at) >= since) latest.set(row.video_id, row.output_path!);
   }
   return [...latest]
     .filter(([id]) => !caseExists(casesDir, "score", id))
