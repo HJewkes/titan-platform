@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the open-PR check reads only heads, so a stacked child's base is deleted under it",
+      "file": "products/factory/src/owner-ops/delete-branch.ts",
+      "find": "open.find((pull) => pull.baseRef === branch)",
+      "replace": "open.find((pull) => pull.baseRef === branch && pull.headRef === branch)",
+      "kills": [
+        "delete-branch op refuses a branch a stacked child PR targets as its base"
+      ]
+    },
+    {
+      "name": "the tip is not compared, so a branch pushed since the owner confirmed is deleted",
+      "file": "products/factory/src/owner-ops/delete-branch.ts",
+      "find": "if (tip !== op.tipSha) return",
+      "replace": "if (tip === null) return",
+      "kills": [
+        "delete-branch op answers moved with the current tip when the branch moved since the owner confirmed, and deletes nothing"
+      ]
+    },
+    {
+      "name": "an absent branch reads already whoever deleted it",
+      "file": "products/factory/src/owner-ops/delete-branch.ts",
+      "find": "return mine ? { outcome: \"already\", branch: op.branch }",
+      "replace": "return true ? { outcome: \"already\", branch: op.branch }",
+      "kills": [
+        "delete-branch op answers gone for an absent branch this record did not delete"
+      ]
+    },
+    {
+      "name": "a prefix match ignores case, so Scratch/ passes as scratch/",
+      "file": "products/factory/src/owner-ops/delete-branch.ts",
+      "find": "branch.startsWith(prefix)",
+      "replace": "branch.toLowerCase().startsWith(prefix)",
+      "kills": [
+        "delete-branch op refuses %s, which carries no allowed prefix"
+      ]
+    }
+  ]
+}
