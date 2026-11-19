@@ -509,6 +509,45 @@ old head is withdrawn, so neither blocks. An empty list means Ship may go.
 **Order.** The Flow is the same for any order of `open` and `answered`. Flags keep the id of
 the item `recheck` saw, which may be a non-primary item that step 3 merged away.
 
+## Resolving by recommendation
+
+An owner approval that carries a recommendation can resolve to it after a wait. The policy is
+pure; the sweeps that act on it (Shepherd for merge gates, the console for rounds and
+deposits) live in their products.
+
+```ts
+import { byRecDecision, byRecPolicySchema, byRecSubjectOfItem } from "@titan-design/owner-queue";
+
+const policy = byRecPolicySchema.parse({ schema: "titan/auto-by-rec-policy@1", mode: "shadow" });
+const decision = byRecDecision(byRecSubjectOfItem(item), new Date(), policy);
+// { eligible: true, at, answer, rationale } or { eligible: false, reason, at? }
+```
+
+- **Subject.** `ByRecSubject` normalizes a gate, a round question or a deposit: open time,
+  recommendation, kind, door, hold classes, D-row, authority rows, owner-at-head rows, changed
+  paths, category, op, audience and the text to scan. `byRecSubjectOfItem(item)` builds one
+  from an `OwnerItem`; a gate sweep builds its own from facts it re-reads.
+- **Policy file** (`titan/auto-by-rec-policy@1`, strict): `mode` (`off`, `shadow` by
+  default, `live`), `afterHours` (24 by default), an optional `minConfidence`, and `exclude`
+  rules `{ field, value }` over `source`, `id`, `class`, `category`, `by` (exact) and `hold`,
+  `path`, `authority` (prefix). The file can only add exclusions.
+- **Floor** (`BY_REC_FLOOR`, in code, checked before the file): closed items, no
+  recommendation, any `g10*` hold, D1, D21, owner-at-head rows, guard paths (`isGuardPath`:
+  the authority package, `g10-*`, hold, policy and `by-rec*` files), release (the
+  version-packages branch, a release or publish category, `REL-*`), `PUB-*` and `EXT-*`,
+  `SEC-*`, `HW-*`, money (a spend, money or account category, or a dollar amount in the
+  text), one-way doors, `irreversible`, `onSilence` wait or expire, blind picks, change
+  requests, personal items, `do` and sitting items, the operator audience, any `op`, Ship and
+  plan-approval questions, and a recommendation that is not an offered option or that the
+  item's `default` contradicts.
+- **Clock.** Eligible at `openedAt + afterHours`; a deposit's own `onSilence: apply-default`
+  wait replaces the policy's. A skip that only waits on the clock is `too-early` with `at`.
+  Shadow and live decide the same; only the sweep's action differs.
+- **Log row** (`byRecRowSchema`, `titan/auto-by-rec@1`): the subject, the recommendation,
+  `openedAt`, `resolvedAt`, the facts read, `mode`, `result` (`would-resolve`, `resolved`,
+  `skipped`, `failed`) and `resolver`, always `BY_REC_RESOLVER`
+  (`{ class: "automation", id: "auto-by-rec" }`).
+
 ## What it deliberately does not do
 
 - No I/O outside the spool subpath. Adapters, the projection store and the schedule belong to
