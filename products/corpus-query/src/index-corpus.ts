@@ -150,7 +150,8 @@ export function readSpanText(root: string, relPath: string, byteOffset: number, 
   const fd = openSync(path.join(root, relPath), "r");
   try {
     const buf = Buffer.alloc(byteLength);
-    readSync(fd, buf, 0, byteLength, byteOffset);
+    const bytesRead = readSync(fd, buf, 0, byteLength, byteOffset);
+    if (bytesRead !== byteLength) throw new Error(`${relPath} is shorter than the index expects (read ${bytesRead} of ${byteLength} bytes at ${byteOffset}); re-run index`);
     return buf.toString("utf8");
   } finally {
     closeSync(fd);
