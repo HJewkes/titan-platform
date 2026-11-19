@@ -15,7 +15,7 @@ import { SEAT_NAME } from "./round-notice-transport.js";
 import { UNCLAIMED_SEAT } from "./round-subscriptions.js";
 import { readManifest, roundDirExists } from "./rounds.js";
 
-export type OverruleSource = Extract<ByRecRow["subject"]["source"], "round" | "deposit">;
+type OverruleSource = Extract<ByRecRow["subject"]["source"], "round" | "deposit">;
 
 export interface OverruleTarget {
   item: DecisionItem;

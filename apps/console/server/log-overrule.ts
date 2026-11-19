@@ -22,7 +22,7 @@ import { ownerWriteCommand, ownerWriteRefusal, readCommand, type ConsoleContext 
 import type { SeatNotifier } from "./round-notice-transport.js";
 import { writeJsonOnce } from "./state-file.js";
 
-export const OVERRULE_ACTOR = Object.freeze({ class: "owner-remote", id: "titan-console", channel: "console:log" } as const);
+const OVERRULE_ACTOR = Object.freeze({ class: "owner-remote", id: "titan-console", channel: "console:log" } as const);
 const MARKERS_DIR = "auto-by-rec";
 const MARKER_SCHEMA = "titan-console/auto-by-rec-overrule@1";
 const MAX_PICK = 120;
@@ -62,7 +62,7 @@ async function findRows(stateDir: string, subject: Subject): Promise<Overrulable
 const labelOf = (target: OverruleTarget, id: string): string => target.options.find((option) => option.id === id)?.label ?? id;
 const pickText = (text: string): string => promptLine(text).slice(0, MAX_PICK);
 
-export const overruleNotice = (subject: Subject, from: string, to: string): string =>
+const overruleNotice = (subject: Subject, from: string, to: string): string =>
   `titan-console: the owner overruled the auto-by-rec answer to ${subject.source} ${subject.id}. ` +
   `Auto-by-rec picked "${pickText(from)}"; the owner picks "${pickText(to)}". ` +
   `Reverse what you did on the first pick where you can, and act on the owner's. The overrule is recorded in the console's auto-by-rec log.`;
