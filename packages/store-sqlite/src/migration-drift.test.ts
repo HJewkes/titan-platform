@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MigrationDriftError, appliedVersions, runMigrations, type Migration } from "./migrations.js";
+import { MigrationDriftError, appliedVersions, runMigrations, sqlMigration, type Migration } from "./migrations.js";
 import { MIGRATION_TABLE_NAME, openDatabase, type Db } from "./open.js";
 
 const CREATE_T = "CREATE TABLE t (a INTEGER)";
@@ -91,5 +91,16 @@ describe("migration drift", () => {
 
     expect(runMigrations(db, [edited])).toEqual([]);
     expect(() => runMigrations(db, [v1])).toThrow(MigrationDriftError);
+  });
+});
+
+describe("sqlMigration", () => {
+  it("runs its sql, records a hash, and reports drift when the sql is edited", () => {
+    const db = openDatabase(":memory:");
+    const make = (sql: string) => sqlMigration({ version: 1, name: "create t", sql });
+
+    expect(runMigrations(db, [make(CREATE_T)])).toEqual([1]);
+    expect(recordedHash(db, 1)).toMatch(/^[0-9a-f]{64}$/);
+    expect(() => runMigrations(db, [make("CREATE TABLE t (a INTEGER, b TEXT)")])).toThrow(MigrationDriftError);
   });
 });
