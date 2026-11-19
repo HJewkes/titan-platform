@@ -15,7 +15,7 @@ import { byRecLogPath, readByRecRows } from "./by-rec-log.js";
 import { sweepByRec, type ByRecSweepDeps } from "./by-rec-sweep.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
 import { BY_REC_CANCEL, supersedingGates } from "./stale-gates.js";
-import type { ShepherdStore } from "./store.js";
+import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
 
 const REPO = "o/r";
 const HEAD = fakeSha("by-rec-head");
@@ -106,14 +106,14 @@ async function paused(scenario: Scenario = {}): Promise<World> {
   const gh = greenWorld();
   const holds = { holdReason: null as string | null };
   const store = () => partialFake<ShepherdStore>({
-    byRun: () => ({ repo: REPO, pr: 1, held: holds.holdReason !== null, holdReason: holds.holdReason, ownerHold: null }) as never,
+    byRun: () => partialFake<Registration>({ repo: REPO, pr: 1, held: holds.holdReason !== null, holdReason: holds.holdReason, ownerHold: null }),
     parkedHold: () => null,
   });
   const logPath = byRecLogPath(dir);
   const opened = Date.parse(host.gates.get(`${runId}/approve-merge`)!.createdAt);
   const deps = (config: AutoByRecConfig | undefined, at = opened + DAY_MS): ByRecSweepDeps => ({
     host, logPath, config: () => config, now: () => at, warn: () => undefined,
-    services: { store: { get: store } as never, port: githubPort(gh.wire) },
+    services: { store: partialFake<ShepherdStoreRef>({ get: store }), port: githubPort(gh.wire) },
   });
   return { host, gh, runId, logPath, holds, deps };
 }

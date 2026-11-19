@@ -62,7 +62,8 @@ export async function readByRec(reads: ByRecReads, { runId, gate }: PendingGate,
   const fresh = await freshFacts(reads.services.port, known, pull);
   if ("skip" in fresh) return fresh;
   const holdClasses = holdClassesOf(known.registration, reads.services.store.get().parkedHold(runId));
-  const merge: MergeFacts = { ...known.stored, ...fresh, repoFrozen: reads.services.freeze?.get().isFrozen(known.land.repo) ?? false, ownerGate: ownerGateOf(gate, known.land.head, now), holdClasses, headRef: pull.headRef };
+  const repoFrozen = reads.services.freeze?.get().isFrozen(known.land.repo) ?? false;
+  const merge: MergeFacts = { ...known.stored, ...fresh, repoFrozen, ownerGate: ownerGateOf(gate, known.land.head, now), holdClasses, headRef: pull.headRef };
   const unmet = unmetByRec(merge);
   return { subject: subjectOf(known, merge, holdClasses), merge, unmet, land: known.land, reviewer: known.reviewer };
 }
@@ -90,7 +91,7 @@ function storedFacts(run: WorkflowRun, head: string): MergeFacts | undefined {
     .filter((result) => result.stepId === step || result.stepId.startsWith(`${step}:`))
     .sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt));
   const stored = MergeEvidenceSchema.safeParse(results.at(-1)?.data?.result);
-  return stored.success && stored.data.head === head ? (stored.data.merge as MergeFacts) : undefined;
+  return stored.success && stored.data.head === head ? stored.data.merge : undefined;
 }
 
 type Fresh = Pick<MergeFacts, "requiredContexts" | "checkRuns" | "mergeTreeClean" | "changedPaths">;
@@ -140,7 +141,7 @@ function subjectOf({ gate, land, decisionClass, reviewer }: Known, merge: MergeF
   return {
     ...{ source: "gate", id: gate.id, openedAt: gate.createdAt, summary: `Merge ${land.repo}#${land.pr} at ${land.head.slice(0, 12)}` },
     ...(recommended === MERGE_OPTION && { recommendation: { answer: MERGE_OPTION, by: reviewer, rationale } }),
-    ...{ kind: "approve", door: (DOOR.exec(gate.prompt)?.[1] as "one-way" | "two-way" | undefined) ?? "two-way", decisionClass, holdClasses },
+    ...{ kind: "approve", door: DOOR.exec(gate.prompt)?.[1] === "one-way" ? "one-way" : "two-way", decisionClass, holdClasses },
     ...{ authorityRows: [BY_REC_RULE], ownerAtHead: ownerAtHead === undefined ? [] : [ownerAtHead], paths: merge.changedPaths, headRef: merge.headRef },
     ...{ options: gate.questions?.flatMap((question) => question.options.map((option) => option.id)), closed: gate.status !== "pending" },
   };

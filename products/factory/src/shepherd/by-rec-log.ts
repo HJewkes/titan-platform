@@ -21,7 +21,7 @@ export function readByRecRows(path: string): ByRecRow[] {
   try {
     text = readFileSync(path, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
     throw error;
   }
   return text.split("\n").flatMap((line) => (line.trim() === "" ? [] : (parsedLine(line) ?? [])));
