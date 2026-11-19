@@ -2,6 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { silentLogger, type Logger } from "@titan-design/daemon";
+import { fakeSha } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { REPO } from "../test-support/land.js";
 import { branchOf, build, closeDeploys, ctxOf, deploy, HEAD_B, recorded, STACK_CHILDREN_TAIL } from "../test-support/diverged-sweep.js";
@@ -18,7 +19,7 @@ async function mergedInStackChildren(childBase = branchOf(1)) {
   const [runId] = await recorded(dbPath, [1], undefined, STACK_CHILDREN_TAIL);
   const next = deploy(dbPath, build(true, STACK_CHILDREN_TAIL));
   next.fake.addPr({ headSha: HEAD_B, headRef: branchOf(1), headRepo: REPO, state: "closed", merged: true });
-  const child = next.fake.addPr({ headRef: "agent-chat/child", headRepo: REPO, baseRef: childBase });
+  const child = next.fake.addPr({ headSha: fakeSha("child"), headRef: "agent-chat/child", headRepo: REPO, baseRef: childBase });
   await next.host.adopt();
   await next.host.runtime.wait(runId!);
   expect(next.host.runtime.status(runId!)?.activeSteps).toHaveProperty([STACK_CALL]);
