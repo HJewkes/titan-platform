@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { parseNameStatus } from "@titan-design/review-burden";
 import { detectGitToplevel, runGit } from "./history/git.js";
 import { fileId, moduleId } from "./extractors/ids.js";
 import type { IdAlias, IdAliasReason } from "./types.js";
@@ -6,7 +7,6 @@ import type { IdAlias, IdAliasReason } from "./types.js";
 export interface RenamePair {
   oldPath: string;
   newPath: string;
-  similarity: number;
 }
 
 export interface DetectRenamesOptions {
@@ -44,31 +44,20 @@ export function detectRenames(
     "diff",
     `--find-renames=${threshold}%`,
     "--name-status",
+    "-z",
     options.fromCommit,
   ];
   if (options.toCommit) args.push(options.toCommit);
 
   const out = runGit(options.repoRoot, args);
   if (out === null) return [];
-  return parseRenameOutput(out);
-}
-
-export function parseRenameOutput(text: string): RenamePair[] {
-  const out: RenamePair[] = [];
-  for (const rawLine of text.split("\n")) {
-    const line = rawLine.trimEnd();
-    if (!line) continue;
-    const parts = line.split("\t");
-    const status = parts[0] ?? "";
-    if (!status.startsWith("R") || parts.length < 3) continue;
-    const similarity = parseInt(status.slice(1), 10);
-    out.push({
-      oldPath: parts[1]!,
-      newPath: parts[2]!,
-      similarity: Number.isFinite(similarity) ? similarity : 100,
-    });
+  const pairs: RenamePair[] = [];
+  for (const [newPath, entry] of parseNameStatus(out)) {
+    if (entry.status === "renamed" && entry.previousPath) {
+      pairs.push({ oldPath: entry.previousPath, newPath });
+    }
   }
-  return out;
+  return pairs;
 }
 
 export function classifyRename(

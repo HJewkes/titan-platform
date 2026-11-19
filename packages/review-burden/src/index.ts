@@ -6,6 +6,7 @@ export {
   type FileStatus,
   type PackageJsonChange,
 } from "./config.js";
+export { parseNameStatus } from "./git-diff.js";
 export { classifyPath, pathClassifier, type PathClass } from "./path-class.js";
 export { FOOTER_MARKER, hasContract, parseFooter, type Door, type Footer } from "./footer.js";
 export {
