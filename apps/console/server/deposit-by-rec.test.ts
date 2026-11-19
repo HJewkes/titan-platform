@@ -4,7 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { depositItemId, type OwnerItemDeposit } from "@titan-design/owner-queue";
-import { readAnswer, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
+import { readAnswer, withdrawnFileName, writeAnswer, writeDeposit } from "@titan-design/owner-queue/spool";
 import { spoolQueueItems } from "./approval-items.js";
 import { createDecisionLog, type DecisionLog } from "./decision-log.js";
 import { sweepDeposits } from "./deposit-by-rec.js";
@@ -121,6 +121,27 @@ describe("deposit by-rec sweep, live", () => {
 
     expect(report.outcomes).toEqual([]);
     expect(await readAnswer(inboxDir(), idOf())).toMatchObject({ optionId: "teal" });
+  });
+
+  it("leaves a deposit that lapsed before its wait unanswered", async () => {
+    const opened = await file({ expiresAt: new Date(Date.now() + HOUR).toISOString() });
+
+    const report = await sweepDeposits({ stateDir: stateDir(), inboxDir: inboxDir(), now: () => opened + 24 * HOUR });
+
+    expect(report.outcomes).toEqual([{ id: idOf(), result: "skipped", reason: "expired" }]);
+    expect(await readAnswer(inboxDir(), idOf())).toBeUndefined();
+    expect(await rows()).toEqual([]);
+  });
+
+  it("treats a deposit whose withdrawal marker is malformed as closed", async () => {
+    const opened = await file();
+    await writeFile(path.join(inboxDir(), withdrawnFileName(idOf())), "{not json");
+
+    const report = await sweepDeposits({ stateDir: stateDir(), inboxDir: inboxDir(), now: () => opened + 48 * HOUR });
+
+    expect(report.outcomes).toEqual([{ id: idOf(), result: "skipped", reason: "unreadable" }]);
+    expect(await readAnswer(inboxDir(), idOf())).toBeUndefined();
+    expect(await rows()).toEqual([]);
   });
 
   const exclusions: Array<[string, Partial<OwnerItemDeposit>, string]> = [

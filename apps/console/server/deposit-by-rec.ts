@@ -14,6 +14,7 @@ import path from "node:path";
 import { z } from "zod";
 import { BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_ROW_SCHEMA, byRecDecision, byRecPolicySchema, byRecRowSchema, byRecSubjectOfItem, type ByRecPolicy, type ByRecRow, type OwnerAnswer, type OwnerItem } from "@titan-design/owner-queue";
 import { writeAnswer } from "@titan-design/owner-queue/spool";
+import { readWithdrawal } from "@titan-design/owner-queue/withdraw";
 import { spoolQueueItems } from "./approval-items.js";
 import type { DecisionLog } from "./decision-log.js";
 
@@ -118,8 +119,24 @@ async function resolve(ctx: SweepContext, item: OwnerItem, decision: Eligible): 
   return { id: item.id, result: "resolved" };
 }
 
+/**
+ * Why a deposit the display reader lists as open must still not be answered. That reader leans toward showing an item,
+ * so the sweep re-checks: a lapsed deposit is closed, and so is one whose withdrawal marker cannot be read, as the
+ * factory's `isOpen` and `withdrawMatching` treat it.
+ */
+async function closedReason(ctx: SweepContext, item: OwnerItem): Promise<string | undefined> {
+  if (item.expiresAt !== undefined && Date.parse(item.expiresAt) <= ctx.at.getTime()) return "expired";
+  try {
+    return (await readWithdrawal(ctx.inboxDir, item.id)) === undefined ? undefined : "withdrawn";
+  } catch {
+    return "unreadable";
+  }
+}
+
 /** `byRecDecision` checks an answer against the options only when there are options, so a deposit without them is skipped here. */
 async function sweepItem(ctx: SweepContext, item: OwnerItem): Promise<DepositOutcome> {
+  const closed = await closedReason(ctx, item);
+  if (closed !== undefined) return { id: item.id, result: "skipped", reason: closed };
   if ((item.options ?? []).length === 0) return { id: item.id, result: "skipped", reason: "no-options" };
   const decision = byRecDecision(byRecSubjectOfItem(item), ctx.at, ctx.policy);
   if (!decision.eligible) return { id: item.id, result: "skipped", reason: decision.reason };
