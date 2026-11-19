@@ -6,14 +6,14 @@
       "file": "packages/workflow/src/context.ts",
       "find": "ack.executionId !== step.executionId || ",
       "replace": "",
-      "kills": ["parks the run for recovery when the ack names a foreign executionId"]
+      "kills": ["a runner acknowledgment that does not match the persisted intent parks the run for recovery when the ack names a foreign executionId"]
     },
     {
       "name": "a reconcile that reports a blank runnerRef is adopted",
       "file": "packages/workflow/src/recovery.ts",
       "find": "if (!outcome.runnerRef.trim()) {",
       "replace": "if (false) {",
-      "kills": ["leaves the run in recovery_required instead of adopting the blank reference"]
+      "kills": ["a reconcile that reports a running step with a blank runnerRef leaves the run in recovery_required instead of adopting the blank reference"]
     }
   ]
 }
