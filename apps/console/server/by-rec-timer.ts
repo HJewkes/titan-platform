@@ -8,8 +8,8 @@ import { sweepByRecRounds, type ByRecSweepReport } from "./by-rec-rounds.js";
 import type { SubmitPipeline } from "./rounds-submit.js";
 
 const MINUTE_MS = 60_000;
-export const BY_REC_FIRST_AFTER_MS = 5 * MINUTE_MS;
-export const BY_REC_EVERY_MS = 60 * MINUTE_MS;
+const BY_REC_FIRST_AFTER_MS = 5 * MINUTE_MS;
+const BY_REC_EVERY_MS = 60 * MINUTE_MS;
 
 interface TimerOptions {
   dir: string;

@@ -16,7 +16,7 @@ export const BY_REC_POLICY_FILE = "auto-by-rec-policy.json";
 export const BY_REC_ROWS_FILE = "auto-by-rec.jsonl";
 const APPEND_FLAGS = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW;
 
-export interface PolicyRead {
+interface PolicyRead {
   policy: ByRecPolicy;
   /** Set when the file was present but unusable, so the sweep ran with mode off. */
   problem?: string;

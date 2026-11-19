@@ -25,11 +25,11 @@ import { exists, writeJsonOnce } from "./state-file.js";
 export const BY_REC_MARKERS = { live: "auto-by-rec.json", shadow: "auto-by-rec-shadow.json" } as const;
 const MARKER_SCHEMA = "titan-console/auto-by-rec-marker@1";
 const MAX_TEXT = 500;
-export const BY_REC_ANSWERER: RoundAnswerer = { ...BY_REC_RESOLVER, channel: "round" };
+const BY_REC_ANSWERER: RoundAnswerer = { ...BY_REC_RESOLVER, channel: "round" };
 
 type ActiveMode = keyof typeof BY_REC_MARKERS;
 
-export interface ByRecRoundOutcome {
+interface ByRecRoundOutcome {
   roundId: string;
   result: "resolved" | "would-resolve" | "failed" | "skipped";
   reason?: string;
@@ -80,7 +80,7 @@ function questionSubject(round: QueueRound, question: Question, recommendation: 
 }
 
 /** Every question must be eligible; the first that is not names the round's skip. */
-export function judgeRound(round: QueueRound, now: Date, policy: ByRecPolicy): RoundVerdict {
+function judgeRound(round: QueueRound, now: Date, policy: ByRecPolicy): RoundVerdict {
   const judged: Judged[] = [];
   for (const question of round.manifest.questions) {
     const recommendation = recommendationOf(question);
