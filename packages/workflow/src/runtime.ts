@@ -3,7 +3,7 @@ import type { GateResolver } from "@titan-design/hitl";
 import { parkOnDefinitionDrift, registration } from "./definition-version.js";
 import { cancelOwnPending } from "./gate-ids.js";
 import { RunContext, gateIdFor, gateIsPending, pendingGateId, type ContextDeps, type RecoveredStep } from "./context.js";
-import { settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from "./orphans.js";
+import { announceDropped, settleUnfinished, type AbandonsOrphan, type WorkflowRegistration } from "./orphans.js";
 import { mustacheRenderer } from "./prompt.js";
 import { announceRecovery, HeldRuns, markStepRecovery, parkForRecovery, reconcileActiveSteps, removeAnswered } from "./recovery.js";
 import type { WorkflowRuntimeOptions, WorkflowStartOptions } from "./runtime-options.js";
@@ -248,7 +248,7 @@ export class WorkflowRuntime {
     const isPending = (gateId: string): boolean => gateIsPending(this.options.gates, gateId);
     this.options.gates.resolve(run ? pendingGateId(run, stepId, isPending) : gateIdFor(runId, stepId), payload, resolvedBy);
   }
-  /** `abandon` finishes a run no runtime drives at once, dropping its in-flight steps unsettled: for a replay that cannot reach them. */
+  /** `abandon` finishes a run no runtime drives at once, dropping its in-flight steps unsettled, each with a `step_abandoned` event: for a replay that cannot reach them. */
   cancel(runId: string, reason: string, options: { abandon?: boolean } = {}): void {
     const live = this.live.get(runId);
     const run = live?.ctx.run ?? this.claim(runId);
@@ -260,16 +260,12 @@ export class WorkflowRuntime {
     run.status = "cancelling";
     run.error = reason;
     this.save(run);
-    this.cancelGates(runId, reason);
+    cancelOwnPending(this.options.gates, runId, reason, () => true);
     if (live) live.controller.abort(new WorkflowCancelledError(runId, reason));
-    else if (options.abandon || (this.mode !== "quiesced" && Object.keys(run.activeSteps).length === 0)) this.abandon(run, reason);
-    else this.release(run);
-  }
-
-  /** Each step dropped unsettled gets its own `step_abandoned` event, the only record left once `finish` clears them. */
-  private abandon(run: WorkflowRun, reason: string): void {
-    for (const step of Object.values(run.activeSteps)) this.baseDeps.emit({ type: "step_abandoned", runId: run.id, stepId: step.stepId, reason: `cancelled: ${reason}` });
-    this.finish(run, "cancelled", reason);
+    else if (options.abandon || (this.mode !== "quiesced" && Object.keys(run.activeSteps).length === 0)) {
+      announceDropped(run, reason, this.baseDeps.emit);
+      this.finish(run, "cancelled", reason);
+    } else this.release(run);
   }
 
   /** Records `data` as step `stepId` of a finished run, a fact learnt after it ended; false when the run is unfinished or already has it. */
@@ -296,10 +292,6 @@ export class WorkflowRuntime {
     } finally {
       this.release(run);
     }
-  }
-
-  private cancelGates(runId: string, reason: string): void {
-    cancelOwnPending(this.options.gates, runId, reason, () => true);
   }
 
   private startRenewal(run: WorkflowRun, controller: AbortController): ReturnType<typeof setInterval> {

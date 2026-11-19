@@ -775,6 +775,8 @@ declare class WorkflowRuntime {
     cancel(runId: string, reason: string, options?: {
         abandon?: boolean;
     }): void;
+    /** Each step dropped unsettled gets its own `step_abandoned` event, the only record left once `finish` clears them. */
+    private abandon;
     /** Records `data` as step `stepId` of a finished run, a fact learnt after it ended; false when the run is unfinished or already has it. */
     annotate(runId: string, stepId: string, data: Record<string, unknown>): boolean;
     /**
