@@ -1,4 +1,6 @@
 // The Decisions and ships log's twin answers: synthetic ships and by-rec rows, merged by the page's own pure functions.
+import { createHash } from "node:crypto";
+import { encodePng } from "@titan-design/png-delta";
 import { BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_ROW_SCHEMA, byRecPolicySchema, type ByRecRow } from "@titan-design/owner-queue";
 import { logHeader } from "../log-floor.js";
 import { digestLine, logCounts, mergeLog, type LogRow, type ShipInput } from "../log-rows.js";
@@ -41,7 +43,25 @@ function view(rows: LogRow[]): LogView {
   return { header: logHeader(POLICY, undefined), days, counts, digest: digestLine(counts), gaps: [], readAt: new Date(TWIN_NOW).toISOString() };
 }
 
-const ALL = mergeLog({ ships: SHIPS, gateRows: GATE_ROWS, consoleRows: CONSOLE_ROWS, dayOf });
+/** #41 is the visual gate: one changed card, a flat synthetic before and after. */
+const FRAMES_41 = { repo: "orbit/relay", pr: 41, pairs: [{ key: "shot-0", label: "relay-card--compact@1280" }] };
+
+function swatch(rgb: readonly [number, number, number]): Buffer {
+  const rgba = new Uint8Array(16 * 9 * 4).map((_, at) => (at % 4 === 3 ? 255 : rgb[at % 4]!));
+  return encodePng({ width: 16, height: 9, rgba });
+}
+
+function frameAnswer(side: "before" | "after", png: Buffer): TwinCall {
+  const read = { contentType: "image/png" as const, bytes: png.length, sha256: createHash("sha256").update(png).digest("hex"), base64: png.toString("base64") };
+  return answer("log.frame", { repo: "orbit/relay", pr: 41, key: "shot-0", side }, read);
+}
+
+const ALL = mergeLog({ ships: SHIPS, gateRows: GATE_ROWS, consoleRows: CONSOLE_ROWS, dayOf }).map((each) => (each.key === "orbit/relay#41" ? { ...each, frames: FRAMES_41 } : each));
 const TODAY = ALL.filter((each) => each.day === dayOf(TWIN_NOW));
 
-export const LOG_ANSWERS: readonly TwinCall[] = [answer("log.list", {}, view(ALL)), answer("log.list", { days: 1 }, view(TODAY))];
+export const LOG_ANSWERS: readonly TwinCall[] = [
+  answer("log.list", {}, view(ALL)),
+  answer("log.list", { days: 1 }, view(TODAY)),
+  frameAnswer("before", swatch([200, 200, 200])),
+  frameAnswer("after", swatch([90, 140, 220])),
+];

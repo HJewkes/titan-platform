@@ -34,6 +34,8 @@ export const SHEPHERD_PORT_ACCESS = {
   // With --file it writes a round into the console.
   "shepherd.visual-week-feedback": "write",
   "shepherd.visual-feedback-notes": "write",
+  // Writes image files into the console's log-frames folder only; no Shepherd record.
+  "shepherd.log-frames": "read",
   "shepherd.brief": "read",
   "shepherd.ownerMeter": "read",
 } as const satisfies Record<ShepherdCommandName, PortAccess>;

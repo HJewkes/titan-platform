@@ -110,6 +110,7 @@ function registerRunVerbs(verb: VerbOf, verbs: Verbs): void {
 function registerVisualVerbs(verb: VerbOf, verbs: Verbs): void {
   registerVisualWeekVerb(verb, verbs);
   registerVisualFeedbackVerb(verb, verbs);
+  registerLogFramesVerb(verb, verbs);
 }
 
 /** TP-5409: the post-merge visual feedback sheet for a repo's ended week; off unless shepherd.visualGate is async. */
@@ -130,6 +131,17 @@ function registerVisualWeekVerb(verb: VerbOf, verbs: Verbs): void {
     .option("--images <dir>", "a round directory to write each PR's pr-<n>/ pairs and manifest.json into")
     .action((opts: ShepherdOpts & { repo: string; images?: string }) =>
       runShepherd(verbs, "shepherd.visual-week", () => ({ repo: opts.repo, ...(opts.images !== undefined && { images: resolve(opts.images) }) }), opts));
+}
+
+/** TP-6777: one shipped PR's pr-visual pairs for the console's Decisions and ships log, which runs this verb. */
+function registerLogFramesVerb(verb: VerbOf, verbs: Verbs): void {
+  verb("log-frames", "write --repo's PR --pr pr-visual before and after pairs at --head into --dir, which must end in log-frames/<owner>/<repo>/<pr>; prints the packet line, or with --json the pairs, the reason none were written and whether the read failed")
+    .requiredOption("--repo <owner/repo>", "the PR's repo")
+    .requiredOption("--pr <n>", "the PR number", parsePositiveInt)
+    .requiredOption("--head <sha>", "the 40-character head whose pr-visual artifact to read")
+    .requiredOption("--dir <dir>", "the folder to write the pairs and manifest.json into")
+    .action((opts: ShepherdOpts & { repo: string; pr: number; head: string; dir: string }) =>
+      runShepherd(verbs, "shepherd.log-frames", () => ({ repo: opts.repo, pr: opts.pr, head: opts.head, dir: resolve(opts.dir) }), opts));
 }
 
 /** TP-1696: the owner PR section for one PR, printed. Reads GitHub, Shepherd and active-work; writes nothing. */

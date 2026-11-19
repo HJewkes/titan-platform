@@ -39,10 +39,7 @@ import type { Phase } from "./step-phase.js";
 import { carry, type CarryInput } from "./tree-carry.js";
 import { hostCarryPorts } from "./carry-cache-adapter.js";
 import { waitingCommand } from "./waiting.js";
-import { visualDeltaCommand } from "./visual-delta-command.js";
-import { visualWeekCommand } from "./visual-week-command.js";
-import { visualFeedbackCommand } from "./visual-feedback-command.js";
-import { visualFeedbackNotesCommand } from "./visual-feedback-notes-command.js";
+import { VISUAL_COMMANDS } from "./visual-commands.js";
 import { watchCommand } from "./watch-command.js";
 import { ownerMeterCommand } from "./owner-meter-command.js";
 import { timelineEntries, type PrTimeline } from "./view.js";
@@ -371,10 +368,7 @@ export const SHEPHERD_COMMAND_MAP = {
   ...REASK_COMMANDS,
   "shepherd.prs": prsCommand,
   "shepherd.watch": watchCommand,
-  "shepherd.visual-delta": visualDeltaCommand,
-  "shepherd.visual-week": visualWeekCommand,
-  "shepherd.visual-week-feedback": visualFeedbackCommand,
-  "shepherd.visual-feedback-notes": visualFeedbackNotesCommand,
+  ...VISUAL_COMMANDS,
   "shepherd.brief": briefCommand,
   "shepherd.ownerMeter": ownerMeterCommand,
 };

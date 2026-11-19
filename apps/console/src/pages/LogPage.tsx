@@ -4,6 +4,7 @@ import type { LogRow } from "../../server/log-rows.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
 import { parseRoute, open } from "../router.js";
 import { Spinner } from "../shell/Loading.js";
+import { LogFrames } from "./LogFrames.js";
 import { LogPolicyHeader } from "./LogPolicy.js";
 import { logTime } from "./log-format.js";
 import { PHONE_TAP, PHONE_TAP_LINK } from "./phone.js";
@@ -27,7 +28,7 @@ function daysFrom(query: string | undefined): number | undefined {
 /**
  * Decisions and ships (TP-6775): every merged PR and every auto-by-rec decision, newest first by day, with how each was
  * approved, the recommendation and its rationale, and the way to reverse it. The by-rec policy and its exclusion floor
- * head the page. Read only; the overrule tap arrives with TP-6778 and the visual rows' frames with TP-6777.
+ * head the page. Read only; the overrule tap arrives with TP-6778. A visual ship row shows its before and after frames.
  */
 export function LogPage({ query }: { query?: string }): ReactNode {
   const days = daysFrom(query);
@@ -94,7 +95,7 @@ function LogRowCard({ row }: { row: LogRow }): ReactNode {
           <Typography variant="caption" color="secondary" className="break-words">
             {[row.openedAt === undefined ? undefined : `Opened ${logTime(row.openedAt)}`, `Resolved ${logTime(row.resolvedAt)}`, `by ${row.resolver}`].filter(Boolean).join(" · ")}
           </Typography>
-          {row.visual ? <FramesSlot row={row} /> : null}
+          {row.visual && row.kind === "ship" ? <LogFrames row={row} /> : null}
           <Reverse row={row} />
         </VStack>
       </CardContent>
@@ -134,17 +135,6 @@ function Recommendation({ row }: { row: LogRow }): ReactNode {
         </Typography>
       )}
     </VStack>
-  );
-}
-
-/** Slice G (TP-6777) fills this with the visual gate's before and after frames. */
-function FramesSlot({ row }: { row: LogRow }): ReactNode {
-  return (
-    <div data-testid={`log-frames-${row.key}`} className="rounded border border-dashed p-2">
-      <Typography variant="caption" color="secondary">
-        Visual change: before and after frames are added by TP-6777.
-      </Typography>
-    </div>
   );
 }
 
