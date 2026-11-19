@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { readRoster, type AgentsSource } from "./agents.js";
 import { liveHeads, readFlow, type ApprovalsSources } from "./approvals.js";
+import { withByRecCountdown, type ByRecCountdown } from "./inbox-by-rec.js";
 import { isG10Class } from "./g10-hold.js";
 import { gateStripCommands, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
@@ -56,6 +57,8 @@ export interface InboxItem extends OwnerItem {
   foldedGates?: string[];
   /** A blocking item open past four days: listed under "Older than 4 days", still blocking. */
   aged?: true;
+  /** When the console's by-rec sweep answers it with its recommendation; only on an item by-rec would resolve. */
+  byRec?: ByRecCountdown;
 }
 
 interface InboxList {
@@ -337,7 +340,8 @@ async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: 
     agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
   ]);
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
-  const placed = inboxItems(approvals.flow.order, live.value, { liveAgents, now: now() });
+  const at = now();
+  const placed = await withByRecCountdown(inboxItems(approvals.flow.order, live.value, { liveAgents, now: at }), sources.inbox.byRecStateDir, at);
   const byRun = byRunId(live.value);
   const items = await withShownReads(placed, (item) => rowOfItem(item, byRun), sources.rounds.lineage, reads);
   return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };

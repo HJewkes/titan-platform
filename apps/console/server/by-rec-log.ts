@@ -7,7 +7,7 @@
  * `auto-by-rec.jsonl`, appended and never rewritten; the log page reads it.
  */
 import { constants } from "node:fs";
-import { mkdir, open } from "node:fs/promises";
+import { mkdir, open, readFile } from "node:fs/promises";
 import path from "node:path";
 import { byRecPolicySchema, byRecRowSchema, BY_REC_POLICY_SCHEMA, type ByRecPolicy, type ByRecRow } from "@titan-design/owner-queue";
 import { exists, parseStateJson, readStateFile } from "./state-file.js";
@@ -41,5 +41,22 @@ export async function appendByRecRows(stateDir: string, rows: readonly ByRecRow[
     await handle.writeFile(lines);
   } finally {
     await handle.close();
+  }
+}
+
+/** Every row that parses, oldest first; a missing file is an empty log, and a torn or foreign line is skipped. */
+export async function readByRecRows(stateDir: string): Promise<ByRecRow[]> {
+  const text = await readFile(path.join(stateDir, BY_REC_ROWS_FILE), "utf8").catch((error: unknown) => {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return "";
+    throw error;
+  });
+  return text.split("\n").flatMap((line) => (line.trim() === "" ? [] : (parsedRow(line) ?? [])));
+}
+
+function parsedRow(line: string): ByRecRow | undefined {
+  try {
+    return byRecRowSchema.safeParse(JSON.parse(line)).data;
+  } catch {
+    return undefined;
   }
 }

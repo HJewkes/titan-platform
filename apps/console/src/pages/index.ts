@@ -11,6 +11,7 @@ import { InboxPage } from "./InboxPage.js";
 import { InitiativeDetailPage } from "./InitiativeDetailPage.js";
 import { InitiativesPage } from "./InitiativesPage.js";
 import { KnowledgePage } from "./KnowledgePage.js";
+import { LogPage } from "./LogPage.js";
 import { LoopsPage } from "./LoopsPage.js";
 import { ReviewDetailPage } from "./ReviewDetailPage.js";
 import { ReviewsPage } from "./ReviewsPage.js";
@@ -47,6 +48,7 @@ const WorkPage: PageComponent = ({ route }) => (route.id ? createElement(Initiat
 const RoundsView: PageComponent = ({ route }) => (route.id ? createElement(RoundDetailPage, { id: route.id }) : createElement(RoundsPage, { query: route.query }));
 const ReviewsView: PageComponent = ({ route }) => (route.id ? createElement(ReviewDetailPage, { name: route.id }) : createElement(ReviewsPage));
 const CoordinatorView: PageComponent = ({ route }) => createElement(CoordinatorPage, { query: route.query });
+const LogView: PageComponent = ({ route }) => createElement(LogPage, { query: route.query });
 const ShepherdView: PageComponent = ({ route }) => (route.id ? createElement(ShepherdDetailPage, { id: route.id }) : createElement(ShepherdPage));
 const ScorecardView: PageComponent = ({ route }) => (route.id ? createElement(ScorecardTaskPage, { id: route.id }) : createElement(ScorecardPage, { query: route.query }));
 const TasksView: PageComponent = ({ route }) => (route.id ? createElement(TaskDetailPage, { id: route.id }) : createElement(TasksPage, { query: route.query }));
@@ -72,6 +74,7 @@ const SHELLED: Partial<Record<ViewKey, Shelled>> = {
   knowledge: { list: WIDE, detail: NARROW, render: KnowledgePage },
   agents: { list: WIDE, detail: WIDE, render: AgentsRoute },
   coordinator: { list: WIDE, render: CoordinatorView },
+  log: { list: WIDE, render: LogView },
   rounds: { list: WIDE, detail: OWNS_LAYOUT, render: RoundsView },
   reviews: { list: WIDE, detail: NARROW, render: ReviewsView },
   theater: { list: WIDE, detail: OWNS_LAYOUT, render: TheaterView },

@@ -29,6 +29,7 @@ import { roundFramesCommands } from "./round-frames.js";
 import { roundsRevealCommands } from "./round-reveal.js";
 import type { RoundListeners } from "./listeners.js";
 import { reviewsCommands, type ReviewsSource } from "./reviews.js";
+import { logCommands, type LogSource } from "./log-view.js";
 import { scorecardCommands, type ScorecardSource } from "./scorecard-view.js";
 import type { SeatNotifier } from "./round-notice-transport.js";
 import { roundsCommands } from "./rounds-commands.js";
@@ -103,6 +104,8 @@ export interface ConsoleSources {
   shipped?: ShippedOptions;
   /** Optional so test sources need not build one; absent, `config.compareTree` is `not-configured`. */
   configStore?: ConfigStoreSource;
+  /** Optional so test sources need not build one; absent, `log.list` is not served. */
+  log?: LogSource;
   /** Optional so test sources need not build one; absent, the `scorecard.*` reads are not served. */
   scorecard?: ScorecardSource;
   /** Hours before `blockers.banner` shows an item; absent means 12. */
@@ -219,17 +222,18 @@ export async function warmCards({ coordinator, shepherd, inboxCache }: CardsWarm
 }
 
 /** The coordinator view's reads, each served only when its source is wired. */
-function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: ShippedOptions | undefined, shepherd: ShepherdSource, cache: InboxReadCache) {
+function coordinatorReads(coordinator: CoordinatorSource | undefined, shipped: ShippedOptions | undefined, shepherd: ShepherdSource, cache: InboxReadCache, log: LogSource | undefined) {
   const kept = keptFinished(shepherd, cache);
   const cards = coordinator?.cards;
   return {
     ...(coordinator === undefined ? {} : coordinatorCommands(cards === undefined ? coordinator : { ...coordinator, cards: { ...cards, shepherd: kept } })),
     ...(shipped === undefined ? {} : shippedCommands(kept, shipped)),
+    ...(log === undefined ? {} : logCommands(kept, log)),
   };
 }
 
 /** Every command the console daemon serves, keyed by name so the browser's hooks can be typed from it. */
-export function consoleCommands({ upstreams, agents, sessions, activeWork, evidence, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, inboxCache, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard }: ConsoleSources) {
+export function consoleCommands({ upstreams, agents, sessions, activeWork, evidence, inbox, rounds, shepherd, autoresearch, coordinatorRoots, factory, decisionLog, listeners, hostSurfaces, hostReports, reviews, inboxActions, inboxCache, videos, videoNotify, explainerBin, work, coordinator, configStore, shipped, invalidation, blockerHours, scorecard, log }: ConsoleSources) {
   const configReaders = surfaceReaders(coordinatorRoots, hostSurfaces);
   const cache = inboxCache ?? inboxReadCache({ factory, rounds, inbox, shepherd, agents });
   return {
@@ -255,7 +259,7 @@ export function consoleCommands({ upstreams, agents, sessions, activeWork, evide
     ...videoPropsCommands(videos, explainerBin),
     ...(reviews === undefined ? {} : reviewsCommands(reviews)),
     ...workCommands(activeWork, work),
-    ...coordinatorReads(coordinator, shipped, shepherd, cache),
+    ...coordinatorReads(coordinator, shipped, shepherd, cache, log),
     ...(scorecard === undefined ? {} : scorecardCommands(scorecard)),
   };
 }
