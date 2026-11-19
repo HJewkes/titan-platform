@@ -5,7 +5,7 @@ import { buildDigestPrompt, type DigestPrompt } from "./digest-prompt.js";
 import type { Retriever } from "./digest-retrieval.js";
 import { totalOf, type ScoreCard } from "./score-card.js";
 import type { DigestRunner } from "./seams.js";
-import { appendRow, type RowOutcome, type StepRow } from "./step-rows.js";
+import { appendRow, parseStepRows, type RowOutcome, type StepRow } from "./step-rows.js";
 
 const DigestRowSchema = z.object({ step: z.string(), outcome: z.string(), started_at: z.string() });
 
@@ -49,21 +49,7 @@ export function isDigestWorthy(card: ScoreCard, thresholdTotal: number, alsoIfAn
 function digestsWrittenOn(rowsDir: string, day: string): number {
   const file = path.join(rowsDir, `steps-${day.slice(0, 7)}.jsonl`);
   if (!existsSync(file)) return 0;
-  return readFileSync(file, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map(parseRow)
-    .filter((r) => r?.step === "digest" && r.outcome === "ok" && r.started_at.slice(0, 10) === day).length;
-}
-
-/** A torn or foreign line must not take the cap check down with it: it is simply not a digest row. */
-function parseRow(line: string): z.infer<typeof DigestRowSchema> | undefined {
-  try {
-    const parsed = DigestRowSchema.safeParse(JSON.parse(line));
-    return parsed.success ? parsed.data : undefined;
-  } catch {
-    return undefined;
-  }
+  return parseStepRows(readFileSync(file, "utf8"), DigestRowSchema).filter((r) => r.step === "digest" && r.outcome === "ok" && r.started_at.slice(0, 10) === day).length;
 }
 
 function rowFor(deps: DigestDeps, input: DigestInput, prompt: DigestPrompt | undefined, startedAt: Date, p: Partial<StepRow>): StepRow {

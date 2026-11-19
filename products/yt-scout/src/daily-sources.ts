@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { depositItemId } from "@titan-design/owner-queue";
 import { readAnswer } from "@titan-design/owner-queue/spool";
 import type { Watchlist } from "./config.js";
 import type { ConsoleResult, ConsoleRunner, DailyCard, DailyDeps, DailyStats } from "./daily.js";
 import { z } from "zod";
+import { readStepRows } from "./step-rows.js";
 import type { VideoRow } from "./store.js";
 
 const DAY_MS = 86_400_000;
@@ -22,15 +23,6 @@ export const shellConsoleRunner: ConsoleRunner = (args, stdin) =>
 
 export function readOwnerAnswer(dir: string): DailyDeps["readAnswer"] {
   return async (depositId) => (await readAnswer(dir, depositItemId("yt-scout", depositId)))?.text;
-}
-
-function loadRows(rowsDir: string): LoggedRow[] {
-  if (!existsSync(rowsDir)) return [];
-  return readdirSync(rowsDir)
-    .filter((f) => /^steps-\d{4}-\d{2}\.jsonl$/.test(f))
-    .sort()
-    .flatMap((f) => readFileSync(path.join(rowsDir, f), "utf8").split("\n").filter(Boolean))
-    .map((line) => RowSchema.parse(JSON.parse(line)));
 }
 
 const scored = (r: LoggedRow): boolean => r.step === "score" && (r.outcome === "ok" || r.outcome === "fallback") && r.output_path !== null;
@@ -96,15 +88,15 @@ export function sourceCardLoaders(rowsDir: string, watchlist: Watchlist, video: 
   const since = (): number => now().getTime() - DAY_MS;
   return {
     async cards(): Promise<DailyCard[]> {
-      const recent = loadRows(rowsDir).filter((r) => scored(r) && Date.parse(r.started_at) >= since());
+      const recent = readStepRows(rowsDir, RowSchema).filter((r) => scored(r) && Date.parse(r.started_at) >= since());
       return latestPerVideo(recent).flatMap((r) => toCard(r, lookup) ?? []);
     },
     async findCard(id: string): Promise<DailyCard | undefined> {
-      const row = latestPerVideo(loadRows(rowsDir).filter((r) => scored(r) && r.video_id === id))[0];
+      const row = latestPerVideo(readStepRows(rowsDir, RowSchema).filter((r) => scored(r) && r.video_id === id))[0];
       return row ? toCard(row, lookup) : undefined;
     },
     async stats(): Promise<DailyStats> {
-      const recent = loadRows(rowsDir).filter((r) => Date.parse(r.started_at) >= since());
+      const recent = readStepRows(rowsDir, RowSchema).filter((r) => Date.parse(r.started_at) >= since());
       const failed = new Set(recent.filter((r) => r.outcome === "fail").map((r) => r.video_id));
       return { failed: failed.size, spendUsd: recent.reduce((sum, r) => sum + r.cost_usd, 0) };
     },
