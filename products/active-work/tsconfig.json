@@ -6,8 +6,8 @@
     "lib": ["ES2022"],
     "outDir": "dist",
     "rootDir": "src",
-    // Adopted code predates both flags; the TP-624 S5 tsconfig ratchet turns them on.
-    "verbatimModuleSyntax": false,
+    // Adopted code predates noUncheckedIndexedAccess; the TP-624 S5 tsconfig ratchet turns it on.
+    "verbatimModuleSyntax": true,
     "noUncheckedIndexedAccess": false
   },
   "include": ["src"],

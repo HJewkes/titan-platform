@@ -1,5 +1,6 @@
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { z } from "zod";
 import type { StepErrorClass } from "./seams.js";
 
 /** `fallback` marks a degraded result that was still kept, such as a card with a technique dropped. */
@@ -31,6 +32,29 @@ export interface StepRow {
 export function appendRow(rowsDir: string, row: StepRow): void {
   mkdirSync(rowsDir, { recursive: true });
   appendFileSync(path.join(rowsDir, `steps-${row.started_at.slice(0, 7)}.jsonl`), `${JSON.stringify(row)}\n`);
+}
+
+/** A torn line or a row of another shape (detect writes its own) is not a row for this reader: skipped, never thrown. */
+export function parseStepRows<S extends z.ZodType>(text: string, schema: S): z.infer<S>[] {
+  const rows: z.infer<S>[] = [];
+  for (const line of text.split("\n").filter(Boolean)) {
+    try {
+      const parsed = schema.safeParse(JSON.parse(line));
+      if (parsed.success) rows.push(parsed.data);
+    } catch {
+      // a torn line is skipped like a foreign one
+    }
+  }
+  return rows;
+}
+
+/** Every monthly `steps-YYYY-MM.jsonl` file, oldest first, read through the caller's schema. */
+export function readStepRows<S extends z.ZodType>(rowsDir: string, schema: S): z.infer<S>[] {
+  if (!existsSync(rowsDir)) return [];
+  return readdirSync(rowsDir)
+    .filter((f) => /^steps-\d{4}-\d{2}\.jsonl$/.test(f))
+    .sort()
+    .flatMap((f) => parseStepRows(readFileSync(path.join(rowsDir, f), "utf8"), schema));
 }
 
 export const VERDICTS = ["over", "under", "miss", "wrong-ts", "bad-why"] as const;
