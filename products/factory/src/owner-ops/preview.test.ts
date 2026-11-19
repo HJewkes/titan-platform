@@ -77,6 +77,14 @@ describe("owner-op.preview", () => {
     expect(answer.ok && answer.data.authority).toMatchObject({ verdict: "deny", ruleId: "DSR-OR" });
   });
 
+  it("shows a host command as denied until the owner picks its authority row", async () => {
+    const { preview } = world();
+
+    const answer = await preview({ kind: "host-command", command: "broker-restart-window" });
+
+    expect(answer.ok && answer.data).toMatchObject({ kind: "host-command", authority: { verdict: "deny", ruleId: "DSL-OR" } });
+  });
+
   it("reads a gate the store does not hold as missing", async () => {
     const { preview } = world();
 
