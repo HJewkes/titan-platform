@@ -64,6 +64,8 @@ export interface MergeFacts {
   ownerGate?: OwnerGateFact;
   /** Every Shepherd hold class on the pull request when the facts were read; `[]` when none. Only MRG-AU-RB reads it. */
   holdClasses?: string[];
+  /** The changed paths Shepherd's owner tier holds for the owner (its settings, publish and owner-lever lists); `[]` when none. Only MRG-AU-RB reads it. */
+  ownerTierPaths?: string[];
   /** The pull request's head branch name; only MRG-AU-RB reads it. */
   headRef?: string;
 }

@@ -31,8 +31,8 @@ export const VERDICTS = ["allow", "gate", "deny"] as const;
 /** Codes for the record each rule expects to leave behind, from a decision record to a device read-back. */
 export const EVIDENCE_KINDS = ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-npm", "E-spn", "E-prin", "E-dev", "E-rev"] as const;
 
-/** Conditions only MRG-AU-RB reads: an owner gate left 24 h on a merge recommendation, with no g10 hold or release path. */
-const BY_REC_CONDITION_KINDS = ["owner-gate-silent-24h", "gate-recommends-merge", "no-g10-hold", "no-release-path"] as const;
+/** Conditions only MRG-AU-RB reads: an owner gate left 24 h on a merge recommendation, with no hold, owner-tier path or release path. */
+const BY_REC_CONDITION_KINDS = ["owner-gate-silent-24h", "gate-recommends-merge", "no-hold", "no-owner-path", "no-release-path"] as const;
 
 /** Conditions read from `facts.merge`. */
 export const MERGE_CONDITION_KINDS = [
@@ -67,7 +67,7 @@ export type ActionClass = (typeof ACTION_CLASSES)[number];
 export type Verdict = (typeof VERDICTS)[number];
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 export type ByRecConditionKind = (typeof BY_REC_CONDITION_KINDS)[number];
-export type MergeConditionKind =(typeof MERGE_CONDITION_KINDS)[number];
+export type MergeConditionKind = (typeof MERGE_CONDITION_KINDS)[number];
 export type QuestionConditionKind = (typeof QUESTION_CONDITION_KINDS)[number];
 export type ConditionKind = (typeof CONDITION_KINDS)[number];
 export type TaintKind = (typeof TAINT_KINDS)[number];

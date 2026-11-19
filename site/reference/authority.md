@@ -168,20 +168,25 @@ MRG-AU-RB (owner decision of 2026-11-19, TP-6765) allows an automation merge whe
 an approve-merge gate unanswered for 24 hours on a merge recommendation. It needs no seat grant and
 no reviewer as the resolver; the gate is cancelled as `auto-by-rec`, and automation still resolves no
 gate. It keeps MRG-AU-RV's `verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`,
-`merge-tree-clean`, `repo-not-frozen` and `no-protected-path-change`, and adds four conditions:
+`merge-tree-clean`, `repo-not-frozen` and `no-protected-path-change`, and adds five conditions:
 
 - `owner-gate-silent-24h`: the `ownerGate` fact names `facts.head` as its `head`, `pending` is exactly
   `true`, and `observedAt - openedAt` is at least 24 hours. Both are positive integer epoch
   milliseconds that the caller reads, since the evaluator has no clock. A head move re-opens the gate,
   so the clock starts again.
 - `gate-recommends-merge`: that same gate's `recommended` option id is exactly `merge`.
-- `no-g10-hold`: `holdClasses` is a list of strings, and none of them, trimmed and case-folded,
-  starts with `g10`. A missing list fails. A changed path that MRG-AU-RS fences
-  (`isCarryFencedPath`, which covers `packages/authority/`, so a table edit never matches), or a
-  `.claude` entry or anything under `.claude/skills`, also fails it, even when the caller's hold read
-  missed the hold that path earns.
+- `no-hold`: `holdClasses` is a list of strings and is empty. Any Shepherd hold, of any class
+  (`owner-asked`, `owner-review`, a g10 or visual hold), fails it, and so does a missing list.
+- `no-owner-path`: `ownerTierPaths`, the changed paths Shepherd's owner tier holds for the owner
+  (its settings, publish and owner-lever lists), is a list of strings and is empty; a missing list
+  fails. A changed path also fails it, however that read came out, when MRG-AU-RS fences it
+  (`isCarryFencedPath`, which covers `packages/authority/`, so a table edit never matches), when any
+  segment is `.claude` or `.agent-chat`, when it is under `products/factory/src/shepherd/`,
+  `packages/hitl/`, or is the factory's `config*` or `cli-release*`, or when its file name carries an
+  owner-lever stem such as `g10-`, `merge-facts`, `risk-tier`, `owner-tier`, `merge-evidence-gate`,
+  `gate-resolve`, `owner-tap`, `inbox-actions` or `owner-release`.
 - `no-release-path`: `headRef` is a non-empty canonical branch name that is not a
-  `changeset-release/` or `release/` branch (an `owner:` prefix counts), and no changed path is a
+  `changeset-release/` or `release/` branch (an `owner:` or `refs/heads/` prefix counts), and no changed path is a
   `CHANGELOG.md`, `.changeset/config.json`, `.changeset/pre.json` or under
   `.github/workflows/release`. A changeset added under `.changeset/` passes.
 

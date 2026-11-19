@@ -33,3 +33,21 @@ export function isCarryFencedPath(path: unknown): boolean {
   const folded = path.toLowerCase();
   return CARRY_FENCED_FILES.has(folded) || CARRY_FENCED_ENTRIES.has(folded) || CARRY_FENCED_PREFIXES.some((prefix) => folded.startsWith(prefix));
 }
+
+// Mirrors Shepherd's owner-tier lists (risk-tier.ts: settings, publish and owner-lever files) coarsely, so it refuses at least what they hold.
+const OWNER_FLOOR_SEGMENTS = new Set([".claude", ".agent-chat"]);
+const OWNER_FLOOR_PREFIXES = ["products/factory/src/shepherd/", "products/factory/src/config", "products/factory/src/cli-release", "packages/hitl/"];
+const OWNER_FLOOR_STEMS = ["g10-", "adversary-", "merge-evidence-gate", "task-kind", "registration-hold", "release-head", "risk-tier", "owner-tier", "merge-facts", "owner-tap", "inbox-actions", "gate-resolve", "owner-release"];
+
+/** Whether a changed path stays the owner's however Shepherd's own read came out; a path that cannot be compared exactly counts. */
+export function isOwnerFloorPath(path: unknown): boolean {
+  if (typeof path !== "string" || isNonCanonical(path)) return true;
+  const segments = path.toLowerCase().split("/");
+  const folded = segments.join("/");
+  const name = segments.at(-1) ?? "";
+  return (
+    segments.some((segment) => OWNER_FLOOR_SEGMENTS.has(segment)) ||
+    OWNER_FLOOR_PREFIXES.some((prefix) => folded.startsWith(prefix)) ||
+    OWNER_FLOOR_STEMS.some((stem) => name.includes(stem))
+  );
+}

@@ -22,7 +22,8 @@ const WHEN: ConditionKind[] = [
   "merge-tree-clean",
   "repo-not-frozen",
   "no-protected-path-change",
-  "no-g10-hold",
+  "no-hold",
+  "no-owner-path",
   "no-release-path",
 ];
 
@@ -33,7 +34,7 @@ const APPROVED_ROW = {
   actor: "automation",
   verdict: "allow",
   condition:
-    "Owner decision 2026-11-19 (TP-6765): an approve-merge gate whose recommended answer is merge and that the owner left unanswered for 24 h at the same head resolves to merge, logged as auto-by-rec. The dispatched reviewer's MERGE at the exact head and green required checks still hold at resolve time; no g10 hold, protected, release or authority path. Otherwise MRG-AU gates.",
+    "Owner decision 2026-11-19 (TP-6765): an approve-merge gate whose recommended answer is merge and that the owner left unanswered for 24 h at the same head resolves to merge, logged as auto-by-rec. The dispatched reviewer's MERGE at the exact head and green required checks still hold at resolve time; the PR carries no Shepherd hold of any class and no protected, release, authority or owner-tier path. Otherwise MRG-AU gates.",
   when: WHEN,
   evidence: ["E-gate", "E-gh", "E-rev"],
 };
@@ -54,6 +55,7 @@ function byRecFacts(): MergeFacts {
     seatGrants: [],
     ownerGate: { head: HEAD, pending: true, recommended: "merge", openedAt: OPENED_AT, observedAt: OPENED_AT + DAY_MS },
     holdClasses: [],
+    ownerTierPaths: [],
     headRef: "agent-chat/example",
   };
 }
@@ -92,7 +94,8 @@ const ONE_FALSE: [string, ConditionKind, (facts: MergeFacts) => void][] = [
   ["the merge tree conflicts", "merge-tree-clean", (f) => { f.mergeTreeClean = false; }],
   ["the repo is frozen", "repo-not-frozen", (f) => { f.repoFrozen = true; }],
   ["the PR changes CODEOWNERS", "no-protected-path-change", (f) => { f.changedPaths.push("docs/CODEOWNERS"); }],
-  ["the PR carries a g10-review hold", "no-g10-hold", (f) => { f.holdClasses = ["g10-review"]; }],
+  ["the PR carries a g10-review hold", "no-hold", (f) => { f.holdClasses = ["g10-review"]; }],
+  ["Shepherd's owner tier holds a changed path", "no-owner-path", (f) => { f.ownerTierPaths = ["packages/example/src/a.ts"]; }],
   ["the PR is a release branch", "no-release-path", (f) => { f.headRef = "changeset-release/main"; }],
 ];
 
@@ -134,8 +137,8 @@ describe("MRG-AU-RB: automation merges an approve-merge gate left 24 h on a merg
 });
 
 describe("MRG-AU-RB's exclusion floor", () => {
-  it.each(["g10-review", "g10-adversary", "g10-security", "G10-review", " g10-review", "g10"])("never matches a PR held %j", (holdClass) => {
-    expectFallsBackToGate(patched((f) => { f.holdClasses = ["owner-asked", holdClass]; }), "no-g10-hold");
+  it.each(["g10-review", "g10-adversary", "owner-asked", "owner-review", "visual-gate2", ""])("never matches a PR held %j", (holdClass) => {
+    expectFallsBackToGate(patched((f) => { f.holdClasses = [holdClass]; }), "no-hold");
   });
 
   it.each([
@@ -143,7 +146,15 @@ describe("MRG-AU-RB's exclusion floor", () => {
     ["holdClasses not a list", (f: MergeFacts) => { Reflect.set(f, "holdClasses", "none"); }],
     ["a non-string hold class", (f: MergeFacts) => { Reflect.set(f, "holdClasses", [7]); }],
   ])("fails closed on %s", (_name, patch) => {
-    expectFallsBackToGate(patched(patch), "no-g10-hold");
+    expectFallsBackToGate(patched(patch), "no-hold");
+  });
+
+  it.each([
+    ["ownerTierPaths missing", (f: MergeFacts) => { Reflect.deleteProperty(f, "ownerTierPaths"); }],
+    ["ownerTierPaths not a list", (f: MergeFacts) => { Reflect.set(f, "ownerTierPaths", false); }],
+    ["a non-string owner-tier path", (f: MergeFacts) => { Reflect.set(f, "ownerTierPaths", [7]); }],
+  ])("fails closed on %s", (_name, patch) => {
+    expectFallsBackToGate(patched(patch), "no-owner-path");
   });
 
   it.each([
@@ -152,16 +163,37 @@ describe("MRG-AU-RB's exclusion floor", () => {
     "packages/authority",
     "packages/tool-guard/src/families/merge.ts",
     ".github/workflows/ci.yml",
+    ".github/fix-proof.json",
     ".codewatch/check.json",
     ".egress-allow",
     ".claude/skills/review/SKILL.md",
+    ".Claude/Skills/x",
     ".claude",
+    ".claude/settings.json",
+    ".agent-chat/profiles/x.json",
+    "products/factory/src/config.ts",
+    "products/factory/src/config-ref.ts",
+    "products/factory/src/cli-release.ts",
+    "products/factory/src/shepherd/merge-facts.ts",
+    "products/factory/src/shepherd/version-packages.ts",
+    "products/factory/src/shepherd/release-follow.ts",
+    "products/factory/src/shepherd/bump-consumers.ts",
+    "products/factory/src/shepherd/commands.ts",
+    "products/example/src/g10-classes.ts",
+    "packages/example/src/risk-tier.ts",
+    "packages/example/src/owner-tier.ts",
+    "packages/example/src/merge-evidence-gate.ts",
+    "apps/console/server/routes/owner-tap.ts",
+    "apps/console/server/inbox-actions-list.ts",
+    "products/factory/src/gate-resolve-sink.ts",
+    "products/factory/src/cli/owner-release.ts",
+    "packages/hitl/src/store.ts",
     "packages/x/../authority/src/table.json",
-  ])("never matches a PR touching %s, even with no hold read", (path) => {
-    expectFallsBackToGate(patched((f) => { f.changedPaths.push(path); }), "no-g10-hold");
+  ])("never matches a PR touching %s, even when the caller's owner-tier read is empty", (path) => {
+    expectFallsBackToGate(patched((f) => { f.changedPaths.push(path); }), "no-owner-path");
   });
 
-  it.each(["changeset-release/main", "fork:changeset-release/main", "release/1.0", "Changeset-Release/main", ""])("never matches head branch %j", (headRef) => {
+  it.each(["changeset-release/main", "fork:changeset-release/main", "release/1.0", "Changeset-Release/main", "refs/heads/changeset-release/main", "refs/heads/release/x", ""])("never matches head branch %j", (headRef) => {
     expectFallsBackToGate(patched((f) => { f.headRef = headRef; }), "no-release-path");
   });
 

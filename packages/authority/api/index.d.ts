@@ -10,11 +10,11 @@ declare const VERDICTS: readonly ["allow", "gate", "deny"];
 /** Codes for the record each rule expects to leave behind, from a decision record to a device read-back. */
 declare const EVIDENCE_KINDS: readonly ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-npm", "E-spn", "E-prin", "E-dev", "E-rev"];
 /** Conditions read from `facts.merge`. */
-declare const MERGE_CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "owner-gate-silent-24h", "gate-recommends-merge", "no-g10-hold", "no-release-path"];
+declare const MERGE_CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "owner-gate-silent-24h", "gate-recommends-merge", "no-hold", "no-owner-path", "no-release-path"];
 /** Conditions read from `facts.question`, the gate a decider would answer. */
 declare const QUESTION_CONDITION_KINDS: readonly ["gate-rule-is-question", "category-mode-auto"];
 /** Facts a conditional rule checks on the request; the rule applies only when every one holds. */
-declare const CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "owner-gate-silent-24h", "gate-recommends-merge", "no-g10-hold", "no-release-path", "gate-rule-is-question", "category-mode-auto"];
+declare const CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "owner-gate-silent-24h", "gate-recommends-merge", "no-hold", "no-owner-path", "no-release-path", "gate-rule-is-question", "category-mode-auto"];
 /** What made an agent identity tainted; `inbound-message` is reserved for an external door that does not exist yet. */
 declare const TAINT_KINDS: readonly ["web-fetch", "web-search", "external-tool", "inbound-message", "untrusted-item", "inherited"];
 type ActorClass = (typeof ACTOR_CLASSES)[number];
@@ -101,6 +101,8 @@ interface MergeFacts {
     ownerGate?: OwnerGateFact;
     /** Every Shepherd hold class on the pull request when the facts were read; `[]` when none. Only MRG-AU-RB reads it. */
     holdClasses?: string[];
+    /** The changed paths Shepherd's owner tier holds for the owner (its settings, publish and owner-lever lists); `[]` when none. Only MRG-AU-RB reads it. */
+    ownerTierPaths?: string[];
     /** The pull request's head branch name; only MRG-AU-RB reads it. */
     headRef?: string;
 }
@@ -166,8 +168,9 @@ declare const ruleSchema: z.ZodObject<{
         "gate-recommends-merge": "gate-recommends-merge";
         "gate-rule-is-question": "gate-rule-is-question";
         "merge-tree-clean": "merge-tree-clean";
-        "no-g10-hold": "no-g10-hold";
+        "no-hold": "no-hold";
         "no-non-green-run": "no-non-green-run";
+        "no-owner-path": "no-owner-path";
         "no-protected-path-change": "no-protected-path-change";
         "no-release-path": "no-release-path";
         "owner-gate-silent-24h": "owner-gate-silent-24h";

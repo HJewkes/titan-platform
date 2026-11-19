@@ -1,4 +1,4 @@
-import { isCarryFencedPath, isNonCanonical } from "./paths.js";
+import { isCarryFencedPath, isNonCanonical, isOwnerFloorPath } from "./paths.js";
 import { isFullSha, isRecord, isStringList } from "./shape.js";
 import type { ByRecConditionKind } from "./vocabulary.js";
 
@@ -20,12 +20,12 @@ export interface ByRecFacts {
   changedPaths: string[];
   ownerGate?: OwnerGateFact;
   holdClasses?: string[];
+  ownerTierPaths?: string[];
   headRef?: string;
 }
 
 const SILENT_MS = 24 * 60 * 60 * 1000;
-const G10_PREFIX = "g10";
-const RELEASE_BRANCH = /^(?:[^:]+:)?(?:changeset-release|release)\//i;
+const RELEASE_BRANCH = /^(?:[^:]+:)?(?:refs\/heads\/)?(?:changeset-release|release)\//i;
 const RELEASE_FILES = new Set([".changeset/config.json", ".changeset/pre.json"]);
 const RELEASE_WORKFLOW_PREFIX = ".github/workflows/release";
 const CHANGELOG = "changelog.md";
@@ -51,22 +51,17 @@ function changedPathsOf(facts: ByRecFacts): string[] | undefined {
   return isStringList(paths) && paths.length > 0 ? paths : undefined;
 }
 
-// A `.claude` entry, or anything under `.claude/skills`, is a skill change that gates for the owner at its head.
-function isSkillPath(path: string): boolean {
-  const segments = path.toLowerCase().split("/");
-  return segments.some((segment, index) => segment === ".claude" && (index === segments.length - 1 || segments[index + 1] === "skills"));
-}
-
-function isHeldClass(holdClass: string): boolean {
-  return holdClass.trim().toLowerCase().startsWith(G10_PREFIX);
-}
-
-// Authority, tool-guard, CI-policy and skill paths always earn a g10 or owner-at-head hold, so they count as held even when the caller's hold read missed one.
-function noG10Hold(facts: ByRecFacts): boolean {
-  const paths = changedPathsOf(facts);
+function noHold(facts: ByRecFacts): boolean {
   const { holdClasses } = facts;
-  if (!paths || !isStringList(holdClasses) || holdClasses.some(isHeldClass)) return false;
-  return !paths.some((path) => isCarryFencedPath(path) || isSkillPath(path));
+  return isStringList(holdClasses) && holdClasses.length === 0;
+}
+
+// The caller's owner-tier read is the authority on which paths stay the owner's; the fixed floor still refuses when that read missed one.
+function noOwnerPath(facts: ByRecFacts): boolean {
+  const paths = changedPathsOf(facts);
+  const { ownerTierPaths } = facts;
+  if (!paths || !isStringList(ownerTierPaths) || ownerTierPaths.length > 0) return false;
+  return !paths.some((path) => isCarryFencedPath(path) || isOwnerFloorPath(path));
 }
 
 function isReleasePath(path: string): boolean {
@@ -86,6 +81,7 @@ function noReleasePath(facts: ByRecFacts): boolean {
 export const BY_REC_CHECKS: Record<ByRecConditionKind, (facts: ByRecFacts) => boolean> = {
   "owner-gate-silent-24h": ownerGateSilent24h,
   "gate-recommends-merge": gateRecommendsMerge,
-  "no-g10-hold": noG10Hold,
+  "no-hold": noHold,
+  "no-owner-path": noOwnerPath,
   "no-release-path": noReleasePath,
 };
