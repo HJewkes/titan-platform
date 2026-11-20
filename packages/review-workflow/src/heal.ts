@@ -13,7 +13,7 @@ export interface HealSubject {
   sonnetFor?: Record<string, string>;
 }
 
-/** The decision shape that asks for heals; every other decision passes through `healOnce` untouched. */
+/** The decision shape that asks for heals. */
 export interface HealRequest {
   kind: "heal";
   heals: readonly HealKind[];
@@ -24,14 +24,6 @@ export type HealEffect =
   | { kind: "stop"; outcome: ReviewOutcome }
   /** The heal has nothing to act on, such as a refused member with no sonnet fallback. */
   | { kind: "ineffective"; heal: HealKind };
-
-/** `heals` names what was still asked for after the one pass, or the heal that could not act. */
-export type HealPassResult<D> =
-  | { kind: "decided"; decision: D; subject: HealSubject }
-  | { kind: "stop"; outcome: ReviewOutcome }
-  | { kind: "fixer"; key: "heal-ineffective"; heals: readonly HealKind[] };
-
-const isHealRequest = (decision: { kind: string }): decision is HealRequest => decision.kind === "heal";
 
 /** Under Shepherd a moved head is the caller's `head-moved` outcome, so only a standalone run asks for this heal. */
 async function retarget(subject: HealSubject, ports: HealPorts): Promise<HealEffect> {
@@ -68,27 +60,4 @@ export async function applyHeal(heal: HealKind, subject: HealSubject, ports: Hea
     case "await-account":
       return awaitAccount(subject, ports);
   }
-}
-
-/**
- * Runs the heals a decision asks for, each once and in order, then re-decides once. A heal that cannot act, or a
- * re-decision that still asks for a heal, goes to the fixer: a second pass would repeat a heal that already failed.
- */
-export async function healOnce<D extends { kind: string }>(
-  decision: D | HealRequest,
-  subject: HealSubject,
-  ports: HealPorts,
-  decide: (subject: HealSubject) => Promise<D | HealRequest>,
-): Promise<HealPassResult<D>> {
-  if (!isHealRequest(decision)) return { kind: "decided", decision, subject };
-  let healed = subject;
-  for (const heal of decision.heals) {
-    const effect = await applyHeal(heal, healed, ports);
-    if (effect.kind === "stop") return effect;
-    if (effect.kind === "ineffective") return { kind: "fixer", key: "heal-ineffective", heals: [heal] };
-    healed = effect.subject;
-  }
-  const next = await decide(healed);
-  if (isHealRequest(next)) return { kind: "fixer", key: "heal-ineffective", heals: next.heals };
-  return { kind: "decided", decision: next, subject: healed };
 }
