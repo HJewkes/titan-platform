@@ -57,7 +57,8 @@ export { aliasChain, loadLineage, priorSnapshotForRef, resolveAlias } from "./id
 export { computeMetrics } from "./metrics.js";
 export { computeLcomMetrics } from "./lcom.js";
 export { cognitiveComplexityOf, cognitiveSplitOf } from "./cognitive-complexity.js";
-export { computeSourceMetrics, SOURCE_METRIC_NAMES } from "./source-metrics.js";
+export { computeSourceMetrics, SOURCE_METRIC_NAMES, type SourceMetricOptions } from "./source-metrics.js";
+export { COMMENT_RATIO_MIN_BODY_LINES } from "./analysis/comment-lines.js";
 export { SYMBOL_METRIC_NAMES } from "./symbol-metrics.js";
 export { EXCEPTION_METRIC_NAMES } from "./analysis/exception-handling.js";
 export { assembleIndexerMetrics, buildIndexerMetrics } from "./index-metrics.js";

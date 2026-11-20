@@ -48,7 +48,7 @@ export interface DoctorDeps {
   homeDir?: string;
   /** Node version string like `process.version` (`v22.4.0`). */
   nodeVersion?: string;
-  /** Minimum supported Node major (defaults to 22). */
+  /** Minimum supported Node major (defaults to 24). */
   minNodeMajor?: number;
   /** Probe the daemon; defaults to reading the pid file + `/health`. */
   probeDaemon?: () => Promise<DaemonProbe>;
