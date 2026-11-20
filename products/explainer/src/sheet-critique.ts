@@ -10,7 +10,7 @@ const TOP_FINDINGS = 3;
 const Score = z.number().min(0).max(10);
 
 // Only the first two tags cap a score; the rest name tells a still can show, so a rubric can ask for them.
-const CAP_TAGS = [
+export const CAP_TAGS = [
   "glow-or-gradient",
   "unsupported-number",
   "eyebrow-label",
