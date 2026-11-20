@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { readRoster, type AgentsSource } from "./agents.js";
 import { liveHeads, readFlow, type ApprovalsSources } from "./approvals.js";
+import { isG10Class } from "./g10-hold.js";
 import { gateStripCommands, holdClassOf, type GateStrip, type GateStripReader } from "./gate-strip.js";
 import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import { foldCoveredGates, gateHeadOf, liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
@@ -179,11 +180,12 @@ function hitlDerived(item: OwnerItem, gateId: string, row: WatchRow | undefined)
 const openOrTerminal = (evidence: string | undefined, item: OwnerItem, reason: string): InboxAction =>
   evidence === undefined ? terminal(reason, item.command) : { kind: "open", route: evidence };
 
-/** A hold op is only a pointer: the release, its class and its head all come from the live row, and a mismatch offers nothing. */
+/** `g10` names either g10 class, as Shepherd places only g10-review and g10-adversary. A hold op is only a pointer: the release, its class and its head all come from the live row, and a mismatch offers nothing. */
 function holdOpAction(item: OwnerItem, op: Extract<OwnerOp, { kind: "release-hold" }>, row: WatchRow | undefined): InboxAction {
   if (row?.held == null) return terminal(`no live Shepherd row holds ${op.repo}#${op.pr}`, item.command);
   const holdClass = holdClassOf(row.held.reason);
-  if (holdClass !== op.holdClass) return terminal(`${op.repo}#${op.pr} is held as ${holdClass ?? "unclassed"}, not ${op.holdClass}`, item.command);
+  const matches = op.holdClass === "g10" ? isG10Class(holdClass) : holdClass === op.holdClass;
+  if (!matches) return terminal(`${op.repo}#${op.pr} is held as ${holdClass ?? "unclassed"}, not ${op.holdClass}`, item.command);
   return holdAction(row, holdClass);
 }
 

@@ -55,6 +55,15 @@ describe('hitTiers', () => {
     expect(tiers[2]).toBe(`${seeLine(hitOver({}))}\nSPANTEXT`);
   });
 
+  it('a span running past the end of a shrunk file yields only two tiers', async () => {
+    const file = path.join(dir, 'shrunk.md');
+    writeFileSync(file, 'HEADER-SHORT');
+
+    const tiers = await hitTiers(spanHit(file, 7, 50), dir);
+
+    expect(tiers).toHaveLength(2);
+  });
+
   it('span text is capped at 2,000 characters', async () => {
     const file = path.join(dir, 'long.md');
     writeFileSync(file, 'a'.repeat(5000));
