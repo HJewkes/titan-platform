@@ -13,6 +13,9 @@ const WritingGatePolicySchema = z.object({
   note: z.string(),
   minWords: z.number().int().positive(),
   longWords: z.number().int().positive(),
+  "sentence-cap": z
+    .object({ plainMax: z.number().int().positive(), vettedMax: z.number().int().positive(), evidence: z.string() })
+    .refine((cap) => cap.vettedMax > cap.plainMax, "vettedMax must exceed plainMax"),
   gate: z.object({
     "short-register": row({ meanBelow: z.number().positive(), longShareBelow: z.number().min(0).max(1) }),
     "sentence-mean": row({ floor: z.number().positive() }),

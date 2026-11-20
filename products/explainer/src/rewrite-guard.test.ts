@@ -178,9 +178,14 @@ describe("guardBeat", () => {
   const longSentence =
     "The desk server checks each scan and retries 3 times before it writes the rows to the ledger, which keeps them so that every courier sees the same state afterwards.";
 
-  it("rejects a sentence over the cap when no speech verdict is given", () => {
+  it("rejects a sentence over the plain cap when the speech verdict calls it unclean", () => {
     const after = { spoken: longSentence, labelsAdded: [] };
-    expect(rules(beatWith(), after)).toContain("sentence-cap");
+    expect(rules(beatWith(), after, { speechClean: () => false })).toContain("sentence-cap");
+  });
+
+  it("accepts that sentence pending a hand vet when no speech verdict is given", () => {
+    const after = { spoken: longSentence, labelsAdded: [] };
+    expect(rules(beatWith(), after)).not.toContain("sentence-cap");
   });
 
   it("accepts that sentence when the speech verdict calls it clean", () => {
@@ -356,7 +361,7 @@ describe("guardBeat entities and inherited sentences", () => {
   });
 
   describe("sentence-cap", () => {
-    const LONG = `The desk server ${"checks each scan and then ".repeat(6)}writes the rows`;
+    const LONG = `The desk server ${"checks each scan and then ".repeat(13)}writes the rows`;
     const before = beatWith({}, `${LONG}. The ledger keeps them.`);
 
     it("exempts a long sentence copied unchanged from the original", () => {

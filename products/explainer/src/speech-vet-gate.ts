@@ -22,7 +22,7 @@ async function statusOf(vetSentence: SentenceVet, sentence: string): Promise<str
 }
 
 /**
- * Vets each sentence of 26 to 32 words of the script, one at a time since each vet loads and runs speech models.
+ * Vets each sentence of the script between the Q-V9 caps, one at a time since each vet loads and runs speech models.
  * A vet that throws is a verdict of not clean, so Q-V9 never fails open.
  */
 export async function vetSentences(script: ScriptV1, vetSentence: SentenceVet): Promise<SentenceVerdict[]> {
