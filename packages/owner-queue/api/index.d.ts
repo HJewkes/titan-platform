@@ -613,7 +613,7 @@ interface Recheck {
 /**
  * Re-checks open items against answers already given (rule 2). An item is dropped as
  * `gone-elsewhere`, citing the newest such answer, when an answer sharing its `ask:` key is
- * newer than its `openedAt` and pinned to no other head of a PR the item names. An older or
+ * newer than its `openedAt`, pinned to no other head of a PR the item names, and the owner's own. An older, non-owner or
  * other-head answer on the same `ask:` key flags `conflict` when it is not the item's
  * recommendation and `reasked` when it is or there is none. Sharing only a `component:`,
  * `token:` or `topic:` key flags `related-answer` and never drops. Answers are the items
@@ -880,8 +880,6 @@ interface RoundItemsContext {
 interface AnsweredContext extends RoundItemsContext {
     roundId: string;
 }
-/** feedback@1 does not say who answered; only the owner answers a round. */
-declare const ROUND_ANSWERER: OwnerAnswer["by"];
 declare function roundItemId(roundId: string, questionId: string): string;
 /**
  * Each round@2 question as an open OwnerItem, in question order. The item carries the question's
@@ -891,12 +889,24 @@ declare function roundItemId(roundId: string, questionId: string): string;
 declare function fromRoundQuestions(manifest: ManifestInput, roundId: string, context: RoundItemsContext): OwnerItem[];
 /**
  * The answered questions of a feedback@1 file as answered OwnerItems: the same items
- * fromRoundQuestions gives, with the owner's answer at `submittedAt`. With the round's bindings a
+ * fromRoundQuestions gives, with the answer at `submittedAt`, credited to whoever the feedback names
+ * (`feedbackAnswerer`): the owner, or the by-rec sweep. With the round's bindings a
  * pick maps back to the option id of the item it asked. Questions left unanswered are omitted,
  * but a revision request is always kept, because it must still block a ship.
  * Throws when either file is invalid or the feedback is for another unit or round.
  */
 declare function answeredFromFeedback(feedback: FeedbackInput, manifest: ManifestInput, context: AnsweredContext): OwnerItem[];
+
+type Answerer = OwnerAnswer["by"];
+/** feedback@1 does not say who answered; a round answer is the owner's unless its feedback carries the by-rec mark. */
+declare const ROUND_ANSWERER: Answerer;
+/**
+ * The `general` the by-rec sweep's feedback carries (TP-6773). feedback@1 is strict and has no answerer field, so this
+ * mark is the one place the file says who answered, and every reader takes the answerer from it through `feedbackAnswerer`.
+ */
+declare const BY_REC_FEEDBACK_GENERAL = "auto-by-rec: every question was answered with its recommendation after the round went unanswered past the by-rec wait";
+/** Who answered a round, read from its feedback's `general`. A mark anyone else wrote only takes the owner's credit away. */
+declare function feedbackAnswerer(general: string | undefined): Answerer;
 
 type PlanGate = "ci-policy" | "skill" | "visual" | "task";
 /** A ci-policy approval pins each file the PR changes by its git blob sha; null means the file is absent at head. */
@@ -1000,7 +1010,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, BY_REC_EXCLUDE_FIELDS, BY_REC_FLOOR, BY_REC_MODES, BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_RESULTS, BY_REC_ROW_SCHEMA, BY_REC_SOURCES, type ByRecDecision, type ByRecExclusion, type ByRecPolicy, type ByRecPolicyInput, type ByRecRecommendation, type ByRecRow, type ByRecSource, type ByRecSubject, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OnSilence, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, byRecDecision, byRecPolicySchema, byRecRowSchema, byRecSubjectOfItem, cardLint, collapseRepeats, componentKey, consolidate, floorReason, forAudience, fromRoundQuestions, influenceEdges, isGuardPath, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, BY_REC_EXCLUDE_FIELDS, BY_REC_FEEDBACK_GENERAL, BY_REC_FLOOR, BY_REC_MODES, BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_RESULTS, BY_REC_ROW_SCHEMA, BY_REC_SOURCES, type ByRecDecision, type ByRecExclusion, type ByRecPolicy, type ByRecPolicyInput, type ByRecRecommendation, type ByRecRow, type ByRecSource, type ByRecSubject, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OnSilence, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, byRecDecision, byRecPolicySchema, byRecRowSchema, byRecSubjectOfItem, cardLint, collapseRepeats, componentKey, consolidate, feedbackAnswerer, floorReason, forAudience, fromRoundQuestions, influenceEdges, isGuardPath, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';

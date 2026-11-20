@@ -2,12 +2,14 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { BY_REC_POLICY_SCHEMA, byRecRowSchema } from "@titan-design/owner-queue";
+import { BY_REC_FEEDBACK_GENERAL, BY_REC_POLICY_SCHEMA, byRecRowSchema } from "@titan-design/owner-queue";
+import { roundQueueItems } from "./approval-items.js";
 import { BY_REC_POLICY_FILE, BY_REC_ROWS_FILE } from "./by-rec-log.js";
 import { BY_REC_MARKERS, sweepByRecRounds } from "./by-rec-rounds.js";
 import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type RoundDecisionLog } from "./decision-log.js";
 import { settledListeners } from "./round-fixtures.js";
-import { ANSWERED_BY_REC, AUTO_BY_REC } from "./round-nudge.js";
+import { ANSWERED_BY_REC } from "./round-nudge.js";
+import { readQueueRounds } from "./rounds.js";
 import { submitPipeline } from "./rounds-submit.js";
 
 const NOW = Date.parse("2031-03-05T12:00:00.000Z");
@@ -42,13 +44,19 @@ let root: string;
 let dir: string;
 let stateDir: string;
 
-async function stageRound(id: string, questions: readonly QuestionFixture[], { ageMs = 24 * HOUR, recommendations = "shown", extra = {} } = {}): Promise<void> {
+const neverSubmit = async (): Promise<never> => {
+  throw new Error("a first sighting never submits");
+};
+
+/** Writes the round with its mtime `ageMs` ago and, unless `unseen`, lets a sweep see it then, as the hourly timer would. */
+async function stageRound(id: string, questions: readonly QuestionFixture[], { ageMs = 24 * HOUR, recommendations = "shown", extra = {}, unseen = false } = {}): Promise<void> {
   const roundDir = path.join(dir, id);
-  await mkdir(roundDir);
+  await mkdir(roundDir, { recursive: true });
   const file = path.join(roundDir, "round.json");
   await writeFile(file, JSON.stringify(manifest(id.replace(/-r1$/, ""), questions, recommendations, extra)));
   const opened = new Date(NOW - ageMs);
   await utimes(file, opened, opened);
+  if (!unseen) await sweepByRecRounds({ dir, stateDir, submit: neverSubmit, now: opened });
 }
 
 const writePolicy = (mode: string) => writeFile(path.join(stateDir, BY_REC_POLICY_FILE), JSON.stringify({ schema: BY_REC_POLICY_SCHEMA, mode }));
@@ -97,7 +105,7 @@ describe("the rounds by-rec sweep, live", () => {
 
     expect(report.outcomes).toEqual([{ roundId: "kiln-r1", result: "resolved" }]);
     const feedback = await feedbackOf("kiln-r1");
-    expect(feedback.general).toBe(AUTO_BY_REC);
+    expect(feedback.general).toBe(BY_REC_FEEDBACK_GENERAL);
     expect(feedback.general).not.toBe(ANSWERED_BY_REC);
     expect(feedback.answers.map(({ questionId, agreed }: Record<string, unknown>) => ({ questionId, agreed }))).toEqual([{ questionId: "ramp", agreed: true }, { questionId: "hold", agreed: true }]);
     expect(run.recorded.map(([, answer]) => answer.by)).toEqual([0, 1].map(() => ({ class: "automation", id: "auto-by-rec", channel: "round" })));
@@ -116,6 +124,37 @@ describe("the rounds by-rec sweep, live", () => {
 
     expect(report.outcomes).toEqual([{ roundId: "kiln-r1", result: "resolved" }]);
     expect(await exists(path.join(stateDir, ANSWERS_FILE))).toBe(false);
+  });
+
+  it("shows its answer in the owner queue credited to automation, never the owner", async () => {
+    await stageRound("kiln-r1", [RAMP]);
+    await harness().sweep();
+
+    const { answered } = roundQueueItems((await readQueueRounds({ dir })).rounds);
+
+    expect(answered.map(({ id, answer }) => ({ id, by: answer?.by }))).toEqual([{ id: "round:kiln-r1/ramp", by: { class: "automation", id: "auto-by-rec", channel: "round" } }]);
+  });
+
+  it("waits from when it first saw a round, not from a backdated round.json", async () => {
+    await stageRound("kiln-r1", [RAMP], { ageMs: 48 * HOUR, unseen: true });
+    const run = harness();
+
+    const first = await run.sweep();
+    const almost = await run.sweep(NOW + 24 * HOUR - 60_000);
+    const due = await run.sweep(NOW + 24 * HOUR);
+
+    expect(first.outcomes).toEqual([{ roundId: "kiln-r1", result: "skipped", reason: 'question "ramp": too-early', waiting: true }]);
+    expect(almost.outcomes).toEqual(first.outcomes);
+    expect(due.outcomes).toEqual([{ roundId: "kiln-r1", result: "resolved" }]);
+  });
+
+  it("restarts the wait when round.json is rewritten, however far back its mtime is set", async () => {
+    await stageRound("kiln-r1", [RAMP], { ageMs: 30 * HOUR });
+    await stageRound("kiln-r1", [{ ...RAMP, prompt: "Which ramp, really?" }], { ageMs: 48 * HOUR, unseen: true });
+
+    const report = await harness().sweep();
+
+    expect(report.outcomes).toEqual([{ roundId: "kiln-r1", result: "skipped", reason: 'question "ramp": too-early', waiting: true }]);
   });
 
   it("does not answer a round one minute short of 24 h", async () => {

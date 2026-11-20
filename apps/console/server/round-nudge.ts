@@ -26,8 +26,6 @@ const nudgedSchema = z.object({ schema: z.literal(NUDGED_SCHEMA_ID), at: z.strin
 
 /** What a round's feedback says in `general` when the one tap answered it, so a seat can tell it from a reading. */
 export const ANSWERED_BY_REC = "answered-by-rec: every question was answered with its recommendation from the round nudge";
-/** The by-rec sweep's mark (TP-6773): no one tapped; the round sat unanswered past the by-rec wait. */
-export const AUTO_BY_REC = "auto-by-rec: every question was answered with its recommendation after the round went unanswered past the by-rec wait";
 
 interface StatedRecommendation {
   questionId: string;

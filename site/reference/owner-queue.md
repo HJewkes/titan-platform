@@ -410,7 +410,9 @@ const answered = answeredFromFeedback(feedbackJson, manifest, context);
   recommendation on an offered option becomes `recommended`, hidden in an `after-answer` round.
 - **Answers.** `answeredFromFeedback` returns only the questions the feedback answered and
   did not list in `unansweredQuestionIds`, with status `answered`, `at` its `submittedAt` and
-  `by` `ROUND_ANSWERER`. An offered pick becomes `optionId` and offered pick-many picks become
+  `by` `feedbackAnswerer(general)`. feedback@1 names no answerer, so the by-rec sweep writes
+  `BY_REC_FEEDBACK_GENERAL` (starting `auto-by-rec:`) into `general`; that feedback is credited to
+  `{ class: "automation", id: "auto-by-rec", channel: "round" }` and any other to `ROUND_ANSWERER`. An offered pick becomes `optionId` and offered pick-many picks become
   `optionIds`, both through the bindings; free text, a scale value, a pick the question does
   not offer and the comment become `text`. A feedback `revisionRequested` becomes
   `changeRequested: true`, kept even with no comment or when a partial submit lists the
@@ -441,8 +443,8 @@ const { open, dropped, flags } = recheck(asked, answered);
 
 | Shared key | Answer | Result |
 |---|---|---|
-| `ask:` | newer than the item's `openedAt`, not pinned to another head of the item's PR | dropped as `gone-elsewhere`, citing the newest such answer |
-| `ask:` | older, or pinned to another head of the item's PR | `conflict` if it is not the recommended pick, else `reasked` |
+| `ask:` | the owner's own, newer than the item's `openedAt`, not pinned to another head of the item's PR | dropped as `gone-elsewhere`, citing the newest such answer |
+| `ask:` | older, pinned to another head of the item's PR, or not the owner's (automation, coordinator) | `conflict` if it is not the recommended pick, else `reasked` |
 | only `component:`, `token:` or `topic:` | any | `related-answer`; never drops |
 
 - **Heads.** An answer given on one head of a PR never settles an item pinned to another
@@ -504,7 +506,8 @@ const flow = consolidate(openItems, {
 its live head, on any tab: `change-requested`, `free-text` (text or variant comments), or
 `other-choice` (a pick that is not the recommended, implemented one). An unanswered question
 never blocks. A newer answer to the same `ask:` replaces an older one, and an answer on an
-old head is withdrawn, so neither blocks. An empty list means Ship may go.
+old head is withdrawn, so neither blocks. Only the owner's own answers count, so an automation's answer
+can neither block a ship nor replace the owner's change request. An empty list means Ship may go.
 
 **Order.** The Flow is the same for any order of `open` and `answered`. Flags keep the id of
 the item `recheck` saw, which may be a non-primary item that step 3 merged away.

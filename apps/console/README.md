@@ -759,12 +759,15 @@ A "rec" reply, or the tap, is `rounds.answer-rec`.
 ### Auto-by-rec
 
 The daemon also sweeps rounds hourly, starting five minutes after it starts (`server/by-rec-rounds.ts`, TP-6773).
-A round still unanswered and not withdrawn after the policy's wait (24 h from its `round.json` mtime by default) is
-answered with its recommendations. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
-and the asker's notice see it like any other answer. The feedback's `general` says `auto-by-rec`, not
-`answered-by-rec`, which stays the owner's own tap. The decisions bullet credits `auto-by-rec`, and the
-decider's ledger (`answers.jsonl`) gets no row, so an agent's recommendation never returns to the decider as the owner's
-precedent.
+A round still unanswered and not withdrawn after the policy's wait (24 h by default) is answered with its
+recommendations. The wait runs from the later of the `round.json` mtime and when the sweep first saw that round and
+manifest, kept in `<state dir>/auto-by-rec-seen/`, so an asker who backdates `round.json` gains nothing; a rewritten
+`round.json` starts a fresh wait. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
+and the asker's notice see it like any other answer. The pipeline writes owner-queue's `BY_REC_FEEDBACK_GENERAL`
+(`auto-by-rec: ...`) into the feedback's `general`, not `answered-by-rec`, which stays the owner's own tap. Every reader
+takes the answerer from that file through `feedbackAnswerer`: the decisions bullet credits `auto-by-rec`, the decider's
+ledger (`answers.jsonl`) gets no row, and the owner queue shows the answer as the automation's, which never settles
+another item nor lifts a change request. An agent's recommendation never returns as the owner's precedent.
 
 The sweep decides each question with owner-queue's `byRecDecision`. A round is skipped, with the reason in the
 daemon log, when any question:

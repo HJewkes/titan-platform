@@ -30,6 +30,17 @@ describe("recheck", () => {
     expect(result.flags).toEqual([]);
   });
 
+  it("keeps an item open, flagged, when only the by-rec sweep or a delegate answered its ask", () => {
+    const asked = open("round:r2/q1");
+    const given = ["automation", "coordinator"].map((cls) => answer(`by-${cls}`, AFTER, [ASK], { optionId: "red", by: { class: cls, id: cls, channel: "round" } }));
+
+    const result = recheck([asked], given);
+
+    expect(result.open).toEqual([asked]);
+    expect(result.dropped).toEqual([]);
+    expect(result.flags.map(({ answerId, kind }) => ({ answerId, kind }))).toEqual([{ answerId: "by-automation", kind: "reasked" }, { answerId: "by-coordinator", kind: "reasked" }]);
+  });
+
   it("cites the newest of several settling answers", () => {
     const given = [answer("a-early", "2026-01-03T00:00:00Z", [ASK]), answer("a-late", "2026-01-04T00:00:00Z", [ASK])];
 

@@ -2,9 +2,10 @@
  * The rounds by-rec sweep (TP-6773, slice D of TP-6765): a round the owner left open past the policy's wait, with every
  * question carrying a recommendation that answers it, is answered with those recommendations. It goes through
  * `rounds.submit`'s own pipeline, as the nudge's one tap does, so the decision log, the listeners and the asker's notice
- * hear it as they hear any answer. Its feedback says `auto-by-rec` in `general`, never `answered-by-rec`, which stays the
- * owner's own tap. The decisions bullet credits the automation resolver, and the decider's ledger gets no row, since it
- * reads every row there as the owner's own answer.
+ * hear it as they hear any answer. The pipeline writes owner-queue's `auto-by-rec` mark into the feedback's `general`
+ * (never `answered-by-rec`, which stays the owner's own tap), and every reader takes the answerer from that file: the
+ * decisions bullet credits the automation, the decider's ledger gets no row, and the owner queue neither credits the
+ * owner nor lets the answer settle another item or lift a change request.
  *
  * Each question is judged by owner-queue's `byRecDecision`, so the exclusion floor applies: an after-answer round (the
  * owner chose to answer it blind), a Ship, a plan approval or a question with no recommendation makes the whole round
@@ -15,8 +16,8 @@
 import path from "node:path";
 import { BY_REC_RESOLVER, BY_REC_ROW_SCHEMA, byRecDecision, roundItemId, type ByRecPolicy, type ByRecRecommendation, type ByRecRow, type ByRecSubject } from "@titan-design/owner-queue";
 import { appendByRecRows, readByRecPolicy } from "./by-rec-log.js";
-import type { RoundAnswerer } from "./round-decisions.js";
-import { AUTO_BY_REC, recAnswers } from "./round-nudge.js";
+import { byRecOpenedAt } from "./by-rec-seen.js";
+import { recAnswers } from "./round-nudge.js";
 import type { Question } from "./round-schema.js";
 import type { SubmittedAnswer } from "./round2-adapter.js";
 import { FEEDBACK_FILE, readQueueRounds, type QueueRound } from "./rounds.js";
@@ -26,7 +27,6 @@ import { exists, writeJsonOnce } from "./state-file.js";
 export const BY_REC_MARKERS = { live: "auto-by-rec.json", shadow: "auto-by-rec-shadow.json" } as const;
 const MARKER_SCHEMA = "titan-console/auto-by-rec-marker@1";
 const MAX_TEXT = 500;
-const BY_REC_ANSWERER: RoundAnswerer = { ...BY_REC_RESOLVER, channel: "round" };
 
 type ActiveMode = keyof typeof BY_REC_MARKERS;
 
@@ -68,9 +68,9 @@ function recommendationOf(question: Question): ByRecRecommendation | undefined {
   return { answer: Array.isArray(answer) ? answer.join(", ") : String(answer), by, rationale, confidence };
 }
 
-function questionSubject(round: QueueRound, question: Question, recommendation: ByRecRecommendation | undefined): ByRecSubject {
+function questionSubject(round: QueueRound, openedAt: string, question: Question, recommendation: ByRecRecommendation | undefined): ByRecSubject {
   return {
-    source: "round", id: roundItemId(round.id, question.id), openedAt: round.updatedAt, summary: clip(question.prompt),
+    source: "round", id: roundItemId(round.id, question.id), openedAt, summary: clip(question.prompt),
     ...(recommendation && { recommendation }),
     kind: "decide", door: "two-way",
     blind: round.manifest.recommendations === "after-answer",
@@ -81,11 +81,11 @@ function questionSubject(round: QueueRound, question: Question, recommendation: 
 }
 
 /** Every question must be eligible; the first that is not names the round's skip. */
-function judgeRound(round: QueueRound, now: Date, policy: ByRecPolicy): RoundVerdict {
+function judgeRound(round: QueueRound, openedAt: string, now: Date, policy: ByRecPolicy): RoundVerdict {
   const judged: Judged[] = [];
   for (const question of round.manifest.questions) {
     const recommendation = recommendationOf(question);
-    const subject = questionSubject(round, question, recommendation);
+    const subject = questionSubject(round, openedAt, question, recommendation);
     const decision = byRecDecision(subject, now, policy);
     if (!decision.eligible) return { eligible: false, reason: `question "${question.id}": ${decision.reason}`, waiting: decision.reason === "too-early" };
     // The floor already refuses a missing recommendation; this narrows the type.
@@ -101,7 +101,7 @@ function rowOf(round: QueueRound, { question, subject, recommendation, at }: Jud
     schema: BY_REC_ROW_SCHEMA,
     subject: { source: "round", id: subject.id, ...(subject.summary && { summary: subject.summary }) },
     recommendation,
-    openedAt: round.updatedAt,
+    openedAt: subject.openedAt,
     resolvedAt: now.toISOString(),
     facts: { roundId: round.id, questionId: question.id, manifestSha256: round.manifestSha256, eligibleAt: at },
     mode, result, ...(reason && { reason: clip(reason) }),
@@ -115,7 +115,7 @@ async function claim(roundDir: string, mode: ActiveMode, now: Date): Promise<boo
 
 async function answer(options: SweepOptions, round: QueueRound, answers: SubmittedAnswer[]): Promise<Pick<ByRecRoundOutcome, "result" | "reason">> {
   try {
-    const submitted = await options.submit({ id: round.id, manifestSha256: round.manifestSha256, answers, general: AUTO_BY_REC }, BY_REC_ANSWERER);
+    const submitted = await options.submit({ id: round.id, manifestSha256: round.manifestSha256, answers }, { byRec: true });
     return submitted.status === "submitted" ? { result: "resolved" } : { result: "skipped", reason: "answered before the sweep reached it" };
   } catch (error) {
     return { result: "failed", reason: error instanceof Error ? error.message : "submit failed" };
@@ -123,7 +123,7 @@ async function answer(options: SweepOptions, round: QueueRound, answers: Submitt
 }
 
 async function sweepRound(options: SweepOptions, round: QueueRound, policy: ByRecPolicy, mode: ActiveMode): Promise<ByRecRoundOutcome> {
-  const verdict = judgeRound(round, options.now, policy);
+  const verdict = judgeRound(round, await byRecOpenedAt(options.stateDir, round, options.now), options.now, policy);
   if (!verdict.eligible) return { roundId: round.id, result: "skipped", reason: verdict.reason, waiting: verdict.waiting };
   if (!(await claim(path.join(options.dir, round.id), mode, options.now))) return { roundId: round.id, result: "skipped", reason: "claimed", waiting: true };
   const done = mode === "shadow" ? { result: "would-resolve" as const } : await answer(options, round, verdict.answers);

@@ -4,7 +4,7 @@
  * which refuses the feedback@1 fields `rounds.submit` writes. A merge-bound question approves a
  * head, so a Ship stays out of the decisions file; any other question with options is a decide.
  */
-import { ROUND_ANSWERER, roundItemId } from "@titan-design/owner-queue";
+import { roundItemId } from "@titan-design/owner-queue";
 import type { DecisionAnswer, DecisionItem } from "./decision-log.js";
 import type { Manifest, Question } from "./round-schema.js";
 import type { SubmittedAnswer } from "./round2-adapter.js";
@@ -15,7 +15,7 @@ interface RoundDecision {
   answer: DecisionAnswer;
 }
 
-export type RoundAnswerer = DecisionAnswer["by"];
+type RoundAnswerer = DecisionAnswer["by"];
 
 export interface SubmittedRound {
   roundId: string;
@@ -24,8 +24,8 @@ export interface SubmittedRound {
   /** When round.json was last written; round@2 carries no time of its own. */
   openedAt: string;
   submittedAt: string;
-  /** Absent for the owner's own answer; the by-rec sweep sets its automation resolver. */
-  answerer?: RoundAnswerer;
+  /** Who the feedback says answered, through owner-queue's `feedbackAnswerer`: the owner, or the by-rec sweep. */
+  answerer: RoundAnswerer;
 }
 
 const MIN_OPTIONS = 2;
@@ -76,7 +76,7 @@ function answerOf(answer: SubmittedAnswer, at: string, by: RoundAnswerer): Decis
 export function roundDecisions(submitted: SubmittedRound): RoundDecision[] {
   return submitted.answers.flatMap((submittedAnswer) => {
     const question = submitted.manifest.questions.find((each) => each.id === submittedAnswer.questionId);
-    const answer = answerOf(submittedAnswer, submitted.submittedAt, submitted.answerer ?? ROUND_ANSWERER);
+    const answer = answerOf(submittedAnswer, submitted.submittedAt, submitted.answerer);
     if (question === undefined || answer === null) return [];
     return [{ questionId: question.id, item: itemOf(question, submitted), answer }];
   });

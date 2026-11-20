@@ -97,8 +97,9 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
 - `recheck(open, answered)` re-checks open items against answers already given and returns
   `{ open, dropped, flags }`, sorted so input order never changes it. An item is dropped as
   `gone-elsewhere`, with a `cite` of the newest settling answer, when an answer sharing its
-  `ask:` key is newer than its `openedAt` and is not pinned to another head of a PR the item
-  names; a PR key with no `@<sha>` on either side pins nothing. An older or other-head answer on the same `ask:` key flags `conflict` when it is not
+  `ask:` key is newer than its `openedAt`, is not pinned to another head of a PR the item
+  names, and is the owner's own (`by.class` `owner`, `owner-remote` or `owner-terminal`); an
+  automation's or a delegate's answer only flags. A PR key with no `@<sha>` on either side pins nothing. An older or other-head answer on the same `ask:` key flags `conflict` when it is not
   the item's recommendation (free text and change requests included) and `reasked` otherwise.
   Sharing only a `component:`, `token:` or `topic:` key flags `related-answer` and never drops.
 - `staleLabel(item, evidence)` returns `{ status: "gone-elsewhere", rule, reason }` or null for
@@ -134,7 +135,8 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   `unblocks`, `topic`, `overlap`) order groups by transitive dependents, then rank, and order
   each group topologically; `held` lists earlier items each one waits on. Each PR group's
   `shipBlockedBy` lists open change requests at the live head on any tab: `change-requested`,
-  `free-text` or `other-choice` (not the recommended pick). Unanswered questions never block.
+  `free-text` or `other-choice` (not the recommended pick), from the owner's own answers only, so a
+  later automation answer never replaces an owner's change request. Unanswered questions never block.
   The Flow is the same for any input order. `influenceEdges(items, { context, deps })` gives
   the edges alone.
 - `buildOwnerRounds(items, options)` turns open Decide items into `titan-review/round@2`
@@ -166,6 +168,7 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   single-item question takes its item's id and option ids; a principle stays a round item.
   `answeredFromFeedback(feedback, manifest, { roundId, openedAt, bindings? })` returns the
   same items for the questions a feedback@1 file answered, `answered` at `submittedAt` by
-  `ROUND_ANSWERER`. A revision request becomes `changeRequested: true`, pick-many picks
+  `feedbackAnswerer(general)`: `ROUND_ANSWERER`, or the by-rec automation when `general`
+  carries `BY_REC_FEEDBACK_GENERAL`'s `auto-by-rec:` mark. A revision request becomes `changeRequested: true`, pick-many picks
   become `optionIds`, and variant comments are kept. Both parse with `ManifestSchema` and `FeedbackSchema` and throw on an
   invalid file or a feedback for another unit or round.
