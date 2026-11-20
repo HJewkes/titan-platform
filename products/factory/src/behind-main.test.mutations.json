@@ -36,6 +36,15 @@
       "kills": [
         "behindMain against the deploy pacer's path filter counts the commits when the closure cannot be read"
       ]
+    },
+    {
+      "name": "a dirty build clears the commits like a clean one",
+      "file": "products/factory/src/behind-main.ts",
+      "find": "dirtyBuild ? () => undefined : closure",
+      "replace": "closure",
+      "kills": [
+        "behindMain against the deploy pacer's path filter counts every commit for a dirty build, where a clean sha reads 0"
+      ]
     }
   ]
 }
