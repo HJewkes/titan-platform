@@ -69,7 +69,7 @@ Modules that know about a subject: transcripts, code, rules.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | [`autoresearch`](/reference/autoresearch) | Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports | `fix-proof`, `rpc-client`, `workflow` |
-| [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `evidence`, `fix-proof`, `retrieval`, `rpc-protocol`, `store-sqlite` |
+| [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `evidence`, `fix-proof`, `retrieval`, `review-burden`, `rpc-protocol`, `store-sqlite` |
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
 | [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | `agent-dispatch`, `rpc-protocol` |
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
