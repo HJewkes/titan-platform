@@ -53,7 +53,7 @@ describe('runDoctor', () => {
       fs,
       activeRoot,
       homeDir,
-      nodeVersion: 'v22.4.0',
+      nodeVersion: 'v24.4.0',
       probeDaemon: async () => ({
         running: true,
         healthy: true,
@@ -156,6 +156,11 @@ describe('runDoctor', () => {
   it('fails on an outdated Node version', async () => {
     const report = await runDoctor({ ...healthyDeps(), nodeVersion: 'v18.19.0' });
     expect(report.ok).toBe(false);
+    expect(statusOf(report.checks, 'node')).toBe('fail');
+  });
+
+  it('fails on Node 23, below the engines floor', async () => {
+    const report = await runDoctor({ ...healthyDeps(), nodeVersion: 'v23.9.0' });
     expect(statusOf(report.checks, 'node')).toBe('fail');
   });
 
@@ -606,7 +611,7 @@ describe('runDoctor default daemon probe', () => {
       fs,
       activeRoot,
       homeDir: stateRoot,
-      nodeVersion: 'v22.4.0',
+      nodeVersion: 'v24.4.0',
       supervisorActive: async () => null,
       shown,
     };
