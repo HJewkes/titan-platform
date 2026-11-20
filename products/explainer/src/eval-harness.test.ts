@@ -30,6 +30,14 @@ function fakeCodex(answer: CodexAnswer) {
   return { adapter, requests };
 }
 
+/** A claude-print runner that records its config and answers `{ ok: true }`. */
+function recordingRun(seen: AgentRunConfig<unknown>[]): typeof runAgent {
+  return async function run<T>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> {
+    seen.push(config);
+    return { ok: true, output: config.outputSchema!.parse({ ok: true }), sessionId: "s", usage: partialFake<AgentUsage>(), init: partialFake<AgentInit>() };
+  };
+}
+
 function usage(input: number, output: number, sequence: number) {
   return {
     model: "gpt-x",
@@ -74,13 +82,9 @@ describe("createJudgeHarness", () => {
 
   it("claude-print judge forwards the call's images to runAgent", async () => {
     const seen: AgentRunConfig<unknown>[] = [];
-    const fakeRun: typeof runAgent = async <T>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> => {
-      seen.push(config);
-      return { ok: true, output: config.outputSchema!.parse({ ok: true }), sessionId: "s", usage: partialFake<AgentUsage>(), init: partialFake<AgentInit>() };
-    };
     const config = JudgeConfigSchema.parse({ provider: "claude-print", model: "haiku" });
 
-    await createJudgeHarness(config, { runAgent: fakeRun, cwd: "/work" })({ prompt: "p", schema, images: ["/sheets/a.png", "/sheets/b.png"] });
+    await createJudgeHarness(config, { runAgent: recordingRun(seen), cwd: "/work" })({ prompt: "p", schema, images: ["/sheets/a.png", "/sheets/b.png"] });
 
     expect(seen[0]!.images).toEqual(["/sheets/a.png", "/sheets/b.png"]);
   });
@@ -96,13 +100,9 @@ describe("createJudgeHarness", () => {
 
   it("a call with no images is unchanged", async () => {
     const seen: AgentRunConfig<unknown>[] = [];
-    const fakeRun: typeof runAgent = async <T>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> => {
-      seen.push(config);
-      return { ok: true, output: config.outputSchema!.parse({ ok: true }), sessionId: "s", usage: partialFake<AgentUsage>(), init: partialFake<AgentInit>() };
-    };
     const { adapter, requests } = fakeCodex({ output: { kind: "structured", value: { ok: true } }, usage: [] });
 
-    await createJudgeHarness(JudgeConfigSchema.parse({ provider: "claude-print", model: "haiku" }), { runAgent: fakeRun })({ prompt: "p", schema });
+    await createJudgeHarness(JudgeConfigSchema.parse({ provider: "claude-print", model: "haiku" }), { runAgent: recordingRun(seen) })({ prompt: "p", schema });
     await createJudgeHarness(JudgeConfigSchema.parse({ provider: "codex", model: "gpt-x" }), { codexAdapter: () => adapter })({ prompt: "p", schema });
 
     expect(seen[0]).not.toHaveProperty("images");
