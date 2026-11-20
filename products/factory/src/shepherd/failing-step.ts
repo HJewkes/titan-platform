@@ -54,12 +54,27 @@ export async function redRunsAt(port: GitHubPort, repo: RepoSlug, sha: string, c
  * a tail cut inside the failure output, a heading count off from the summary's, or a stopped step.
  */
 export function failureIds(log: string): string[] | undefined {
-  const lines = log.split("\n").map((line) => stripVTControlCharacters(line).replace(STAMP, "").trimEnd());
+  const lines = cleanLines(log);
   if (lines.some((line) => UNHANDLED.test(line))) return undefined;
-  if (lines.some((line) => FAILED_BANNER.test(line) || HEADING.test(line))) return vitestIds(lines);
+  if (hasVitestOutput(lines)) return vitestIds(lines);
   const errors = new Set(lines.flatMap((line) => ERROR_LINE.exec(line)?.[1]?.trim() ?? []).filter((error) => error !== "" && !EXIT_CODE_ERROR.test(error)));
   if ([...errors].some((error) => STOPPED_ERROR.test(error))) return undefined;
   return errors.size > 0 ? [...errors] : undefined;
+}
+
+const cleanLines = (log: string): string[] => log.split("\n").map((line) => stripVTControlCharacters(line).replace(STAMP, "").trimEnd());
+
+const hasVitestOutput = (lines: readonly string[]): boolean => lines.some((line) => FAILED_BANNER.test(line) || HEADING.test(line));
+
+/**
+ * The distinct test files of a log's fully checked vitest failure section, under the checks `failureIds` makes. Undefined
+ * for a log with no vitest failure output, such as a lint or changeset red, so it never reads as outside a diff.
+ */
+export function checkedTestFiles(log: string): string[] | undefined {
+  const lines = cleanLines(log);
+  if (lines.some((line) => UNHANDLED.test(line)) || !hasVitestOutput(lines)) return undefined;
+  const ids = vitestIds(lines);
+  return ids && [...new Set(ids.map((id) => id.split(/\s/)[0]!))];
 }
 
 /**
