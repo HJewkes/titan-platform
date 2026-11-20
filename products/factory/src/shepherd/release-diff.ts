@@ -1,4 +1,4 @@
-import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
+import type { GitHubPort, PrFile, PullRequest, RepoSlug } from "@titan-design/github";
 import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
@@ -118,4 +118,32 @@ export async function versionOnlyDiff(port: GitHubPort, target: ReleaseDiffTarge
   } catch {
     return false;
   }
+}
+
+/**
+ * True only when GitHub's activity list for `branch` shows `releaseAppLogin`, the release App's `<slug>[bot]` login,
+ * pushing the branch to `head`. Anyone who can push to changesets' branch can push a release-only head, and a commit's
+ * author login comes from an email the pusher writes, so only the push's own actor shows the App made it (TP-5606).
+ * No login configured, no move to `head` in the list, another actor, or a failed read is false: the owner is asked fresh.
+ */
+export async function releasePushed(port: GitHubPort, target: { repo: RepoSlug; branch: string; head: string }, releaseAppLogin: string | undefined): Promise<boolean> {
+  if (!releaseAppLogin) return false;
+  try {
+    const move = (await port.refActivity(target.repo, target.branch)).find((entry) => entry.after === target.head);
+    return move?.actor != null && move.actor.toLowerCase() === releaseAppLogin.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The live PR when it is changesets' own release head: changesets' branch in `repo` itself rather than a fork, at `head`
+ * when one is given, and pushed there by the release App. The registration hold's exemption and the approval carry both
+ * judge a release head through this, so neither accepts a head the other refuses (TP-6767). A failed PR read throws.
+ */
+export async function ownReleaseHead(port: GitHubPort, target: { repo: RepoSlug; pr: number; head?: string }, releaseAppLogin: string | undefined): Promise<PullRequest | undefined> {
+  const live = await port.getPr(target.repo, target.pr);
+  const own = live.headRef === VERSION_PACKAGES_BRANCH && live.headRepo?.toLowerCase() === target.repo.toLowerCase();
+  if (!own || (target.head !== undefined && live.headSha !== target.head)) return undefined;
+  return (await releasePushed(port, { repo: target.repo, branch: VERSION_PACKAGES_BRANCH, head: live.headSha }, releaseAppLogin)) ? live : undefined;
 }

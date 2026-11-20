@@ -1708,12 +1708,15 @@ changed lines or a store migration takes `g10-review`. A file list Shepherd cann
 takes `g10-adversary`.
 
 A changesets "Version Packages" pull request is not held when its diff is version-only (TP-6767):
-the PR's head is `changeset-release/main` in the same repo, every file is one `pnpm
+the PR's head is `changeset-release/main` in the same repo, GitHub's activity list shows the
+`shepherd.releaseAppLogin` App pushing the branch to that head, every file is one `pnpm
 version-packages` writes (a modified `package.json`, a `CHANGELOG.md`, a removed
 `.changeset/*.md`, the regenerated catalog), and each manifest, parsed at the merge base and at
 the head, changes only its `version` and the ranges of packages the release bumps. A `package.json`
 or `CHANGELOG.md` under a security path then holds nothing. Any other file, any other manifest
-edit, or a read that fails keeps the hold the paths ask for.
+edit, another pusher, no configured login, or a read that fails keeps the hold the paths ask for.
+The exemption and the owner-answer carry share one check of changesets' own head, so neither
+accepts a head the other refuses.
 
 A policy touch that is low tier by its paths can take `g10-review` instead (TP-5403), so one opus
 `MERGE` at its head with green checks releases it and no owner gate is raised. This ships in shadow:

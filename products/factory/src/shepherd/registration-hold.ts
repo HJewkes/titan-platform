@@ -7,7 +7,7 @@ import { reclassedUnread, UNREAD_FILES_PREFIX } from "./g10-reclass-events.js";
 import { localPrFiles, prFilesOf, type PrFilesRead } from "./git-pr-files.js";
 import { isAdversaryHold } from "./hold-slots.js";
 import { isOwnerHold } from "./owner-hold-rows.js";
-import { VERSION_PACKAGES_BRANCH, versionOnlyDiff } from "./release-diff.js";
+import { VERSION_PACKAGES_BRANCH, ownReleaseHead, versionOnlyDiff } from "./release-diff.js";
 import { prChangedLines } from "./reviewer-roles.js";
 import { ownerHoldOf } from "./risk-tier.js";
 import { adversaryTouches, requiredSignoffs } from "./signoffs.js";
@@ -37,6 +37,8 @@ interface HoldTarget {
   registered?: RegisteredRead;
   /** The registered head branch; only changesets' own branch may be a version-only release (TP-6767). */
   branch?: string;
+  /** `shepherd.releaseAppLogin`: only a head this App pushed may be a version-only release; absent means none is. */
+  releaseAppLogin?: string;
 }
 
 /** What the registration adds to the low-tier read (TP-5403): the run's visual globs, the owner's own hold, and the switch. */
@@ -55,6 +57,8 @@ interface HoldFiles {
   pause?: Pause;
   /** `shepherd.gateReset.lowTierPolicy`; absent means `shadow`, which changes no hold. */
   lowTier?: LowTierMode;
+  /** `shepherd.releaseAppLogin`; absent means no Version Packages head escapes its touch hold. */
+  releaseAppLogin?: string;
 }
 
 /**
@@ -125,16 +129,15 @@ export async function g10HoldAt(port: GitHubPort, target: HoldTarget, local: PrF
 }
 
 /**
- * A changesets "Version Packages" PR on its own branch whose diff is version-only changes no code, so the touch classes its
- * manifests and changelogs fall under hold nothing (TP-6767). Any other file, a manifest edit beyond versions, a head that
- * moved off the files read, or a failed read keeps the hold.
+ * A changesets "Version Packages" PR on its own branch, pushed by the release App, whose diff is version-only changes no
+ * code, so the touch classes its manifests and changelogs fall under hold nothing (TP-6767). Any other file, a manifest
+ * edit beyond versions, another pusher, a head that moved off the files read, or a failed read keeps the hold.
  */
 async function versionOnlyRelease(port: GitHubPort, target: HoldTarget, files: readonly PrFile[]): Promise<boolean> {
   if (target.branch !== VERSION_PACKAGES_BRANCH) return false;
   try {
-    const pr = await port.getPr(target.repo, target.pr);
-    const own = pr.headRef === VERSION_PACKAGES_BRANCH && pr.headRepo?.toLowerCase() === target.repo.toLowerCase();
-    if (!own || (target.head !== undefined && pr.headSha !== target.head)) return false;
+    const pr = await ownReleaseHead(port, target, target.releaseAppLogin);
+    if (pr === undefined) return false;
     return await versionOnlyDiff(port, { repo: target.repo, head: pr.headSha, baseRef: pr.baseRef }, files);
   } catch {
     return false;
@@ -210,7 +213,8 @@ async function placeRegistrationHold(port: GitHubPort, store: ShepherdStore, run
   const head = files.head ?? registration.headSha ?? undefined;
   const { repo, pr, base, branch } = registration;
   const registered = registeredRead(registration, files.lowTier);
-  const at = { ...(head !== undefined && { head }), ...(files.pause && { pause: files.pause }), ...(base !== null && { base }), ...(branch !== null && { branch }) };
+  const { pause, releaseAppLogin } = files;
+  const at = { ...(head !== undefined && { head }), ...(pause && { pause }), ...(base !== null && { base }), ...(branch !== null && { branch }), ...(releaseAppLogin && { releaseAppLogin }) };
   const target = { repo, pr, registered, ...at };
   const wanted = await g10HoldAt(port, target, files.local);
   if (wanted === undefined) return undefined;

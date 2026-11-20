@@ -16,7 +16,7 @@ type ReclassInput = z.infer<typeof ReclassInput>;
 const ReclassResult = z.looseObject({ reclassed: z.boolean(), kept: z.string().optional(), held: z.string().optional() });
 type ReclassResult = z.infer<typeof ReclassResult>;
 
-type ReclassDeps = Pick<ShepherdDeps, "port" | "store" | "now" | "sleep" | "prFiles" | "lowTierPolicy">;
+type ReclassDeps = Pick<ShepherdDeps, "port" | "store" | "now" | "sleep" | "prFiles" | "lowTierPolicy" | "releaseAppLogin">;
 
 /**
  * A run held because its changed files were unread at registration reads them again at `head`. A whole read that finds no
@@ -33,7 +33,7 @@ export async function reclassUnread(deps: ReclassDeps, input: ReclassInput, sign
   const from = registration.held ? registration.holdReason : null;
   if (!from || !isUnreadRegistrationHold(from)) return classHead(deps, input, pause);
   const { repo, pr, base, branch } = registration;
-  const target = { repo, pr, head: input.head, pause, ...(base !== null && { base }), ...(branch !== null && { branch }) };
+  const target = { repo, pr, head: input.head, pause, ...(base !== null && { base }), ...(branch !== null && { branch }), ...(deps.releaseAppLogin && { releaseAppLogin: deps.releaseAppLogin }) };
   const wanted = await g10HoldAt(deps.port, target, deps.prFiles);
   if (wanted !== undefined) return { reclassed: false, kept: wanted };
   const placed = deps.store.get().reclassIfHeld(input.runId, from, () => undefined, { actor: SHEPHERD_ACTOR, headSha: input.head });
@@ -42,7 +42,8 @@ export async function reclassUnread(deps: ReclassDeps, input: ReclassInput, sign
 
 /** A G10 hold as strong as the head's class, placed or released before, decided it already, so this reads nothing then. */
 async function classHead(deps: ReclassDeps, input: ReclassInput, pause: (ms: number) => Promise<void>): Promise<ReclassResult> {
-  const files = { head: input.head, pause, ...(deps.prFiles && { local: deps.prFiles }), ...(deps.lowTierPolicy && { lowTier: deps.lowTierPolicy }) };
+  const read = { ...(deps.prFiles && { local: deps.prFiles }), ...(deps.lowTierPolicy && { lowTier: deps.lowTierPolicy }), ...(deps.releaseAppLogin && { releaseAppLogin: deps.releaseAppLogin }) };
+  const files = { head: input.head, pause, ...read };
   const held = await applyRegistrationHold(deps.port, deps.store.get(), input.runId, files);
   return { reclassed: false, ...(held !== undefined && { held }) };
 }
