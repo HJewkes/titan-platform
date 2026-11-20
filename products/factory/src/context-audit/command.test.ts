@@ -93,6 +93,14 @@ describe("context-audit report", () => {
     expect(out).not.toContain("coordinator");
   });
 
+  it("reports the last line's output tokens for a response written over several lines", async () => {
+    rmSync(root, { recursive: true, force: true });
+    root = mkdtempSync(join(tmpdir(), "context-audit-"));
+    transcript("agents", "-work-proj", "s2.jsonl", [{ type: "agent-name", agentName: "rv-pr-9" }, assistant("r1", usage(1, 2000, 0, 1)), assistant("r1", usage(1, 2000, 0, 50))]);
+    const { out } = await audit("--days", "7");
+    expect(out).toMatch(/^reviewer\s+1\s+1\s+2\.0k\s+2\.0k\s+0\s+50\s/m);
+  });
+
   it("lists the newest snapshot's layers and the instructions files per profile and role", async () => {
     const { out } = await audit();
     expect(out).toContain("inventory agents/implementer (newest snapshot 2026-10-20T09:30:00Z)");
