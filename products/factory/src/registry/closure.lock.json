@@ -5,13 +5,13 @@
     "bump": 25
   },
   "merge": {
-    "closure": "d55752e240d7a46848789990538d2f1d3958dfb238a53a9105fa5c49ede301bd",
+    "closure": "665460a8b1bbcd73f22611a008320687c7405a7ef3c13638c445b461f77c75c0",
     "schemaHash": "653b05d2233a372f6a61ca09ffcb45d5e8716ff2d1a8b61b06f131a1fd2bfbcf",
-    "bump": 8
+    "bump": 9
   },
   "sh-await-verdict": {
-    "closure": "484fe6b8ac7b12705fb7b5224e089c86f77fc9c0882bcf98f9de92616165c77d",
+    "closure": "1f6e6d5ef6fdd29f639d5edc7ebb63d12bb797d434e9592a1e3f467691102eca",
     "schemaHash": "6f4d75d5cca4f78c055944d7c010146786701b94b787f8cdc950e3117fcb7dac",
-    "bump": 14
+    "bump": 15
   }
 }

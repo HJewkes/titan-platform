@@ -1,10 +1,9 @@
-import { EXECUTION_PHASES, ExecutionTransitionError, isTerminalExecutionPhase, reduceExecutionTransition } from "@titan-design/agent-protocol";
+import { canonicalJson, EXECUTION_PHASES, ExecutionTransitionError, isTerminalExecutionPhase, reduceExecutionTransition } from "@titan-design/agent-protocol";
 import type { ExecutionRecord, ExecutionTransition } from "@titan-design/agent-protocol";
 import { executionRecordSchema, executionTransitionSchema } from "@titan-design/agent-protocol/lifecycle-schema";
 import { nowIso, quoteIdent } from "@titan-design/store-sqlite";
 import type { Db } from "@titan-design/store-sqlite";
 import { z } from "zod";
-import { canonicalJson } from "./canonical-json.js";
 import type { ApplyExecutionTransitionResult, ExecutionLedger, SqliteExecutionLedgerOptions } from "./execution-ledger.js";
 import { DEFAULT_EXECUTION_TABLE } from "./migration.js";
 

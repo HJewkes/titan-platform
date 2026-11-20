@@ -1,7 +1,7 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
 
 /** The roster fields a reviewer's lineage is read from. */
-export type LineageRow = Pick<AgentRow, "name" | "agentId" | "sessionId" | "spawnedBy" | "teleportFrom">;
+type LineageRow = Pick<AgentRow, "name" | "agentId" | "sessionId" | "spawnedBy" | "teleportFrom">;
 
 interface ReviewerIdentity {
   agentId: string;

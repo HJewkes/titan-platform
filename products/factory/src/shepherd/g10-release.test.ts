@@ -1,4 +1,3 @@
-import type { AgentRow } from "@titan-design/agent-dispatch";
 import { fakeGitHub, fakeSha, githubPort, type PrFile } from "@titan-design/github";
 import { openDatabase, runMigrations } from "@titan-design/store-sqlite";
 import type { StepRoute } from "@titan-design/workflow";
@@ -6,11 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
 import { adversaryRehold } from "./adversary-anchor.js";
 import { shepherdEventMigration } from "./events.js";
-import { G10_RELEASE_STEP, TWO_MERGE_RULE, g10Recheck, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesG10, satisfiesTwoMerge, withReviewerProfile, type G10Verdict, type TwoMergeMode } from "./g10-release.js";
+import { G10_RELEASE_STEP, TWO_MERGE_RULE, g10Recheck, g10ReleaseRoutes, holdClassOf, isOpusProfile, releaseG10Hold, satisfiesAdversaryClean, satisfiesG10, withReviewerProfile, type G10Verdict, type TwoMergeMode } from "./g10-release.js";
 import type { CiSnapshot } from "../workflows/land.js";
 import type { PanelMember, Verdict } from "./phases.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
-import type { LineageRow } from "./reviewer-lineage.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, lineageMigration, shepherdMigration, sliceMigration } from "./store.js";
 import { readPath } from "../narrow.js";
 import { partialFake } from "@titan-design/test-kit";
@@ -18,7 +16,6 @@ import { z } from "zod";
 import { fakeLocator } from "../test-support/fakes.js";
 import type { WorkflowContext } from "@titan-design/workflow";
 import type { RoutedStepInput } from "@titan-design/workflow";
-import type { RosterReader } from "./ports.js";
 
 const REPO = "octo/demo";
 const HEAD = fakeSha("head-1");
@@ -343,73 +340,67 @@ describe("a release at a clean merge-up of the reviewed head", () => {
   });
 });
 
-describe("the g10-adversary/two-merge release (decision 422(1))", () => {
+describe("the g10-adversary release on the adversary's clean verdict (decision 422(1), TP-6767)", () => {
   const ADVERSARY_HOLD = "g10-adversary: policy touch";
+  const PARKED_REVIEW = "g10-review: 900 changed lines";
   const OWNER_RULE_FILE = "packages/authority/src/table.json";
-  const by = (head: string, sessionId: string): G10Verdict => ({ ...mergeAt(head), reviewer: { agentId: `agent-${sessionId}`, sessionId } });
-  const merges = (head: string, adversary: Partial<{ profile: string; sessionId: string; value: string }> = {}, correctnessProfile = "bd-reviewer") => ({
-    correctness: { verdict: by(head, "s-correctness"), profile: correctnessProfile },
-    adversary: { verdict: { ...by(head, adversary.sessionId ?? "s-adversary"), value: adversary.value ?? "MERGE" }, profile: adversary.profile ?? "fable-reviewer" },
-  });
-  const twoInput = (pr: number, head: string, extra: object = {}) => ({ runId: "run-1", repo: REPO, pr, head, rule: TWO_MERGE_RULE, ...merges(head), checks: green(head), ...extra });
-  const row = (sessionId: string, name: string, extra: Partial<LineageRow> = {}): AgentRow => ({
-    ...{ name, agentId: `agent-${sessionId}`, sessionId, spawnedBy: "human", teleportFrom: null },
-    ...{ state: "exited", presence: "exited", status: "finished", profile: "bd-reviewer", surface: "headless", cwd: "/work", generation: 1 },
-    ...extra,
-  });
-  const SPAWNED = [row("s-correctness", "rv-demo-1"), row("s-adversary", "rv-demo-1-adversary")];
-  const rosterOf = (rows: readonly AgentRow[] | "unread"): RosterReader => ({
-    read: async () => (rows === "unread" ? { kind: "unknown", error: new Error("broker down") } : { kind: "known", rows }),
-    rows: async () => (rows === "unread" ? [] : rows),
-    invalidate: () => undefined,
-  });
+  const RELEASE_ACTOR = "shepherd:verdict:agent-s-adversary/s-adversary";
+  type Said = Partial<{ value: string; authority: string | null; profile: string }>;
+  const adversaryOf = (head: string, said: Said = {}) => {
+    const authority = said.authority === undefined ? "unchanged" : said.authority;
+    const verdict = { ...mergeAt(head), reviewer: { agentId: "agent-s-adversary", sessionId: "s-adversary" }, value: said.value ?? "MERGE" };
+    return { verdict, profile: said.profile ?? "fable-reviewer", ...(authority !== null && { authority }) };
+  };
+  const askInput = (pr: number, head: string, extra: object = {}) => ({ runId: "run-1", repo: REPO, pr, head, rule: TWO_MERGE_RULE, adversary: adversaryOf(head), checks: green(head), ...extra });
 
-  function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }], rows: readonly AgentRow[] | "unread" = SPAWNED) {
+  function twoRig(prHead = HEAD, files: PrFile[] = [{ path: "src/policy.ts", status: "modified" }]) {
     const rigged = rig(ADVERSARY_HOLD, prHead, "shepherd", files);
-    const deps = { ...rigged.deps, roster: rosterOf(rows) };
-    return { ...rigged, deps, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(deps, mode)[0]! };
+    return { ...rigged, route: (mode?: TwoMergeMode) => g10ReleaseRoutes(rigged.deps, mode)[0]! };
   }
 
-  describe("satisfiesTwoMerge", () => {
+  describe("satisfiesAdversaryClean", () => {
     const run = { ...held(ADVERSARY_HOLD), holdReviewer: null };
     const files = ["src/policy.ts"];
 
-    it("releases only when the adversary says MERGE as well as the correctness reviewer", () => {
-      expect(satisfiesTwoMerge(run, merges(HEAD), HEAD, green(HEAD), files, SPAWNED)).toBe(true);
-      expect(satisfiesTwoMerge(run, merges(HEAD, { value: "FIX_FIRST" }), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
+    it.each(["unchanged", "tightened"])("releases on the adversary's MERGE whose Authority line reads %s", (authority) => {
+      expect(satisfiesAdversaryClean(run, { adversary: adversaryOf(HEAD, { authority }) }, HEAD, green(HEAD), files)).toBe(true);
     });
 
-    it("releases two MERGEs at the same opus profile from separately spawned sessions (decision 457)", () => {
-      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }), HEAD, green(HEAD), files, SPAWNED)).toBe(true);
-    });
-
-    it("refuses a correctness MERGE from a profile that is not opus", () => {
-      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }, "reviewer"), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
-    });
-
-    it("refuses when the roster was not read", () => {
-      expect(satisfiesTwoMerge(run, merges(HEAD, { profile: "bd-reviewer" }), HEAD, green(HEAD), files, undefined)).toBe(false);
+    it.each<[string, Said]>([
+      ["a FIX_FIRST", { value: "FIX_FIRST" }],
+      ["a MERGE whose Authority line reads widened", { authority: "widened" }],
+      ["a MERGE with no Authority line", { authority: null }],
+    ])("keeps the hold for the owner on %s", (_case, said) => {
+      expect(satisfiesAdversaryClean(run, { adversary: adversaryOf(HEAD, said) }, HEAD, green(HEAD), files)).toBe(false);
     });
 
     it("refuses a g10-review hold, which its own rule releases", () => {
-      expect(satisfiesTwoMerge({ ...run, holdReason: "g10-review: 900 changed lines" }, merges(HEAD), HEAD, green(HEAD), files, SPAWNED)).toBe(false);
+      expect(satisfiesAdversaryClean({ ...run, holdReason: PARKED_REVIEW }, { adversary: adversaryOf(HEAD) }, HEAD, green(HEAD), files)).toBe(false);
     });
   });
 
-  it("releases at H on both MERGEs and green CI, with no seat, and records both sessions, both profiles and the rule (tp#1355 replay)", async () => {
+  it("releases at H on the adversary's clean MERGE and green CI, with no seat, attributed to Shepherd and the verdict", async () => {
     const { store, pr, route } = twoRig();
 
-    const done = await runStep(route("on"), twoInput(pr, HEAD));
+    const done = await runStep(route("on"), askInput(pr, HEAD));
 
-    expect(done).toMatchObject({
-      released: true,
-      head: HEAD,
-      rule: TWO_MERGE_RULE,
-      correctness: { profile: "bd-reviewer", verdict: { reviewer: { sessionId: "s-correctness" } } },
-      adversary: { profile: "fable-reviewer", verdict: { reviewer: { sessionId: "s-adversary" } } },
-    });
+    expect(done).toMatchObject({ released: true, head: HEAD, rule: TWO_MERGE_RULE, adversary: { profile: "fable-reviewer", authority: "unchanged", verdict: { reviewer: { sessionId: "s-adversary" } } } });
     expect(store.byRun("run-1")?.held).toBe(false);
-    expect(store.eventsOf("run-1").at(-1)).toMatchObject({ kind: "release", actor: "shepherd", headSha: HEAD, reason: ADVERSARY_HOLD });
+    expect(store.eventsOf("run-1").at(-1)).toMatchObject({ kind: "release", actor: RELEASE_ACTOR, headSha: HEAD, reason: ADVERSARY_HOLD });
+  });
+
+  it.each<[string, Said]>([
+    ["the adversary said FIX_FIRST", { value: "FIX_FIRST" }],
+    ["the adversary's Authority line reads widened", { authority: "widened" }],
+    ["the adversary wrote no Authority line", { authority: null }],
+  ])("stays held for the owner when %s", async (_case, said) => {
+    const { store, pr, route } = twoRig();
+
+    const done = await runStep(route("on"), askInput(pr, HEAD, { adversary: adversaryOf(HEAD, said) }));
+
+    expect(done.released).toBe(false);
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: ADVERSARY_HOLD });
+    expect(store.eventsOf("run-1").some((event) => event.kind === "release")).toBe(false);
   });
 
   it.each([
@@ -418,62 +409,35 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
   ])("stays held when %s", async (_case, file) => {
     const { store, pr, route } = twoRig(HEAD, [{ path: "src/policy.ts", status: "modified" }, file]);
 
-    const done = await runStep(route("on"), twoInput(pr, HEAD));
+    const done = await runStep(route("on"), askInput(pr, HEAD));
 
     expect(done.released).toBe(false);
     expect(store.byRun("run-1")?.held).toBe(true);
   });
 
-  it("releases on MERGEs from two separately spawned bd-reviewer sessions (decision 457)", async () => {
-    const { store, pr, route } = twoRig();
+  it("records the hold the release left gating, so the run judges it next (TP-3317)", async () => {
+    const { store, pr, deps } = rig(PARKED_REVIEW, HEAD, "shepherd", [{ path: "src/policy.ts", status: "modified" }]);
+    store.hold("run-1", ADVERSARY_HOLD, undefined, { actor: "shepherd" });
 
-    const done = await runStep(route("on"), twoInput(pr, HEAD, merges(HEAD, { profile: "bd-reviewer" })));
+    const done = await runStep(g10ReleaseRoutes(deps, "on")[0]!, askInput(pr, HEAD));
 
-    expect(done).toMatchObject({ released: true, correctness: { profile: "bd-reviewer" }, adversary: { profile: "bd-reviewer" } });
-    expect(store.byRun("run-1")?.held).toBe(false);
+    expect(done).toMatchObject({ released: true, gating: PARKED_REVIEW });
+    expect(store.byRun("run-1")).toMatchObject({ held: true, holdReason: PARKED_REVIEW });
   });
 
-  const sameProfile = (sessionId?: string) => merges(HEAD, { profile: "bd-reviewer", ...(sessionId !== undefined && { sessionId }) });
-  it.each([
-    ["one session", sameProfile("s-correctness"), SPAWNED],
-    ["an adversary forked from the correctness reviewer's context", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "rv-demo-1" })]],
-    ["a correctness reviewer forked from the adversary's context", sameProfile(), [row("s-correctness", "rv-demo-1", { spawnedBy: "rv-demo-1-adversary" }), SPAWNED[1]!]],
-    ["two forks of one session", sameProfile(), [row("s-correctness", "rv-demo-1", { spawnedBy: "seat" }), row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "seat" }), row("s-seat", "seat")]],
-    ["an adversary that resumed the correctness reviewer's transcript", sameProfile(), [SPAWNED[0]!, SPAWNED[1]!, row("s-correctness", "rv-demo-1-adversary", { agentId: "agent-resumed" })]],
-    ["an adversary that took the correctness reviewer over", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { teleportFrom: "agent-s-correctness" })]],
-    ["an adversary teleported from an agent the roster does not hold", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { teleportFrom: "agent-gone" })]],
-    ["an adversary whose name a fork of the correctness reviewer held in another generation", sameProfile(), [...SPAWNED, row("s-gen-2", "rv-demo-1-adversary", { agentId: "agent-gen-2", spawnedBy: "rv-demo-1" })]],
-    ["an adversary whose session a fork of the correctness reviewer continues", sameProfile(), [...SPAWNED, row("s-adversary", "rv-fork", { agentId: "agent-fork", spawnedBy: "rv-demo-1" })]],
-    [
-      "an adversary whose spawning agent, under another name, was forked from the correctness reviewer",
-      sameProfile(),
-      [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "seat" }), row("s-seat", "seat"), row("s-seat-2", "seat-renamed", { agentId: "agent-s-seat", spawnedBy: "rv-demo-1" })],
-    ],
-    ["an adversary spawned by a session the roster does not hold", sameProfile(), [SPAWNED[0]!, row("s-adversary", "rv-demo-1-adversary", { spawnedBy: "gone-seat" })]],
-    ["an adversary the roster does not hold", sameProfile(), [SPAWNED[0]!]],
-    ["a roster that could not be read", sameProfile(), "unread" as const],
-  ])("stays held on MERGEs from %s", async (_case, extra, rows) => {
-    const { store, pr, route } = twoRig(HEAD, undefined, rows);
-
-    const done = await runStep(route("on"), twoInput(pr, HEAD, extra));
-
-    expect(done.released).toBe(false);
-    expect(store.byRun("run-1")?.held).toBe(true);
-  });
-
-  it("releases at H′ when Shepherd's recorded clean merge-up carried both MERGEs from H", async () => {
+  it("releases at H′ when Shepherd's recorded clean merge-up carried the adversary's MERGE from H", async () => {
     const { store, pr, route } = twoRig(MOVED);
 
-    const done = await runStep(route("on"), { ...twoInput(pr, MOVED), ...merges(HEAD), mergeUp: { fromHead: HEAD, head: MOVED } });
+    const done = await runStep(route("on"), { ...askInput(pr, MOVED), adversary: adversaryOf(HEAD), mergeUp: { fromHead: HEAD, head: MOVED } });
 
     expect(done).toMatchObject({ released: true, head: MOVED });
     expect(store.eventsOf("run-1").at(-1)).toMatchObject({ kind: "release", headSha: MOVED });
   });
 
-  it("stays held when a seat pushed H′ over MERGEs written at H", async () => {
+  it("stays held when a seat pushed H′ over a MERGE written at H", async () => {
     const { store, pr, route } = twoRig(MOVED);
 
-    const done = await runStep(route("on"), { ...twoInput(pr, MOVED), ...merges(HEAD) });
+    const done = await runStep(route("on"), { ...askInput(pr, MOVED), adversary: adversaryOf(HEAD) });
 
     expect(done.released).toBe(false);
     expect(store.byRun("run-1")?.held).toBe(true);
@@ -483,16 +447,16 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     const { store, pr, route } = twoRig();
     store.hold("run-1", ADVERSARY_HOLD, "seat-reviewer", { actor: "seat" });
 
-    const done = await runStep(route("on"), twoInput(pr, HEAD));
+    const done = await runStep(route("on"), askInput(pr, HEAD));
 
     expect(done.released).toBe(false);
     expect(store.byRun("run-1")).toMatchObject({ held: true, holdReviewer: "seat-reviewer" });
   });
 
-  it("under shadow records a would-release with both refs and leaves the hold in place", async () => {
+  it("under shadow records a would-release with the verdict ref and leaves the hold in place", async () => {
     const { store, pr, route } = twoRig();
 
-    const done = await runStep(route("shadow"), twoInput(pr, HEAD));
+    const done = await runStep(route("shadow"), askInput(pr, HEAD));
 
     expect(done).toMatchObject({ released: false, wouldRelease: true, mode: "shadow", rule: TWO_MERGE_RULE, adversary: { profile: "fable-reviewer" } });
     expect(store.byRun("run-1")?.held).toBe(true);
@@ -502,7 +466,7 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
   it("with the flag off neither releases nor records a would-release", async () => {
     const { store, pr, route } = twoRig();
 
-    const done = await runStep(route(undefined), twoInput(pr, HEAD));
+    const done = await runStep(route(undefined), askInput(pr, HEAD));
 
     expect(done).toMatchObject({ released: false, mode: "off" });
     expect(done).not.toHaveProperty("wouldRelease");
@@ -513,7 +477,7 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
     const { store, pr, deps } = twoRig();
     const unread = { ...deps, port: { ...deps.port, listPrFiles: async () => Promise.reject(new Error("HTTP 502")) } };
 
-    const done = await runStep(g10ReleaseRoutes(unread, "on")[0]!, twoInput(pr, HEAD));
+    const done = await runStep(g10ReleaseRoutes(unread, "on")[0]!, askInput(pr, HEAD));
 
     expect(done.released).toBe(false);
     expect(store.byRun("run-1")?.held).toBe(true);
@@ -521,7 +485,7 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
 
   it("anchors the adversary line at H: a later head that is not a clean merge-up of H is re-held", async () => {
     const { store, pr, route } = twoRig();
-    await runStep(route("on"), twoInput(pr, HEAD));
+    await runStep(route("on"), askInput(pr, HEAD));
     const at = (head: string) => ({ head, baseRef: async () => "main" });
     const fixPush = async () => ({ equal: true, base: fakeSha("main"), firstParent: HEAD, headTree: fakeSha("fix-tree"), mergeTree: fakeSha("merge-tree") });
 
@@ -532,20 +496,22 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
   describe("releaseG10Hold under a g10-adversary hold", () => {
     const LOCATOR = (sessionId: string) => ({ source: { conversation: { nativeId: sessionId } } });
     const adversaryMember = (head: string, extra: Partial<PanelMember> = {}, profile: string | null = "fable-reviewer"): PanelMember => ({
-      ...{ shape: "adversary", agentId: "agent-s-adversary", sessionId: "s-adversary", locator: LOCATOR("s-adversary"), verdict: "MERGE", head },
+      ...{ shape: "adversary", agentId: "agent-s-adversary", sessionId: "s-adversary", locator: LOCATOR("s-adversary"), verdict: "MERGE", head, authority: "unchanged" },
       ...(profile !== null && { profile }),
       ...extra,
     });
+    const panelOf = (member: PanelMember) => ({ satisfiesG10: true, degraded: [], members: [member] });
     const panelMergeAt = (head: string, member: PanelMember): Verdict => ({
       kind: "MERGE",
       headSha: head,
       evidence: { record: { head, verdictLocator: LOCATOR("s-correctness"), reviewer: { agentId: "agent-s-correctness", sessionId: "s-correctness" } } },
       reviewerProfile: "bd-reviewer",
-      panel: { satisfiesG10: true, degraded: [], members: [member] },
+      panel: panelOf(member),
     });
     const adversaryRun = (reviews: [string, Verdict][], ciHead: string, result: object = { released: true, head: ciHead }) => stubRun(reviews, ciHead, result);
+    const askedAt = (dispatch: ReturnType<typeof stubRun>["dispatch"], call: number): unknown => JSON.parse(Object.values(dispatch.mock.calls[call]![2].vars)[0]!);
 
-    it("asks with the correctness and adversary refs, their profiles and the rule", async () => {
+    it("asks with the adversary's ref, profile and Authority line, and the rule", async () => {
       const { asked, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD);
 
       await releaseG10Hold(run, ADVERSARY_HOLD);
@@ -553,13 +519,21 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
       expect(asked()).toMatchObject({
         rule: TWO_MERGE_RULE,
         head: HEAD,
-        correctness: { profile: "bd-reviewer", verdict: { head: HEAD, reviewer: { sessionId: "s-correctness" } } },
-        adversary: { profile: "fable-reviewer", verdict: { head: HEAD, reviewer: { sessionId: "s-adversary" } } },
+        adversary: { profile: "fable-reviewer", authority: "unchanged", verdict: { head: HEAD, reviewer: { sessionId: "s-adversary" } } },
         checks: { head: HEAD, green: true },
       });
     });
 
-    it("asks at H′ with the merge-up when both MERGEs were carried from H", async () => {
+    it("asks on the adversary's MERGE from a panel that withheld its verdict because another member gave none (tp#2241)", async () => {
+      const withheld: Verdict = { kind: "none", cause: "no-verdict", reason: "a blocking panel member gave no verdict", panel: panelOf(adversaryMember(HEAD)) };
+      const { asked, run } = adversaryRun([[HEAD, withheld]], HEAD);
+
+      await releaseG10Hold(run, ADVERSARY_HOLD);
+
+      expect(asked()).toMatchObject({ rule: TWO_MERGE_RULE, head: HEAD, adversary: { verdict: { head: HEAD, reviewer: { sessionId: "s-adversary" } } } });
+    });
+
+    it("asks at H′ with the merge-up when the MERGE was carried from H", async () => {
       const carried: Verdict = { kind: "MERGE", headSha: MOVED, evidence: { record: { head: MOVED, carry: { fromHead: HEAD } } }, mergeUpFrom: HEAD };
       const { asked, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))], [MOVED, carried]], MOVED);
 
@@ -568,17 +542,39 @@ describe("the g10-adversary/two-merge release (decision 422(1))", () => {
       expect(asked()).toMatchObject({ head: MOVED, mergeUp: { fromHead: HEAD, head: MOVED }, adversary: { verdict: { head: HEAD } } });
     });
 
-    it.each([
-      ["the adversary said FIX_FIRST", adversaryMember(HEAD, { verdict: "FIX_FIRST" })],
-      ["the adversary wrote at another head", adversaryMember(HEAD, { head: MOVED })],
-      ["the adversary's spawn profile was not recorded", adversaryMember(HEAD, {}, null)],
-      ["only a non-adversary member gave a verdict", adversaryMember(HEAD, { shape: "perf" })],
-    ])("asks for nothing when %s", async (_case, member) => {
-      const { dispatch, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, member)]], HEAD);
+    it.each<[string, Verdict]>([
+      ["the adversary said FIX_FIRST", panelMergeAt(HEAD, adversaryMember(HEAD, { verdict: "FIX_FIRST" }))],
+      ["the adversary wrote at another head", panelMergeAt(HEAD, adversaryMember(HEAD, { head: MOVED }))],
+      ["the adversary's spawn profile was not recorded", panelMergeAt(HEAD, adversaryMember(HEAD, {}, null))],
+      ["only a non-adversary member gave a verdict", panelMergeAt(HEAD, adversaryMember(HEAD, { shape: "perf" }))],
+      ["a withheld verdict recorded no panel", { kind: "none", cause: "no-verdict" }],
+    ])("asks for nothing when %s", async (_case, verdict) => {
+      const { dispatch, run } = adversaryRun([[HEAD, verdict]], HEAD);
 
       await releaseG10Hold(run, ADVERSARY_HOLD);
 
       expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it("then asks the g10-review hold the release left gating on the opus MERGE in hand, with no seat (TP-3317)", async () => {
+      const { dispatch, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD, { released: true, head: HEAD, gating: PARKED_REVIEW });
+
+      await releaseG10Hold(run, ADVERSARY_HOLD);
+
+      expect(dispatch).toHaveBeenCalledTimes(2);
+      expect(askedAt(dispatch, 1)).toMatchObject({ head: HEAD, reviewerProfile: "bd-reviewer", verdict: { value: "MERGE", head: HEAD } });
+      expect(askedAt(dispatch, 1)).not.toHaveProperty("rule");
+    });
+
+    it.each([
+      ["the adversary release left nothing gating", { released: true, head: HEAD, gating: null }],
+      ["the adversary release released nothing", { released: false, head: HEAD }],
+    ])("asks nothing more when %s", async (_case, result) => {
+      const { dispatch, run } = adversaryRun([[HEAD, panelMergeAt(HEAD, adversaryMember(HEAD))]], HEAD, result);
+
+      await releaseG10Hold(run, ADVERSARY_HOLD);
+
+      expect(dispatch).toHaveBeenCalledTimes(1);
     });
 
     describe("when a non-strict base moved past the reviewed head's green (TP-3933)", () => {
