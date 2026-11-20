@@ -1,5 +1,5 @@
 import { T as Task, I as IntentLine } from './prediction-check.js';
-export { B as Bet, a as BetSchema, D as DELIVERABLE_ID_REGEX, F as Freeze, b as FreezeEndCondition, c as FreezeEndConditionSchema, d as FreezeSchema, e as INTENT_SECTIONS, f as IntentLineSchema, g as IntentSection, O as OutOfScope, h as OutOfScopeSchema, i as Outcome, j as OutcomeSchema, k as OwnerIntentRef, l as OwnerIntentRefSchema, P as PREDICTION_CHECKS, m as Prediction, n as PredictionCheck, o as PredictionSchema, S as ScorecardWeekRow, p as SheetBet, q as TaskSchema, r as checkPrediction, s as orderBetsForSheet } from './prediction-check.js';
+export { B as Bet, a as BetSchema, D as DELIVERABLE_ID_REGEX, F as Freeze, b as FreezeEndCondition, c as FreezeEndConditionSchema, d as FreezeSchema, e as INTENT_SECTIONS, f as IntentLineSchema, g as IntentSection, O as OutOfScope, h as OutOfScopeSchema, i as Outcome, j as OutcomeSchema, k as OwnerIntentRef, l as OwnerIntentRefSchema, P as PREDICTION_CHECKS, m as Prediction, n as PredictionCheck, o as PredictionSchema, S as ScorecardWeekRow, p as SheetBet, q as TaskSchema, r as checkPrediction, s as isoDate, t as orderBetsForSheet } from './prediction-check.js';
 import { z } from 'zod';
 
 declare const InitiativeVisibilitySchema: z.ZodEnum<{
@@ -426,6 +426,7 @@ export { type AgentAccess, type AgentAccessInput, type AreaEntry, BUILT_IN_STATU
 // ./dist/prediction-check.d.ts
 import { z } from 'zod';
 
+declare const isoDate: z.ZodString;
 declare const DELIVERABLE_ID_REGEX: RegExp;
 declare const TaskSchema: z.ZodObject<{
     field_origin: z.ZodOptional<z.ZodRecord<z.ZodEnum<{
@@ -709,4 +710,4 @@ interface SheetBet {
 /** Bets grouped by initiative, a missed prediction ahead of every other bet in its group, then by `order`. */
 declare function orderBetsForSheet<T extends SheetBet>(entries: readonly T[]): T[];
 
-export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, PREDICTION_CHECKS as P, type ScorecardWeekRow as S, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, type Prediction as m, type PredictionCheck as n, PredictionSchema as o, type SheetBet as p, TaskSchema as q, checkPrediction as r, orderBetsForSheet as s };
+export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, PREDICTION_CHECKS as P, type ScorecardWeekRow as S, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, type Prediction as m, type PredictionCheck as n, PredictionSchema as o, type SheetBet as p, TaskSchema as q, checkPrediction as r, isoDate as s, orderBetsForSheet as t };
