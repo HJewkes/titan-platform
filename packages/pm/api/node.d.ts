@@ -76,6 +76,7 @@ export { type InitiativeTasks, type PlanKind, type PlanRecords, PlanStoreError, 
 // ./dist/prediction-check.d.ts
 import { z } from 'zod';
 
+declare const isoDate: z.ZodString;
 declare const DELIVERABLE_ID_REGEX: RegExp;
 declare const TaskSchema: z.ZodObject<{
     field_origin: z.ZodOptional<z.ZodRecord<z.ZodEnum<{
@@ -359,4 +360,4 @@ interface SheetBet {
 /** Bets grouped by initiative, a missed prediction ahead of every other bet in its group, then by `order`. */
 declare function orderBetsForSheet<T extends SheetBet>(entries: readonly T[]): T[];
 
-export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, PREDICTION_CHECKS as P, type ScorecardWeekRow as S, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, type Prediction as m, type PredictionCheck as n, PredictionSchema as o, type SheetBet as p, TaskSchema as q, checkPrediction as r, orderBetsForSheet as s };
+export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, PREDICTION_CHECKS as P, type ScorecardWeekRow as S, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, type Prediction as m, type PredictionCheck as n, PredictionSchema as o, type SheetBet as p, TaskSchema as q, checkPrediction as r, isoDate as s, orderBetsForSheet as t };
