@@ -3,6 +3,7 @@ import { reviewerBrief, type ReviewerBriefInput } from "../reviewer-brief.js";
 import type { ReviewShape } from "../types.js";
 import { ADVERSARY_OVERLAY, holdContextLines, type AdversaryHoldContext } from "./adversary.js";
 import { PERF_OVERLAY } from "./perf.js";
+import { focusLines, usableScope } from "./scoped-rereview.js";
 import { TESTS_OVERLAY, fixProofLines, testOnlyMemberLines, waivedLines, workflowCiLines } from "./tests.js";
 import { VISUAL_OVERLAY } from "./visual.js";
 
@@ -47,14 +48,22 @@ export interface ShapeBriefInput extends ReviewerBriefInput {
   holdContext?: AdversaryHoldContext;
 }
 
+/** A usable fix-round scope turns into a focus section on top of the full review, never into a narrower one. */
+function adversaryLines(holdContext: AdversaryHoldContext | undefined, { scope, earlierFindings }: ReviewerBriefInput): string[] {
+  const openFindings = earlierFindings?.length ?? 0;
+  const focus = usableScope(scope, openFindings) ? ["", ...focusLines(scope, openFindings)] : [];
+  return [...holdContextLines(holdContext), ...focus];
+}
+
 /**
  * The overlay comes first so the base brief's verdict template stays the end of the prompt. A member always reads the full
- * diff, since the adversary's second sign-off must not narrow to a fix round's diff (TP-3735), so `scope` is dropped.
+ * diff, since the adversary's second sign-off must not narrow to a fix round's diff (TP-3735), so `scope` never reaches the
+ * base brief; the adversary reads it only as a focus section.
  */
 export function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string {
   const { fixProof, holdContext, ...base } = input;
   const proved = waivedLines(input.head, input.fixProofWaivedAt).length > 0 || workflowCiLines(input.head, input.workflowCiProof).length > 0;
   const testsLines = () => ["", ...fixProofLines(input.head, fixProof), ...testOnlyMemberLines(input.fixProofUnverified)];
-  const extra = shape === "tests" && !proved ? testsLines() : shape === "adversary" ? holdContextLines(holdContext) : [];
+  const extra = shape === "tests" && !proved ? testsLines() : shape === "adversary" ? adversaryLines(holdContext, base) : [];
   return [SHAPE_BRIEFS[shape].overlay, ...extra, "", reviewerBrief({ ...base, scope: undefined })].join("\n");
 }

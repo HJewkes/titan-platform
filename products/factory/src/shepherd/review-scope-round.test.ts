@@ -2,7 +2,7 @@ import { fakeSha } from "@titan-design/github";
 import { usableScope } from "@titan-design/review-panel";
 import { describe, expect, it } from "vitest";
 import { fixRoundOf, type FixFirstEntry, type FixFirstTrail } from "./fix-first-trail.js";
-import { scopedBriefFields, scopedResultFields, toReviewScope } from "./review-scope-round.js";
+import { adversaryFocusOf, scopedBriefFields, scopedResultFields, toReviewScope } from "./review-scope-round.js";
 import { scopeFromDiff } from "./review-scope.js";
 
 const A = fakeSha("round-a");
@@ -61,5 +61,24 @@ describe("scopedBriefFields and scopedResultFields", () => {
     expect(scopedResultFields({ mode: "shadow", scoped: true, scope: SCOPE, earlierFindings: FINDINGS })).toEqual({ scoped: true, scopeShadow: true });
     expect(scopedResultFields({ mode: "on", scoped: false, reason: "rebase" })).toEqual({ scoped: false, scopeReason: "rebase" });
     expect(scopedResultFields(undefined)).toEqual({});
+  });
+});
+
+describe("the adversary member on a fix round", () => {
+  const on = { mode: "on", scoped: true, scope: SCOPE, earlierFindings: FINDINGS } as const;
+  const shadow = { ...on, mode: "shadow" } as const;
+
+  it("gets the scope only under on with a usable scope", () => {
+    expect(adversaryFocusOf(on)).toEqual({ scopedRereview: on });
+    expect(adversaryFocusOf(shadow)).toEqual({});
+    expect(adversaryFocusOf({ mode: "on", scoped: false, reason: "rebase" })).toEqual({});
+    expect(adversaryFocusOf(undefined)).toEqual({});
+  });
+
+  it("records its round as focused, never as scoped, so review stats count it apart from the narrowed correctness round", () => {
+    expect(scopedResultFields(on, "adversary")).toEqual({ scopeFocus: true });
+    expect(scopedResultFields(shadow, "adversary")).toEqual({});
+    expect(scopedResultFields(undefined, "adversary")).toEqual({});
+    expect(scopedResultFields(on, "correctness")).toEqual({ scoped: true });
   });
 });
