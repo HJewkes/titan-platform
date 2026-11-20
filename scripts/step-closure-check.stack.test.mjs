@@ -29,7 +29,7 @@ function stackedRepo() {
   };
   git(["init", "-q", "-b", "main"]);
   git(["remote", "add", "origin", root]);
-  commit(LOCK_PATH, {}, "base");
+  commit(LOCK_PATH, { "ci-wait": { closure: `ci-wait-${CHILD_PR}`, schemaHash: "schema-1", bump: 0 } }, "base");
   git(["checkout", "-q", "-b", "parent"]);
   commit(parentFile, rowOf(PARENT_PR), "parent attests");
   git(["update-ref", `refs/pull/${PARENT_PR}/head`, "parent"]);

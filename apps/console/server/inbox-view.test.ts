@@ -325,6 +325,18 @@ describe("a deposit's typed op", () => {
     expect(other!.action.kind === "terminal" && other!.action.reason).toBe(`${REPO}#2 is held as g10-review, not owner-asked`);
   });
 
+  it("maps a g10 hold op onto a hold-release for whichever g10 class the row is held in", () => {
+    const op = { kind: "release-hold", repo: REPO, pr: 2, headSha: HEAD, holdClass: "g10" } as const;
+
+    const [review] = inboxItems([deposited(op)], [row(RUN_G10, 2, "g10-review: opus review at head")]);
+    const [adversary] = inboxItems([deposited(op)], [row(RUN_G10, 2, "g10-adversary: authority change")]);
+    const [owner] = inboxItems([deposited(op)], [row(RUN_OWNER, 2, "owner-asked: wait for me")]);
+
+    expect(review!.action).toEqual({ kind: "hold-release", repo: REPO, pr: 2, headSha: HEAD, holdClass: "g10-review" });
+    expect(adversary!.action).toMatchObject({ kind: "hold-release", holdClass: "g10-adversary" });
+    expect(owner!.action.kind === "terminal" && owner!.action.reason).toBe(`${REPO}#2 is held as owner-asked, not g10`);
+  });
+
   it("shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge", () => {
     const [held] = inboxItems([deposited({ ...mergeOp, pr: 3 })], [row(RUN_G10, 3, "g10-adversary: authority change")]);
     const [open] = inboxItems([deposited(mergeOp)], [row(RUN_PLAIN, 7)]);

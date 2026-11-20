@@ -80,7 +80,7 @@ Everything is under `deploy/hub`, and all of it is gitignored.
 
 Logs are the containers' own: `docker compose logs -f tuwunel` or `caddy`.
 
-Back up `data/backup`, `.env` and `data/caddy/data`. A restore must keep the same
+Back up `data/backup`, `.env`, `data/server_name` and `data/caddy/data`. A restore must keep the same
 `SERVER_NAME`.
 
 ## Upgrade
