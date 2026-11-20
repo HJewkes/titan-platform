@@ -202,7 +202,7 @@ function registerRepoFreezeVerbs(verb: VerbOf, verbs: Verbs): void {
     .action((repo: string, opts: ShepherdOpts & { reason: string }) =>
       runShepherd(verbs, "shepherd.freeze", () => ({ action: "freeze", repo, reason: opts.reason, actor: callerOf(verbs.io.env) }), opts));
   verb("unfreeze <repo>", "lift the freeze on owner/repo, so waiting runs merge on their next step; a red main's freeze stays")
-    .action((repo: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "unfreeze", repo }), opts));
+    .action((repo: string, opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "unfreeze", repo, actor: callerOf(verbs.io.env) }), opts));
   verb("freezes", "every repo freeze: repo, reason, who set it and since when; then each open red-main episode with its red sha, fix task, fixer and fix PR")
     .action((opts: ShepherdOpts) => runShepherd(verbs, "shepherd.freeze", () => ({ action: "list" }), opts));
   verb("thaw <repo>", "thaw owner/repo's red-main freeze by hand while it is still red at --red-sha; records who and why, and alerts the repo's red seat")

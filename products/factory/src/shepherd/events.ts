@@ -73,11 +73,18 @@ export function orderWaitKindMigration(version = 45): Migration {
   return { version, name: "factory:shepherd_event_order_wait", up: (db) => db.exec(rebuildWithKinds(ORDER_WAIT_KINDS)) };
 }
 
-export const EVENT_KINDS = [...ORDER_WAIT_KINDS, "merge-wait"] as const;
+const MERGE_WAIT_KINDS = [...ORDER_WAIT_KINDS, "merge-wait"] as const;
+
+export const EVENT_KINDS = [...MERGE_WAIT_KINDS, "repo-freeze", "repo-unfreeze"] as const;
 
 /** A merge step that started waiting on a hold, freeze or release guard, one row per change of reason (TP-5881). */
 export function mergeWaitKindMigration(version = 53): Migration {
-  return { version, name: "factory:shepherd_event_merge_wait", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
+  return { version, name: "factory:shepherd_event_merge_wait", up: (db) => db.exec(rebuildWithKinds(MERGE_WAIT_KINDS)) };
+}
+
+/** A coordinator's `shepherd freeze` or an `unfreeze` that lifted one, apart from the main-red freeze and thaw kinds the SLO pairing reads (TP-6408). */
+export function repoFreezeKindsMigration(version = 55): Migration {
+  return { version, name: "factory:shepherd_event_repo_freeze", up: (db) => db.exec(rebuildWithKinds(EVENT_KINDS)) };
 }
 
 export type EventKind = (typeof EVENT_KINDS)[number];
