@@ -227,4 +227,17 @@ describe("indexPaths", () => {
       expect.objectContaining({ srcId: "src/app.py", dstId: "src/util.py", kind: "imports" }),
     );
   });
+
+  it("gives a .ts and a .py file with the same stem a module each, in its own language", async () => {
+    await fs.writeFile(path.join(root, "src/sample.ts"), A_TS);
+    await fs.writeFile(path.join(root, "src/sample.py"), PY);
+    const result = await index();
+
+    const nodes = new Map(store.listNodes(result.snapshotId).map((n) => [n.id, n]));
+    const tsFile = nodes.get("src/sample.ts");
+    const pyFile = nodes.get("src/sample.py");
+    expect(tsFile?.parentId).not.toBe(pyFile?.parentId);
+    expect(nodes.get(tsFile!.parentId!)).toMatchObject({ kind: "module", language: "typescript", parentId: "src" });
+    expect(nodes.get(pyFile!.parentId!)).toMatchObject({ kind: "module", language: "python", parentId: "src" });
+  });
 });
