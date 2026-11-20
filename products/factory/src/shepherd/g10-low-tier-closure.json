@@ -455,6 +455,7 @@
   "products/factory/src/merge-drivers.ts",
   "products/factory/src/narrow.ts",
   "products/factory/src/owner-at-head.ts",
+  "products/factory/src/owner-ops/branch-policy.ts",
   "products/factory/src/reconciler/config.ts",
   "products/factory/src/redact.ts",
   "products/factory/src/required-checks.ts",
