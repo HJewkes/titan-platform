@@ -24,13 +24,15 @@ interface BehindMainOptions {
 /** Commits main is ahead of the build, `checking` before the first probe lands, or a redacted error; never waits on gh. */
 export type BehindMain = CachedProbe<number | string, string>;
 
-/** Caches `gh compare <sha>...main` for five minutes; reads 0 when no changed path reaches the factory build, as the deploy pacer skips it. */
+/** Caches `gh compare <sha>...main` for five minutes; reads 0 when no changed path reaches the factory build, as the deploy pacer skips it, except for a dirty build, which counts every commit. */
 export function behindMain(options: BehindMainOptions): BehindMain {
   const { sha, exec = execGh, now = Date.now, ttlMs = BEHIND_MAIN_TTL_MS, timeoutMs = BEHIND_MAIN_TIMEOUT_MS, closure = () => undefined } = options;
   const repo = "repo" in options ? options.repo : FACTORY_REPO;
   if (sha === UNKNOWN_BUILD_SHA || repo === undefined) return { status: () => UNKNOWN_BUILD_SHA, refresh: async () => undefined };
   const cleanSha = sha.replace(DIRTY_SUFFIX, "");
-  return cachedProbe(() => probe(exec, repo, cleanSha, timeoutMs, closure), { now, ttlMs, pending: PROBE_PENDING });
+  // A dirty build may hold uncommitted closure edits, so its diff against any commit is unknown, as in the deployer.
+  const dirtyBuild = cleanSha !== sha;
+  return cachedProbe(() => probe(exec, repo, cleanSha, timeoutMs, dirtyBuild ? () => undefined : closure), { now, ttlMs, pending: PROBE_PENDING });
 }
 
 /** The commit count, the file count (-1 when absent), then every path, old and new, since the deployer's `--no-renames` diff sees both ends of a move. */
