@@ -21,8 +21,8 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   carry probe, checkout, headroom and installed profiles in one pass.
 - `preflight(snapshot, policy)`: pure. In order it stops on a closed or draft PR, a moved head, CI not green, a NO_REPRO
   that ends the review, a carried merge-up, and a behind or dirty head. Then it plans the panel and sends a member whose
-  profile is not installed to the fixer, asks for `refresh-checkout` or `await-account` heals in the shape `healOnce`
-  takes, and otherwise returns `go` with the plan.
+  profile is not installed to the fixer, asks for `refresh-checkout` or `await-account` heals as `{ kind: "heal", heals }`,
+  and otherwise returns `go` with the plan.
 - `planForHead(facts, policy, standing, hold?)`: the class and panel for one head. A hold adds an uncapped adversary,
   and a standing that `needsTestsSeat` adds a blocking tests member.
 

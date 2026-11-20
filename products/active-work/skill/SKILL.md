@@ -70,7 +70,7 @@ When a session ended with no wrap at all (a reboot, a crash, a closed window), `
 
 The failure this is designed to prevent: an agent posts its session summary, then follows it with two to four "oh, by the way" items — a task that should be filed, a gotcha worth remembering, an uncommitted worktree — each of which then has to be captured before the session can actually end. **Do that sweep before calling `wrap`, not after.** If you find yourself about to write "one more thing" after wrapping, you wrapped too early.
 
-Run `active-work preflight <slug>` first. It is read-only and returns the live git state plus the checklist of categories you must answer.
+Run `active-work preflight <slug>` first. It is read-only and returns the live git state plus the checklist of categories you must answer. With `--since <iso>` it also lists `unreferenced_sources`: sources files written since then that no task, note or session names; answer each with a task id, a seat name or none.
 
 Then sweep your own session for everything durable and file it:
 

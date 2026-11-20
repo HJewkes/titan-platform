@@ -8,6 +8,7 @@ import {
   defaultSupervisorActive,
   fileExists,
   lacksClientHeader,
+  MIN_NODE_MAJOR,
   parseMajor,
   readMcpRegistrations,
 } from './probes.js';
@@ -15,7 +16,7 @@ import type { DoctorCheck, DoctorDeps } from './index.js';
 
 export async function checkNode(deps: DoctorDeps): Promise<DoctorCheck> {
   const version = deps.nodeVersion ?? process.version;
-  const min = deps.minNodeMajor ?? 22;
+  const min = deps.minNodeMajor ?? MIN_NODE_MAJOR;
   const major = parseMajor(version);
   if (major >= min) {
     return { name: 'node', status: 'ok', detail: `${version} (>= ${min})` };

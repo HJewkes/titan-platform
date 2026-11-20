@@ -83,6 +83,20 @@ describe('task.add', () => {
     });
   });
 
+  it('never reissues an id after the highest task is archived', async () => {
+    await withTempActiveRoot(async (root) => {
+      const third = asTask(await taskAdd.run({ slug: SLUG, title: 'Third sample task' }, ctx(root)));
+      expect(third.id).toBe('SI-3');
+
+      const tasksDir = path.join(root, SLUG, 'tasks');
+      await fs.mkdir(path.join(tasksDir, 'archive'), { recursive: true });
+      await fs.rename(path.join(tasksDir, 'SI-3.yml'), path.join(tasksDir, 'archive', 'SI-3.yml'));
+
+      const fourth = asTask(await taskAdd.run({ slug: SLUG, title: 'Fourth sample task' }, ctx(root)));
+      expect(fourth.id).toBe('SI-4');
+    });
+  });
+
   it('falls back to the on-disk max when brief.md has no task_seq', async () => {
     await withTempActiveRoot(async (root) => {
       // The fixture brief.md predates task_seq; confirm it still allocates
