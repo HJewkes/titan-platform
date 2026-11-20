@@ -1,7 +1,8 @@
 import { FEEDBACK_SCHEMA_ID, MANIFEST_SCHEMA_ID, type ManifestInput } from "@titan-design/review-schema";
 import { describe, expect, it } from "vitest";
 import { roundAskKey } from "./keys.js";
-import { answeredFromFeedback, fromRoundQuestions, ROUND_ANSWERER, type FeedbackInput } from "./round-items.js";
+import { BY_REC_FEEDBACK_GENERAL, ROUND_ANSWERER } from "./by-rec-answerer.js";
+import { answeredFromFeedback, fromRoundQuestions, type FeedbackInput } from "./round-items.js";
 import { buildOwnerRounds } from "./rounds.js";
 import { item, SHA_A } from "./test-fixtures.js";
 
@@ -159,6 +160,14 @@ describe("answeredFromFeedback", () => {
     const [tones] = answeredFromFeedback(answers, designRound({ questions: [question], sections: undefined }), { ...context, bindings });
 
     expect(tones!.answer).toEqual({ optionIds: ["error", "info"], text: "Mauve", variantComments, by: ROUND_ANSWERER, at: SUBMITTED });
+  });
+
+  it("credits the by-rec sweep, not the owner, when the feedback carries its mark", () => {
+    const answers = feedback([{ questionId: "fill", pick: "Solid" }], { general: BY_REC_FEEDBACK_GENERAL });
+
+    const [fill] = answeredFromFeedback(answers, designRound(), context);
+
+    expect(fill!.answer).toEqual({ optionId: "Solid", by: { class: "automation", id: "auto-by-rec", channel: "round" }, at: SUBMITTED });
   });
 
   it("refuses feedback for another round", () => {

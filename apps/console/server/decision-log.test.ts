@@ -71,6 +71,16 @@ describe("decision log", () => {
     expect(JSON.parse(lines[1]!)).toMatchObject({ answer: "Hold", item: { id: "q-ship-2", kind: "approve", door: "two-way" }, by: { channel: "console" }, decisions: null });
   });
 
+  it("keeps an answer from outside the owner out of the ledger but still names it in the decisions bullet", async () => {
+    const automation = answer({ by: { class: "automation", id: "auto-by-rec", channel: "round" } });
+
+    const result = await makeLog().record(abDecide(), automation);
+
+    expect(result).toEqual({ ledger: "excluded", decisions: "written", reason: "not-owner" });
+    expect(await ledgerLines()).toEqual([]);
+    expect(await decisions()).toMatch(/\(item q-ab, by auto-by-rec via round\)\n$/);
+  });
+
   it("creates the ledger at mode 0600 and never writes through a symlink at its name", async () => {
     await makeLog().record(ship(), answer());
     expect((await stat(ledgerPath())).mode & 0o777).toBe(0o600);

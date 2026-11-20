@@ -7,6 +7,7 @@ import {
   type Question,
 } from "@titan-design/review-schema";
 import type { z } from "zod";
+import { feedbackAnswerer } from "./by-rec-answerer.js";
 import { prKey, roundAskKey } from "./keys.js";
 import type { RoundQuestionBinding } from "./rounds.js";
 import { ownerItemSchema, type OwnerAnswer, type OwnerItem } from "./schema.js";
@@ -23,9 +24,6 @@ export interface RoundItemsContext {
 export interface AnsweredContext extends RoundItemsContext {
   roundId: string;
 }
-
-/** feedback@1 does not say who answered; only the owner answers a round. */
-export const ROUND_ANSWERER: OwnerAnswer["by"] = { class: "owner", id: "owner", channel: "round" };
 
 const MAX_SUMMARY = 280;
 const MAX_OPTIONS = 8;
@@ -135,7 +133,7 @@ function choiceOf(question: Question, ids: string[]): Pick<OwnerAnswer, "optionI
   return question.kind === "pick-many" ? { optionIds: ids } : { optionId: ids[0]! };
 }
 
-function ownerAnswer(answer: Answer, question: Question, binding: RoundQuestionBinding | undefined, at: string): OwnerAnswer | undefined {
+function ownerAnswer(answer: Answer, question: Question, binding: RoundQuestionBinding | undefined, given: Pick<OwnerAnswer, "by" | "at">): OwnerAnswer | undefined {
   const { ids, unoffered } = picksOf(answer, question, binding);
   const text = textOf(answer, unoffered);
   const variantComments = answer.variantComments?.filter((each) => each.comment.trim() !== "") ?? [];
@@ -146,14 +144,14 @@ function ownerAnswer(answer: Answer, question: Question, binding: RoundQuestionB
     ...(text === undefined ? {} : { text }),
     ...(changeRequested ? { changeRequested } : {}),
     ...(variantComments.length === 0 ? {} : { variantComments }),
-    by: ROUND_ANSWERER,
-    at,
+    ...given,
   };
 }
 
 /**
  * The answered questions of a feedback@1 file as answered OwnerItems: the same items
- * fromRoundQuestions gives, with the owner's answer at `submittedAt`. With the round's bindings a
+ * fromRoundQuestions gives, with the answer at `submittedAt`, credited to whoever the feedback names
+ * (`feedbackAnswerer`): the owner, or the by-rec sweep. With the round's bindings a
  * pick maps back to the option id of the item it asked. Questions left unanswered are omitted,
  * but a revision request is always kept, because it must still block a ship.
  * Throws when either file is invalid or the feedback is for another unit or round.
@@ -165,11 +163,12 @@ export function answeredFromFeedback(feedback: FeedbackInput, manifest: Manifest
     throw new Error(`feedback is for ${answers.unit} round ${answers.round}, the manifest is ${round.unit} round ${round.round}`);
   }
   const skipped = new Set(answers.unansweredQuestionIds ?? []);
+  const by = feedbackAnswerer(answers.general);
   return answers.answers.flatMap((answer) => {
     const question = round.questions.find((each) => each.id === answer.questionId);
     if (question === undefined || (skipped.has(question.id) && answer.revisionRequested !== true)) return [];
     const binding = context.bindings?.find((each) => each.questionId === question.id);
-    const given = ownerAnswer(answer, question, binding, answers.submittedAt);
+    const given = ownerAnswer(answer, question, binding, { by, at: answers.submittedAt });
     if (given === undefined) return [];
     return [{ ...questionItem(question, round, context.roundId, context), status: "answered" as const, answer: given }];
   });

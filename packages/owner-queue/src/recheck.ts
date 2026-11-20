@@ -1,3 +1,4 @@
+import { isOwnerAnswer } from "./by-rec-answerer.js";
 import { parsePrKey, relationKind } from "./keys.js";
 import type { OwnerAnswer, OwnerItem } from "./schema.js";
 
@@ -68,8 +69,9 @@ function sameHeads(item: OwnerItem, answer: Answered): boolean {
   });
 }
 
+/** Only the owner's own answer stands in for the owner on another item; an automation's or a delegate's only flags it. */
 function settles(item: OwnerItem, match: Match): boolean {
-  return match.asks.length > 0 && Date.parse(match.answer.answer.at) > Date.parse(item.openedAt) && sameHeads(item, match.answer);
+  return isOwnerAnswer(match.answer.answer) && match.asks.length > 0 && Date.parse(match.answer.answer.at) > Date.parse(item.openedAt) && sameHeads(item, match.answer);
 }
 
 /** Free text or a change request instead of the recommended pick disagrees with it too. */
@@ -104,7 +106,7 @@ function compareFlags(a: RecheckFlag, b: RecheckFlag): number {
 /**
  * Re-checks open items against answers already given (rule 2). An item is dropped as
  * `gone-elsewhere`, citing the newest such answer, when an answer sharing its `ask:` key is
- * newer than its `openedAt` and pinned to no other head of a PR the item names. An older or
+ * newer than its `openedAt`, pinned to no other head of a PR the item names, and the owner's own. An older, non-owner or
  * other-head answer on the same `ask:` key flags `conflict` when it is not the item's
  * recommendation and `reasked` when it is or there is none. Sharing only a `component:`,
  * `token:` or `topic:` key flags `related-answer` and never drops. Answers are the items

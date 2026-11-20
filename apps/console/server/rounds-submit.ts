@@ -22,7 +22,7 @@
  */
 import { createHash } from "node:crypto";
 import { open, rm, type FileHandle } from "node:fs/promises";
-import { depositItemId } from "@titan-design/owner-queue";
+import { BY_REC_FEEDBACK_GENERAL, depositItemId, feedbackAnswerer } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import path from "node:path";
 import { z } from "zod";
@@ -281,7 +281,7 @@ async function submitRound({ source, inboxDir }: SubmitTarget, args: SubmitArgs,
   const bytes = feedbackBytes(manifest, args, now);
   const written = await writeOnce(path.join(roundDir, FEEDBACK_FILE), bytes);
   if (written === null) return { result: { status: "already-submitted" }, round: null, live: null };
-  const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString() };
+  const round = { roundId: args.id, manifest, answers: args.answers, openedAt: modifiedAt, submittedAt: now.toISOString(), answerer: feedbackAnswerer(args.general) };
   const addressed = await recordAddressed(roundDir, args.addressed, now);
   const followUps = await recordFollowUps(roundDir, inboxDir, manifest, args, now);
   const live = liveKeys === undefined ? null : { roundId: args.id, at: round.submittedAt, keys: liveKeys, ...(await viewedBuilds(roundDir, manifest, liveKeys)) };
@@ -328,12 +328,21 @@ interface SubmitHooks {
   onChange?: () => void;
 }
 
-/** The one way an owner answer is written, logged and announced; the nudge's one-tap rec answer runs it too (TP-4044). */
-export type SubmitPipeline = (posted: z.input<typeof submitArgs>) => Promise<SubmitResult>;
+/** Only the by-rec sweep sets it; never read from the request, so no RPC caller can claim the automation's identity. */
+interface SubmitAs {
+  byRec?: boolean;
+}
+
+/**
+ * The one way a round answer is written, logged and announced; the nudge's one-tap rec answer runs it too (TP-4044).
+ * The by-rec sweep (TP-6773) passes `byRec`, which writes owner-queue's by-rec mark into the feedback's `general`; the
+ * decision log and every queue reader take the answerer from that file through `feedbackAnswerer`, never from here.
+ */
+export type SubmitPipeline = (posted: z.input<typeof submitArgs>, as?: SubmitAs) => Promise<SubmitResult>;
 
 export function submitPipeline(source: RoundsSource, decisionLog?: RoundDecisionLog, listeners?: RoundListeners, inboxDir?: string, onChange?: () => void): SubmitPipeline {
-  return async (posted) => {
-    const args = submitArgs.parse(posted);
+  return async (posted, as) => {
+    const args = submitArgs.parse(as?.byRec === true ? { ...posted, general: BY_REC_FEEDBACK_GENERAL } : posted);
     return afterSubmit({ decisionLog, listeners, ...(onChange && { onChange }) }, args.id, await submitRound({ source, ...(inboxDir !== undefined && { inboxDir }) }, args));
   };
 }
