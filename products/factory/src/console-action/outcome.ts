@@ -29,6 +29,9 @@ export type Outcome =
   /** A planning op wrote the owner's bets, outcome or freeze; `ids` are the plan records it wrote. */
   | { outcome: "plan-applied"; op: OwnerOpKind; ids: string[] }
   | { outcome: "already"; ids: string[] }
+  /** A delete-branch tap deleted the branch at `tipSha`, the sha its restore line names. */
+  | { outcome: "deleted"; branch: string; tipSha: string }
+  | { outcome: "already"; branch: string }
   /** A factory-config-set tap wrote the owner's value; `value` is what serve reads at the path after the reload. */
   | { outcome: "config-set"; path: string; value: unknown }
   | { outcome: "already"; path: string; value: unknown }
@@ -78,6 +81,7 @@ export function statusOf(outcome: Outcome): Status {
     case "pause-cleared":
     case "plan-approved":
     case "plan-applied":
+    case "deleted":
     case "config-set":
     case "host-command-started":
     case "already":

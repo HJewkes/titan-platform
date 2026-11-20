@@ -15,6 +15,7 @@ import { consoleInboxDir } from "@titan-design/app-paths";
 import { checkAnswer, type AcceptFiles, type AnswerPayload, type AnswerRequest } from "./gate-answer-check.js";
 import { repeatedResolution } from "./gate-resolve.js";
 import type { FactoryHost } from "./host.js";
+import { DEFAULT_BRANCH_PREFIXES, type BranchDeletePolicy } from "./owner-ops/branch-policy.js";
 import type { TellOwner } from "./owner-ops/standing-answers.js";
 import { readCapped, TOO_LARGE } from "./resolve-proof.js";
 import { VISUAL_ACCEPT_GATE } from "./shepherd/visual-accept.js";
@@ -75,6 +76,8 @@ export interface ConsoleAnswersOptions {
   agentChatBin?: string;
   /** Files an owner inbox item, such as the notice that a merge approval was voided. */
   tellOwner?: TellOwner;
+  /** The branches a console delete-branch op may name, and `shepherd.repos` as the repos it may name them in. */
+  branches?: BranchDeletePolicy;
 }
 
 /** `shepherd.consoleAnswers` from the factory config, telling the owner through the console's deposit spool; absent means the route is not mounted. */
@@ -84,7 +87,9 @@ export function configuredConsoleAnswers(env: NodeJS.ProcessEnv): ConsoleAnswers
   if (configured === undefined) return undefined;
   const inbox = consoleInboxDir({ env });
   const tellOwner: TellOwner = async (deposit) => void (await writeDeposit(inbox, deposit));
-  return { ...configured, tellOwner, ...(shepherd?.agentChatBin !== undefined && { agentChatBin: shepherd.agentChatBin }) };
+  const { branchPrefixes = DEFAULT_BRANCH_PREFIXES, ...dirs } = configured;
+  const branches = { prefixes: branchPrefixes, repos: Object.keys(shepherd?.repos ?? {}) };
+  return { ...dirs, tellOwner, branches, ...(shepherd?.agentChatBin !== undefined && { agentChatBin: shepherd.agentChatBin }) };
 }
 
 /**

@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a prefix need not end in a slash, so a bare word covers whole names",
+      "file": "products/factory/src/owner-ops/branch-policy.ts",
+      "find": "(\\/[A-Za-z0-9_-]+)*\\/$/",
+      "replace": "(\\/[A-Za-z0-9_-]+)*\\/?$/",
+      "kills": [
+        "shepherd.consoleAnswers.branchPrefixes refuses the prefix list [\"scratch\"]"
+      ]
+    }
+  ]
+}

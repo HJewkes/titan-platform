@@ -138,7 +138,7 @@ export function pinOf(item: OwnerItem, row: WatchRow | undefined): string | unde
   if (item.sources[0]!.system === "round") return undefined;
   if (row?.pr != null) return prRef(row.repo, row.pr);
   const { op } = item;
-  if (op !== undefined && "repo" in op) return prRef(op.repo, op.pr);
+  if (op !== undefined && "pr" in op) return prRef(op.repo, op.pr);
   const key = item.keys.map((each) => PR_KEY.exec(each)).find((match) => match !== null);
   return key == null ? undefined : key[1]!.toLowerCase();
 }
