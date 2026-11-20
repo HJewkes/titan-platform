@@ -286,7 +286,9 @@ and a pick) or policy (a D-row `class`, or category `policy`) answer also gets o
 `## Queue answers <date>` in `TITAN_CONSOLE_DECISIONS_FILE`, which must already exist. A Ship
 approval is two-way, so it reaches the ledger only. A personal item, an item of a human-only
 initiative, or any answer while active-work cannot say which initiatives are human-only writes
-nothing. A failed log write never undoes the submit: the result's `log` array says what was
+nothing. An answer whose `by.class` is not `owner` or `owner-remote` (the by-rec sweep's) never
+reaches the ledger, whose rows the decider reads as the owner's precedent; its result says `ledger:
+"excluded"`, reason `not-owner`, and its decisions bullet names it. A failed log write never undoes the submit: the result's `log` array says what was
 written per question, with a reason that names no path, and the daemon log has the error.
 
 A submit that carries `liveViewed` (the variant keys whose live story rendered on the owner's page)
@@ -760,7 +762,9 @@ The daemon also sweeps rounds hourly, starting five minutes after it starts (`se
 A round still unanswered and not withdrawn after the policy's wait (24 h from its `round.json` mtime by default) is
 answered with its recommendations. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
 and the asker's notice see it like any other answer. The feedback's `general` says `auto-by-rec`, not
-`answered-by-rec`, which stays the owner's own tap. The decision log credits `{class: "automation", id: "auto-by-rec"}`.
+`answered-by-rec`, which stays the owner's own tap. The decisions bullet credits `auto-by-rec`, and the
+decider's ledger (`answers.jsonl`) gets no row, so an agent's recommendation never returns to the decider as the owner's
+precedent.
 
 The sweep decides each question with owner-queue's `byRecDecision`. A round is skipped, with the reason in the
 daemon log, when any question:

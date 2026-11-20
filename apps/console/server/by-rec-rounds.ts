@@ -3,7 +3,8 @@
  * question carrying a recommendation that answers it, is answered with those recommendations. It goes through
  * `rounds.submit`'s own pipeline, as the nudge's one tap does, so the decision log, the listeners and the asker's notice
  * hear it as they hear any answer. Its feedback says `auto-by-rec` in `general`, never `answered-by-rec`, which stays the
- * owner's own tap, and the decision log credits the automation resolver, not the owner.
+ * owner's own tap. The decisions bullet credits the automation resolver, and the decider's ledger gets no row, since it
+ * reads every row there as the owner's own answer.
  *
  * Each question is judged by owner-queue's `byRecDecision`, so the exclusion floor applies: an after-answer round (the
  * owner chose to answer it blind), a Ship, a plan approval or a question with no recommendation makes the whole round

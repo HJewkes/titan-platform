@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BY_REC_POLICY_SCHEMA, byRecRowSchema } from "@titan-design/owner-queue";
 import { BY_REC_POLICY_FILE, BY_REC_ROWS_FILE } from "./by-rec-log.js";
 import { BY_REC_MARKERS, sweepByRecRounds } from "./by-rec-rounds.js";
-import type { DecisionLog, RoundDecisionLog } from "./decision-log.js";
+import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type RoundDecisionLog } from "./decision-log.js";
 import { settledListeners } from "./round-fixtures.js";
 import { ANSWERED_BY_REC, AUTO_BY_REC } from "./round-nudge.js";
 import { submitPipeline } from "./rounds-submit.js";
@@ -105,6 +105,17 @@ describe("the rounds by-rec sweep, live", () => {
     expect((await rows()).map(({ subject, mode, result, resolver }) => ({ id: subject.id, mode, result, resolver }))).toEqual(
       ["round:kiln-r1/ramp", "round:kiln-r1/hold"].map((id) => ({ id, mode: "live", result: "resolved", resolver: { class: "automation", id: "auto-by-rec" } })),
     );
+  });
+
+  it("leaves the decider's ledger empty when the real decision log records its answer", async () => {
+    await stageRound("kiln-r1", [RAMP]);
+    const decisionLog = createDecisionLog({ stateDir, decisionsFile: null, humanOnly: async () => ({ known: true, initiatives: new Set() }) });
+    const submit = submitPipeline({ dir }, decisionLog);
+
+    const report = await sweepByRecRounds({ dir, stateDir, submit, now: new Date(NOW) });
+
+    expect(report.outcomes).toEqual([{ roundId: "kiln-r1", result: "resolved" }]);
+    expect(await exists(path.join(stateDir, ANSWERS_FILE))).toBe(false);
   });
 
   it("does not answer a round one minute short of 24 h", async () => {

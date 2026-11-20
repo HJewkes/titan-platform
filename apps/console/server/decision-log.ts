@@ -1,5 +1,5 @@
 /**
- * The console's record of every owner answer it routes: one decider-readable ledger row per answer
+ * The console's record of every answer it routes: one decider-readable ledger row per owner answer
  * in `<state>/answers.jsonl`, and, for one-way, A/B and policy answers only, one bullet under
  * `## Queue answers <date>` in the owner's decisions file. That file's path comes only from config.
  *
@@ -33,7 +33,7 @@ type DecisionsClass = "one-way" | "a-b" | "policy";
 /** `initiatives` are the withheld slugs. `shown`, when given, is the allow list: a tagged initiative outside it is withheld too, so a slug the daemon never listed fails closed. */
 export type HumanOnly = { known: false } | { known: true; initiatives: ReadonlySet<string>; shown?: ReadonlySet<string> };
 
-const REASONS = ["personal", "human-only unknown", "human-only-initiative", "ledger write failed", "decisions write failed", "decisions file missing"] as const;
+const REASONS = ["personal", "human-only unknown", "human-only-initiative", "not-owner", "ledger write failed", "decisions write failed", "decisions file missing"] as const;
 type Reason = (typeof REASONS)[number];
 
 export const decisionLogResult = z.object({
@@ -247,14 +247,25 @@ async function writeLedger(writer: Writer, item: DecisionItem, answer: DecisionA
   });
 }
 
+const OWNER_CLASSES: ReadonlySet<string> = new Set(["owner", "owner-remote"]);
+
+/**
+ * Every ledger row reads as the owner's answer (`answered_by` is an owner class) and the decider learns precedent from
+ * them, so an answer from anyone else, such as the by-rec sweep (TP-6773), stays out of it; the decisions bullet names it.
+ */
+async function ledgerStep(writer: Writer, item: DecisionItem, answer: DecisionAnswer): Promise<{ ledger: DecisionLogResult["ledger"]; failure: Reason | null; note: Reason | null }> {
+  if (!OWNER_CLASSES.has(answer.by.class)) return { ledger: "excluded", failure: null, note: "not-owner" };
+  const failure = await writeLedger(writer, item, answer);
+  return { ledger: failure === null ? "written" : "failed", failure, note: null };
+}
+
 async function writeAnswer(writer: Writer, item: DecisionItem, answer: DecisionAnswer): Promise<DecisionLogResult> {
-  const ledgerFailure = await writeLedger(writer, item, answer);
-  const ledger = ledgerFailure === null ? "written" : "failed";
-  if (decisionsClass(item, answer) === null) return withReason({ ledger, decisions: "not-a-decision" }, ledgerFailure);
+  const { ledger, failure, note } = await ledgerStep(writer, item, answer);
+  if (decisionsClass(item, answer) === null) return withReason({ ledger, decisions: "not-a-decision" }, failure ?? note);
   const file = writer.decisionsFile;
-  if (file === null) return withReason({ ledger, decisions: "not-configured" }, ledgerFailure);
+  if (file === null) return withReason({ ledger, decisions: "not-configured" }, failure ?? note);
   const decisionsFailure = await attempt(writer, "decisions write failed", () => appendDecision(file, writer.today(answer.at), decisionLine(item, answer)));
-  return withReason({ ledger, decisions: decisionsFailure === null ? "written" : "failed" }, ledgerFailure ?? decisionsFailure);
+  return withReason({ ledger, decisions: decisionsFailure === null ? "written" : "failed" }, failure ?? decisionsFailure ?? note);
 }
 
 function withReason(result: Omit<DecisionLogResult, "reason">, reason: Reason | null): DecisionLogResult {
