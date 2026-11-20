@@ -72,6 +72,25 @@ const answerSchema = z.object({
   covers: z.number().int().positive().optional(),
 });
 
+export const STEP_OUTCOMES = ["done", "skipped"] as const;
+/**
+ * The `by.class` of an answer an item's own asker wrote, as when a sitting's last step closes it. It closes that one
+ * item only: the asker is self-declared, so the answer never settles or flags another item (`recheck`).
+ */
+export const ASKER_ANSWER_CLASS = "asker";
+export const MAX_SITTING_STEPS = 20;
+
+/** One owner step in a sitting: the command to paste, an optional typed op the console can tap, and how to tell it worked. */
+export const sittingStepSchema = z.strictObject({
+  title: oneLine,
+  command: z.string().min(1).max(4000),
+  op: ownerOpSchema.optional(),
+  verify: oneLine.optional(),
+});
+
+/** A step as the inbox reads it: the deposit's step plus the outcome its asker recorded, if any. */
+const itemStepSchema = sittingStepSchema.extend({ outcome: z.enum(STEP_OUTCOMES).optional() });
+
 export const blockerSchema = z.strictObject({
   since: timestamp,
   /** The lane, task or PR that cannot move. */
@@ -99,6 +118,8 @@ export const ownerItemSchema = z.object({
   command: z.string().min(1).optional(),
   /** The typed owner action this item proposes; the console acts on it, never on `command`. */
   op: ownerOpSchema.optional(),
+  /** A sitting: ordered owner steps filed as one item, which closes once every step is done or skipped. */
+  steps: z.array(itemStepSchema).min(1).max(MAX_SITTING_STEPS).optional(),
   evidenceRef: z.string().min(1).optional(),
   anchors: anchorsSchema.optional(),
   /** The commits every anchor on the item and its options resolves against. */
@@ -136,3 +157,5 @@ export type LocatorCite = z.infer<typeof locatorCiteSchema>;
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
 export type Audience = (typeof AUDIENCES)[number];
 export type OnSilence = z.infer<typeof onSilenceSchema>;
+export type SittingStep = z.infer<typeof itemStepSchema>;
+export type StepOutcome = (typeof STEP_OUTCOMES)[number];
