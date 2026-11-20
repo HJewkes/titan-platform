@@ -71,7 +71,7 @@ async function holdFor(path: string): Promise<string | undefined> {
 describe("the G10 hold table", () => {
   it("finds the modules the hold decision runs through", () => {
     expect(importClosure(ROOTS)).toEqual(
-      expect.arrayContaining(["products/factory/src/shepherd/registration-hold.ts", "products/factory/src/shepherd/git-pr-files.ts", "products/factory/src/shepherd/tree-carry.ts", "products/factory/src/shepherd/reviewer-lineage.ts"]),
+      expect.arrayContaining(["products/factory/src/shepherd/registration-hold.ts", "products/factory/src/shepherd/git-pr-files.ts", "products/factory/src/shepherd/tree-carry.ts", "products/factory/src/shepherd/pr-changed-paths.ts"]),
     );
   });
 

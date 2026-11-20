@@ -4,8 +4,9 @@ import { z } from "zod";
 import { stepIdMatches } from "../definition.js";
 import { step } from "../workflows/land.js";
 import { APPROVAL_CARRY_STEP } from "./carry-merge.js";
-import { VERSION_PACKAGES_BRANCH, nonReleaseFiles } from "./release.js";
-import { releaseAuthorStep, releasePushed } from "./release-author.js";
+import { nonReleaseFiles } from "./release.js";
+import { releaseAuthorStep } from "./release-author.js";
+import { VERSION_PACKAGES_BRANCH, ownReleaseHead } from "./release-diff.js";
 
 /** The shepherd-release rows that wait only on the owner's word: the preflight at that head found nothing blocking. */
 const OWNER_ROWS: ReadonlySet<string> = new Set(["owner-gate", "no-release-grant"]);
@@ -21,15 +22,13 @@ export const isReleaseOwnerRow = (rowId: string | undefined): boolean => rowId !
  * `pnpm version-packages` writes. Each main push re-runs that action, so the old-to-new head delta always holds main's
  * own changes; what the owner approved is the PR's diff, and that is what must still be release-only (TP-5591).
  * The files are read before the head is confirmed, so a list from any head but `head` fails the check. The release App
- * must also have pushed the branch to `head` (`releasePushed`), since a branch push is open to more than changesets.
+ * must also have pushed the branch to `head` (`ownReleaseHead`), since a branch push is open to more than changesets.
  */
 export async function regeneratedRelease(port: GitHubPort, repo: RepoSlug, pr: number, head: string, releaseAppLogin: string | undefined): Promise<boolean> {
   try {
     const files = await port.listPrFiles(repo, pr);
-    const live = await port.getPr(repo, pr);
-    const own = live.headRef === VERSION_PACKAGES_BRANCH && live.headRepo?.toLowerCase() === repo.toLowerCase();
-    const releaseOnly = own && live.state === "open" && live.headSha === head && files.length > 0 && nonReleaseFiles(files).length === 0;
-    return releaseOnly && (await releasePushed(port, { repo, branch: VERSION_PACKAGES_BRANCH, head }, releaseAppLogin));
+    const live = await ownReleaseHead(port, { repo, pr, head }, releaseAppLogin);
+    return live?.state === "open" && files.length > 0 && nonReleaseFiles(files).length === 0;
   } catch {
     return false;
   }
