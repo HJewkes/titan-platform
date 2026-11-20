@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { quotaRules, QueueOpsSchema, type ArPorts } from "@titan-design/autoresearch";
 import { z } from "zod";
+import { ANSWER_FENCE } from "./agent-run.js";
 
 interface PlannerTarget {
   name: string;
@@ -22,7 +23,7 @@ const roundInput = (input: PlanInput): string => JSON.stringify({ round: input.r
 /** Worded by the same module whose check the answer must pass, from this round's quota. */
 const quotaLine = (input: PlanInput): string => `Quotas this round: ${quotaRules(input.quota).join("; ")}.`;
 
-export const resumeContract = `End with one fenced JSON block of queue ops, keys ${OPS_KEYS}, in the JSON Schema your first brief gave; nothing else is read.`;
+export const resumeContract = `End with ${ANSWER_FENCE} of queue ops, keys ${OPS_KEYS}, in the JSON Schema your first brief gave; nothing else is read.`;
 
 function programSection(target: PlannerTarget): string {
   const adapter = join(target.clone, target.adapterDir);
@@ -38,7 +39,7 @@ export function plannerSpawnBrief(target: PlannerTarget, input: PlanInput): stri
     programSection(target),
     `Round input (the digest of evidence so far, and the quotas your last answer missed):\n${roundInput(input)}`,
     quotaLine(input),
-    `End contract: your last message must end with one fenced JSON block of queue ops matching this JSON Schema, and nothing else is read:\n${OPS_JSON_SCHEMA}`,
+    `End contract: your last message must end with ${ANSWER_FENCE} of queue ops matching this JSON Schema, and nothing else is read:\n${OPS_JSON_SCHEMA}`,
   ].join("\n\n");
 }
 
