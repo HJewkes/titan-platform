@@ -1,7 +1,14 @@
 import * as path from "node:path";
 import { isPythonStdlib } from "./python-stdlib.js";
 
-const MODULE_EXT_RE = /\.(?:tsx|ts|jsx|js|mts|cts|mjs|cjs|py)$/;
+const TS_MODULE_EXT_RE = /\.(?:tsx|ts|jsx|js|mts|cts|mjs|cjs)$/;
+const PY_MODULE_EXT_RE = /\.py$/;
+/**
+ * A Python module keeps a language tag in place of its extension, so `a.py` next
+ * to `a.ts` gets a module node of its own instead of sharing `a` with the
+ * TypeScript file and losing its language to whichever fragment merges last.
+ */
+const PY_MODULE_TAG = "@py";
 
 function toPosix(p: string): string {
   return p.split(path.sep).join("/");
@@ -18,7 +25,8 @@ export function fileId(repoRoot: string, absPath: string): string {
 
 export function moduleId(repoRoot: string, absPath: string): string {
   const rel = repoRelative(repoRoot, absPath);
-  return rel.replace(MODULE_EXT_RE, "");
+  if (PY_MODULE_EXT_RE.test(rel)) return rel.replace(PY_MODULE_EXT_RE, PY_MODULE_TAG);
+  return rel.replace(TS_MODULE_EXT_RE, "");
 }
 
 export function parentModuleId(id: string): string | null {
