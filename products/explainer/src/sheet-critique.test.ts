@@ -32,6 +32,22 @@ describe("critiqueScore", () => {
     expect(critiqueScore(replies).overall).toBe(6.5);
   });
 
+  it("a finding tagged glow is normalised and caps overall at 6.5", () => {
+    const replies = [reply({ findings: [finding({ tags: ["glow"] })] })];
+
+    expect(critiqueScore(replies).overall).toBe(6.5);
+  });
+
+  it("an unknown tag never caps", () => {
+    const replies = [reply({ findings: [finding({ tags: ["sparkle", "glow-ish-thing"] })] })];
+
+    const result = critiqueScore(replies);
+
+    expect(result.overall).toBe(10);
+    expect(result.scores.content).toBe(10);
+    expect(result.top).toHaveLength(1);
+  });
+
   it("caps content at 4 when a finding is tagged unsupported-number", () => {
     const replies = [reply({ findings: [finding({ tags: ["unsupported-number"] })] })];
 
