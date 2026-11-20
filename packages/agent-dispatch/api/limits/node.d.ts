@@ -89,8 +89,8 @@ declare const seatSchema: z.ZodObject<{
     hand_reserve: z.ZodOptional<z.ZodNumber>;
     brief_gate: z.ZodOptional<z.ZodEnum<{
         off: "off";
-        shadow: "shadow";
         on: "on";
+        shadow: "shadow";
     }>>;
 }, z.core.$strict>;
 /** Host-wide agent and worktree slots. Each field is optional so the product's own default stands when unset. */
@@ -114,8 +114,8 @@ declare const PACE_MODES: readonly ["off", "shadow", "on"];
 declare const paceSchema: z.ZodObject<{
     mode: z.ZodEnum<{
         off: "off";
-        shadow: "shadow";
         on: "on";
+        shadow: "shadow";
     }>;
     buffer_points: z.ZodOptional<z.ZodNumber>;
     finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;
@@ -201,8 +201,8 @@ declare const limitsSchema: z.ZodObject<{
         hand_reserve: z.ZodOptional<z.ZodNumber>;
         brief_gate: z.ZodOptional<z.ZodEnum<{
             off: "off";
-            shadow: "shadow";
             on: "on";
+            shadow: "shadow";
         }>>;
     }, z.core.$strict>>>;
     overrides: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -237,8 +237,8 @@ declare const limitsSchema: z.ZodObject<{
     pace: z.ZodOptional<z.ZodObject<{
         mode: z.ZodEnum<{
             off: "off";
-            shadow: "shadow";
             on: "on";
+            shadow: "shadow";
         }>;
         buffer_points: z.ZodOptional<z.ZodNumber>;
         finish_hours_before_reset: z.ZodOptional<z.ZodNumber>;

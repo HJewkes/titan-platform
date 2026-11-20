@@ -1,9 +1,12 @@
+import type { CleanMergeTree } from "./approved-head-walk.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import type { GitExec } from "./exec.js";
 import type { ForcePush } from "./force-pushes.js";
+import type { PrOutcome } from "./pr-outcome.js";
 import type { MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ReviewComment } from "./review-comment.js";
 import type { PullReview } from "./pull-reviews.js";
+import type { RefActivity } from "./port-records.js";
 import type { BranchCommit, CheckRun, Commit, CommitStatus, GitHubWire, IssueComment, JobStep, LoggedCommit, MergeMessage, PrFile, PullRequest, RequiredChecks, SquashSource } from "./port-types.js";
 
 /** Counts of calls that change GitHub; a crash test asserts each is at most one. */
@@ -21,7 +24,7 @@ export interface FakeEffects {
 }
 
 /** Reads a test can make fail, for a caller that must treat a failed read as transient. */
-export type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote";
+export type FakeFaultyRead = "getDefaultBranch" | "getBranchRules" | "getClassicRequiredChecks" | "listCheckRuns" | "listCommitStatuses" | "resolveCommit" | "compareAncestry" | "lsRemote" | "listRefActivity";
 
 export interface FakeGitHub {
   wire: GitHubWire;
@@ -53,6 +56,8 @@ export interface FakeGitHub {
   setRuns(sha: string, runs: CheckRun[]): void;
   /** A foreign push: moves the PR head without this run doing it. */
   pushHead(number: number, sha: string): void;
+  /** The tree a clean merge of `baseParent` into `reviewed` has: the tree of the merge commit the fake's update-branch makes. */
+  cleanMergeTree: CleanMergeTree;
   /** When set, update-branch answers HTTP 422 "merge conflict between base and head", as GitHub does when the base cannot merge in. */
   updateBranchConflict?: boolean;
   /** Faults the next update-branch calls throw, one per call; `lands` means the update happened before the answer was lost. */
@@ -73,6 +78,8 @@ export interface FakeGitHub {
   createdCheckRuns: { id: number; repo: string; request: CreateCheckRunRequest }[];
   /** The synthetic history `compareAncestry` walks by parents; a sha that is no commit, parent, ref tip or PR head answers `missing`. */
   commits: Map<string, Commit>;
+  /** Branch to the moves `listRefActivity` answers, newest first; an unset branch reads as no activity. */
+  refActivity: Map<string, RefActivity[]>;
   /** Sha to its combined status, newest per context. */
   statuses: Map<string, CommitStatus[]>;
   /** Errors the next calls of a read throw, one per call, before it answers. */
@@ -121,4 +128,6 @@ export interface FakeGitHub {
   appLogin: string;
   /** PR number to its head force-pushes, oldest first; unset means none. `listForcePushes` reads at most 100, like the GraphQL page. */
   forcePushes: Map<number, ForcePush[]>;
+  /** PR number to what `readPrOutcome` answers; unset reads the PR's own state with no reviews or commit dates, and a PR the fake lacks answers 404. */
+  outcomes: Map<number, PrOutcome>;
 }

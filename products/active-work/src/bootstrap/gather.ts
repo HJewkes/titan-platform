@@ -1,7 +1,8 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { isDraft } from '../tasks/draft.js';
 import type { Task } from '../schemas/task.js';
-import { deriveOpenLoopsFrom, deriveResolvedLoopsFrom } from '../sessions/open-loops.js';
+import { deriveOpenLoopsFrom, deriveResolvedLoopsFrom, type OpenLoop } from '../sessions/open-loops.js';
 import { loadNotesFromDir } from '../notes/note-file.js';
 import { indexFreshness, READ_FRESH_BUDGET_MS } from '../session-index/freshness.js';
 import { fileHitLog } from '../search/hit-log.js';
@@ -10,18 +11,21 @@ import { today, nowIso } from '../utils/today.js';
 import { rankNotes, subjectOf, type NoteRanking } from './rank-notes.js';
 import { relatedForLoops } from './loop-context.js';
 import { selectFacetLoops, selectFacetTasks } from './facet.js';
-import { loadArtifacts, loadBrief, loadSessionsNewestFirst, loadTasks } from './load.js';
+import { loadArtifacts, loadBrief, type LoadedArtifacts, loadSessionsNewestFirst, loadTasks } from './load.js';
 import {
   compareTasksForBootstrap,
   formatTimeSince,
   renderRecentlyDone,
   renderTopTasks,
 } from './render-tasks.js';
+import { readLedgerRows } from '../decider/ledger.js';
+import { renderRecentDecisions } from './render-decisions.js';
 import { loopLabel } from './render-notes-loops.js';
 import { renderArtifactsBody } from './render-artifacts.js';
 import { defaultLiveStatusFetcher } from './live-status.js';
 import { retrievalDegradations, shownNoteRefs } from './hits.js';
-import { visibilityFor } from '../sessions/visibility.js';
+import { visibilityFor, type Shown } from '../sessions/visibility.js';
+import { defaultGraphPath, openGraph, type WorkspaceGraph } from '../session-index/graph.js';
 import type { BootstrapView, ResolvedBootstrapInput } from './sections.js';
 import type { BootstrapInput, BootstrapTimings, SiblingSession } from './prompt.js';
 
@@ -41,17 +45,22 @@ export function withDefaults(input: BootstrapInput): ResolvedBootstrapInput {
     init: input.init ?? false,
     detectSiblings: input.detectSiblings ?? true,
     siblingProbe: input.siblingProbe ?? readLiveLeases,
+    decisionRows: input.decisionRows ?? readLedgerRows,
     hitLog: input.hitLog ?? fileHitLog(),
     clock: input.clock ?? (() => performance.now()),
   };
 }
 
-async function loadInitiative(input: ResolvedBootstrapInput, initiativeDir: string) {
+async function loadInitiative(
+  input: ResolvedBootstrapInput,
+  initiativeDir: string,
+  artifactsPending: Promise<LoadedArtifacts>,
+) {
   const { frontmatter: brief, body: briefBody } = await loadBrief(initiativeDir, input.slug);
   const [sessions, tasks, artifacts, notes] = await Promise.all([
     loadSessionsNewestFirst(initiativeDir),
     input.loadedTasks ?? loadTasks(initiativeDir),
-    loadArtifacts(initiativeDir),
+    artifactsPending,
     loadNotesFromDir(initiativeDir),
   ]);
   return { brief, briefBody, sessions, tasks, artifacts, notes };
@@ -67,26 +76,34 @@ const ZERO_TIMINGS: BootstrapTimings = {
   loop_queries: 0,
 };
 
-async function timedLoad(input: ResolvedBootstrapInput, timings: BootstrapTimings) {
+async function timedLoad(
+  input: ResolvedBootstrapInput,
+  initiativeDir: string,
+  artifactsPending: Promise<LoadedArtifacts>,
+  timings: BootstrapTimings,
+) {
   const loadStart = input.clock();
-  const initiativeDir = path.join(input.activeRoot, input.slug);
-  const loaded = await loadInitiative(input, initiativeDir);
+  const loaded = await loadInitiative(input, initiativeDir, artifactsPending);
   timings.load = input.clock() - loadStart;
-  return { initiativeDir, loaded };
+  return loaded;
 }
 
 /**
- * Started before ranking so the gh/git round trips overlap note ranking and
- * loop retrieval. Never rejects, so nothing is left unhandled while it runs.
+ * Started as soon as artifacts.yml is read, before the task archive pass and
+ * the rest of the load finish, so the gh/git round trips overlap them, note
+ * ranking and loop retrieval. Never rejects, so nothing is left unhandled
+ * while it runs.
  */
-function startArtifactsBody(
+async function startArtifactsBody(
   input: ResolvedBootstrapInput,
-  loaded: LoadedInitiative,
+  artifactsPending: Promise<LoadedArtifacts>,
   timings: BootstrapTimings,
 ): Promise<string | null> {
   const liveStart = input.clock();
+  const { artifacts, error } = await artifactsPending;
+  if (error) return null;
   return renderArtifactsBody({
-    artifacts: loaded.artifacts.artifacts,
+    artifacts,
     slug: input.slug,
     includeLiveStatus: input.includeLiveStatus,
     fetcher: input.liveStatusFetcher ?? defaultLiveStatusFetcher,
@@ -94,6 +111,11 @@ function startArtifactsBody(
     timings.live_status = input.clock() - liveStart;
     return body;
   });
+}
+
+function startLiveStatus(input: ResolvedBootstrapInput, initiativeDir: string, timings: BootstrapTimings) {
+  const artifactsPending = loadArtifacts(initiativeDir);
+  return { artifactsPending, artifactsBodyPending: startArtifactsBody(input, artifactsPending, timings) };
 }
 
 /**
@@ -116,6 +138,38 @@ async function probeSiblings(input: ResolvedBootstrapInput): Promise<SiblingSess
   }
 }
 
+interface SharedRetrieval {
+  /** Open only for the live graph: absent when injected retrievers stand in, or the file is missing. */
+  graph?: WorkspaceGraph;
+  visible: Shown;
+}
+
+/**
+ * The graph handle and the agent visibility verdict every note and loop query
+ * reads, built once. The launched session is no surface's owner, so its
+ * retrieval gets an agent's view.
+ */
+async function openShared(input: ResolvedBootstrapInput): Promise<SharedRetrieval> {
+  const visible = await visibilityFor({ activeRoot: input.activeRoot, warnings: [] });
+  const live = input.noteRelevance === undefined && input.loopRetriever === undefined;
+  if (input.noteRelevance === undefined) {
+    // Only the live graph needs catching up; a stale one still ranks, just without the newest writes.
+    await indexFreshness.ensure(READ_FRESH_BUDGET_MS);
+  }
+  return { ...(live ? openLiveGraph() : {}), visible };
+}
+
+/** Opening creates the file, so a missing graph stays unopened and retrieval degrades as before. */
+function openLiveGraph(): { graph?: WorkspaceGraph } {
+  const dbPath = defaultGraphPath();
+  if (!existsSync(dbPath)) return {};
+  try {
+    return { graph: openGraph(dbPath) };
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Ranked against what this session is about rather than by date (TP-26).
  * `rankNotes` swallows its own failures and hands back date order, so the
@@ -125,6 +179,8 @@ async function rankForSession(
   input: ResolvedBootstrapInput,
   loaded: LoadedInitiative,
   topTask: Task | undefined,
+  shared: SharedRetrieval,
+  rankStart: number,
   timings: BootstrapTimings,
 ) {
   const { about, noteRelevance, slug } = input;
@@ -133,29 +189,46 @@ async function rankForSession(
     briefTitle: loaded.brief.title,
     ...(topTask !== undefined ? { topTaskId: topTask.id, topTaskTitle: topTask.title } : {}),
   });
-  const rankStart = input.clock();
-  // Only the live graph needs catching up; a stale one still ranks, just without the newest writes.
-  if (noteRelevance === undefined) await indexFreshness.ensure(READ_FRESH_BUDGET_MS);
   const noteRanking = rankNotes({
     notes: loaded.notes.notes,
     slug,
     subject,
     ...(noteRelevance ? { relevance: noteRelevance } : {}),
-    // The launched session is no surface's owner, so its notes get an agent's view.
-    isVisible: await visibilityFor({ activeRoot: input.activeRoot, warnings: [] }),
+    ...(shared.graph ? { graph: shared.graph } : {}),
+    isVisible: shared.visible,
   });
   timings.rank_notes = input.clock() - rankStart;
   return { subject, noteRanking };
+}
+
+type Ranked = { subject: string; noteRanking: NoteRanking };
+
+function queryLoops(
+  input: ResolvedBootstrapInput,
+  loops: OpenLoop[],
+  ranked: Ranked,
+  shared: SharedRetrieval,
+) {
+  return relatedForLoops({
+    loops,
+    labels: loops.map(loopLabel),
+    slug: input.slug,
+    shown: shownNoteRefs(ranked.noteRanking, input.slug),
+    ...(input.loopRetriever ? { retriever: input.loopRetriever } : {}),
+    ...(shared.graph ? { graph: shared.graph } : {}),
+    visible: shared.visible,
+  });
 }
 
 /** Fails open like the ranking: no index or no match renders the loops as before. */
 async function loopsForSession(
   input: ResolvedBootstrapInput,
   loaded: LoadedInitiative,
-  ranked: { subject: string; noteRanking: NoteRanking },
+  ranked: Ranked,
+  shared: SharedRetrieval,
   timings: BootstrapTimings,
 ) {
-  const { slug, facet, now, loopRetriever } = input;
+  const { slug, facet, now } = input;
   const tasks = loaded.tasks.tasks;
   // `mergedPrs` is deliberately unsupplied: derivation must stay offline
   // because bootstrap runs it on every launch.
@@ -163,13 +236,7 @@ async function loopsForSession(
   const selection = selectFacetLoops(openLoops, tasks, facet?.tags);
   const labels = selection.loops.map(loopLabel);
   const loopStart = input.clock();
-  const loopContext = await relatedForLoops({
-    loops: selection.loops,
-    labels,
-    slug,
-    shown: shownNoteRefs(ranked.noteRanking, slug),
-    ...(loopRetriever ? { retriever: loopRetriever } : {}),
-  });
+  const loopContext = await queryLoops(input, selection.loops, ranked, shared);
   timings.loop_retrieval = input.clock() - loopStart;
   timings.loop_queries = selection.loops.length;
   const retrievalDegraded = await retrievalDegradations(
@@ -177,6 +244,41 @@ async function loopsForSession(
     input.hitLog,
   );
   return { openLoops, selection, loopContext, retrievalDegraded };
+}
+
+/** The shared graph is closed in a finally, so no failure past this point leaks the handle. */
+async function retrieveForSession(
+  input: ResolvedBootstrapInput,
+  loaded: LoadedInitiative,
+  topTask: Task | undefined,
+  timings: BootstrapTimings,
+) {
+  const rankStart = input.clock();
+  const shared = await openShared(input);
+  try {
+    const ranked = await rankForSession(input, loaded, topTask, shared, rankStart, timings);
+    const loops = await loopsForSession(input, loaded, ranked, shared, timings);
+    return { ranked, loops };
+  } finally {
+    shared.graph?.db.close();
+  }
+}
+
+interface RecentDecisions {
+  section: string | null;
+  degraded: string[];
+}
+
+/** Fails open: an unreadable ledger leaves the section out and says so. */
+async function recentDecisionsFor(input: ResolvedBootstrapInput): Promise<RecentDecisions> {
+  try {
+    const { rows } = await input.decisionRows(input.activeRoot);
+    const section = renderRecentDecisions(rows, input.slug, input.recentlyDoneDays, input.now);
+    return { section, degraded: [] };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { section: null, degraded: [`decisions: error (${message})`] };
+  }
 }
 
 /** With no canonical session recorded, fall back to the newest of any track (AW-42). */
@@ -219,30 +321,39 @@ function loadedFields(input: ResolvedBootstrapInput, loaded: LoadedInitiative) {
   };
 }
 
+/** Folds an archive pass still in flight into the input, once the caller's tasks are known. */
+async function withArchive(input: ResolvedBootstrapInput): Promise<ResolvedBootstrapInput> {
+  if (!input.pendingArchive) return input;
+  const { archivedIds, tasks, malformed } = await input.pendingArchive;
+  return { ...input, archivedTaskIds: archivedIds, loadedTasks: { tasks, malformed } };
+}
+
 /** The I/O phase, in the order the prompt has always been assembled in. */
-export async function gatherBootstrap(input: ResolvedBootstrapInput): Promise<GatheredView> {
+export async function gatherBootstrap(given: ResolvedBootstrapInput): Promise<GatheredView> {
   const timings: BootstrapTimings = { ...ZERO_TIMINGS };
-  const { initiativeDir, loaded } = await timedLoad(input, timings);
-  const artifactsBodyPending = startArtifactsBody(input, loaded, timings);
+  const initiativeDir = path.join(given.activeRoot, given.slug);
+  const { artifactsPending, artifactsBodyPending } = startLiveStatus(given, initiativeDir, timings);
+  const input = await withArchive(given);
+  const loaded = await timedLoad(input, initiativeDir, artifactsPending, timings);
   const siblings = await probeSiblings(input);
   const topTask = topTaskOf(loaded.tasks.tasks, input.facet?.tags, input.now);
-  const ranked = await rankForSession(input, loaded, topTask, timings);
-  const loops = await loopsForSession(input, loaded, ranked, timings);
-  const artifactsError = loaded.artifacts.error;
+  const { ranked, loops } = await retrieveForSession(input, loaded, topTask, timings);
+  const decisions = await recentDecisionsFor(input);
   return {
     ...loadedFields(input, loaded),
+    recentDecisions: decisions.section,
     input,
     initiativeDir,
     openLoopCount: loops.openLoops.length,
     shownLoops: loops.selection.loops,
     hiddenLoops: loops.selection.hidden,
     loopContext: loops.loopContext,
-    retrievalDegraded: loops.retrievalDegraded,
+    retrievalDegraded: [...loops.retrievalDegraded, ...decisions.degraded],
     siblings,
     topTaskTitle: topTask?.title,
     noteRanking: ranked.noteRanking,
-    artifactsError,
-    artifactsBody: artifactsError ? null : await artifactsBodyPending,
+    artifactsError: loaded.artifacts.error,
+    artifactsBody: loaded.artifacts.error ? null : await artifactsBodyPending,
     bootstrapAt: nowIso(),
     today: today(),
     timings,

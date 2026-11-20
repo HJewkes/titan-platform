@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a call that answers nothing is recorded ok",
+      "file": "apps/console/server/perf/timed-call.ts",
+      "find": "outcome: ok ? \"ok\" : \"error\"",
+      "replace": "outcome: \"ok\"",
+      "kills": [
+        "timedCall a call that answers nothing is recorded as outcome error, and its caller still gets the answer"
+      ]
+    },
+    {
+      "name": "a throwing recorder fails the call",
+      "file": "apps/console/server/perf/timed-call.ts",
+      "find": "  try {\n    recorder.recordUpstream(sample);\n  } catch {\n    // telemetry never fails a call\n  }",
+      "replace": "  recorder.recordUpstream(sample);",
+      "kills": [
+        "timedCall a recorder that throws never fails the call"
+      ]
+    }
+  ]
+}

@@ -113,6 +113,11 @@ describe("loadConfig", () => {
     expect(() => loadConfig(configPath(xdg({ digest: { push: { url: "https://ntfy.example/t", tokenFile: "relative" } } })))).toThrow(/absolute/);
   });
 
+  it("reads an App's [bot] login as shepherd.releaseAppLogin and refuses a bare slug, which a user could register", () => {
+    expect(loadConfig(configPath(xdg({ shepherd: { releaseAppLogin: "demo-release[bot]" } }))).shepherd?.releaseAppLogin).toBe("demo-release[bot]");
+    expect(() => loadConfig(configPath(xdg({ shepherd: { releaseAppLogin: "demo-release" } })))).toThrow(/releaseAppLogin/);
+  });
+
   it("refuses an unknown digest key", () => {
     expect(() => loadConfig(configPath(xdg({ digest: { copyDir: "/a" } })))).toThrow(/invalid config .*copyDir/);
   });

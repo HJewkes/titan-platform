@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the Q-W4 hint does not quote the unspoken user_value text",
+      "file": "products/explainer/src/repair-hints-why.ts",
+      "find": "speak \"${b.user_value?.text}\" in ${b.id}",
+      "replace": "speak it in ${b.id}",
+      "kills": [
+        "the Q-W4 hint quotes the unspoken user_value text and the beat to say it in, and that edit passes the check"
+      ]
+    },
+    {
+      "name": "the Q-W4 hint drops a row id that names a chapter, not a beat",
+      "file": "products/explainer/src/repair-hints-why.ts",
+      "find": "row.detail_beats.filter((id) => !spokenIds.has(id))",
+      "replace": "namedBeats(script, row).map((b) => b.id).filter((id) => !spokenIds.has(id))",
+      "kills": [
+        "the Q-W4 hint still says to add a user_value when the row names a chapter that has only a question beat"
+      ]
+    }
+  ]
+}

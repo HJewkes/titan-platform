@@ -170,7 +170,8 @@ commands are in [docs/lan.md](docs/lan.md).
 | `POST /rpc/work.task` | `{ id }` in; that task with its stage, notes, done_when, mentions, `artifacts.yml` rows with PR state, live refs and open PRs, the sessions whose `session_origin.task_ids` name it, its `children`, and each deliverable id joined to its `deliverable.list` record (`null` when unknown; `deliverablesDegraded` when the registry is unread). An unknown id is not found (66) |
 | `POST /rpc/work.initiative` | `{ slug }` in; that initiative's brief, the 200 most urgent open tasks with the full count, 20 most recent sessions, open loops, notes, top-level sources and a count of nested ones out |
 | `POST /rpc/work.loops` | `{ fetchedAt, board, unavailable, tierWritesOff }`: active-work's `loop.board` (the contract is `server/loop-board.ts`), every open loop with its advisory tier and rank, status, seat, motion, emphasis, tasks, PRs and blockers, plus the tech tree. A daemon with no `loop.board` (older than active-work 0.25) answers `board: null` with `unavailable: "active-work ≥ 0.25 needed"`, never an empty board; any other failure is an error envelope. `tierWritesOff` is the owner guard's refusal for this caller, or null when it may re-tier |
-| `POST /rpc/work.loop-tier` | `{ id, tier, before? }` in, `tier` one of `S`, `A`, `B`, `C`, `parked` or `unsorted`; `{ id, tier, tierRank }` out. An `owner-write` that calls active-work's `loop.tier`, the console's one active-work write, kept in `WRITES` apart from `READS` |
+| `POST /rpc/work.loop-tier` | `{ id, tier, before? }` in, `tier` one of `S`, `A`, `B`, `C`, `parked` or `unsorted`; `{ id, tier, tierRank }` out. An `owner-write` that calls active-work's `loop.tier`, kept in `WRITES` apart from `READS` |
+| `POST /rpc/work.task-done` | `{ slug, id, undo? }` in; `{ id, status }` out. An `owner-write` that calls active-work's `task.done`, or with `undo` its `task.edit` on `status` to `open`; also kept in `WRITES`. The task page's Mark done and Undo buttons send it |
 | `POST /rpc/work.notes` | Notes and top-level sources across every initiative, newest change first, each with its `note:<slug>/<file>` or `source:<slug>/<path>` ref |
 | `POST /rpc/work.record` | `{ ref }` in; that note or source with its markdown body and `truncated` when active-work's read cap cut it. A ref with a `..` segment is refused (65) and a missing file is not found (66) |
 | `POST /rpc/work.search` | `{ q }` in; active-work's `search` hits by ref, and the retrievers that failed under `degraded` |
@@ -730,7 +731,7 @@ round is never withdrawn. Every path below goes through `server/round-withdraw.t
 titan-console rounds withdraw <id> --reason <new-head[:<sha>]|closed|answered-elsewhere|superseded-by:<id>> [--json]
 titan-console rounds sweep                       # dry run: what would be withdrawn, and why; writes nothing
 titan-console rounds sweep --apply               # withdraws everything the dry run lists
-titan-console rounds sweep --decisions <path>    # also scan that decisions file (default TITAN_CONSOLE_DECISIONS_FILE)
+titan-console rounds sweep --decisions <path>    # also scan that decisions file (default TITAN_CONSOLE_DECISIONS_FILE, else <active-work root>/claude-channels/sources/autonomy/decisions.md if present)
 titan-console rounds sweep --json                # one line: {applied, superseded, decisions, gaps}
 ```
 
@@ -982,9 +983,9 @@ blocks. hitl gates carry no `pr:` key yet (TP-2053), so a gate sits in a topic g
 with the one action a tap takes, or the terminal command and why the console offers none. Beside them, `nudges`
 lists the rounds waiting over six hours (see "The round age nudge"). A write action's target
 comes only from a system of record: a hitl gate joined to a live Shepherd row, or a deposit's typed `op` (see "Owner
-inbox deposits"). A deposit with no `op` never gets one. While TP-3918 is open (a gate on a replay-diverged run is
-consumed with no merge), a gate whose row's stall reason reads "replay diverged" is read-only with "resolve from
-Morning (TP-3918)". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
+inbox deposits"). A deposit with no `op` never gets one. Because a gate on a replay-diverged run is
+consumed with no merge, a gate whose row's stall reason reads "replay diverged" is read-only with "resolve from the
+terminal with the command shown". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
 behind look the same in the item.
 
 The **Blocking** section holds only items whose answer unblocks running work, as one rule per source
@@ -1130,8 +1131,8 @@ replay of a released confirm is answered `already` from its outcome file, withou
 view never makes active-work call GitHub), `note.list`, `note.read`, `source.list`, `source.read`,
 `search`, `artifact.list`, `artifact.status`, `context.graph`, `deliverable.list`
 (active-work 0.23 on, read only for a task that names a deliverable) and `loop.board`
-(active-work 0.25 on). Its one write, `loop.tier`, sits in a separate `WRITES` table and is
-called only by the owner-write `work.loop-tier`. Each
+(active-work 0.25 on). Its writes, `loop.tier`, `task.done` and `task.edit` (status only), sit in a separate `WRITES` table and are
+called only by the owner-writes `work.loop-tier` and `work.task-done`. Each
 answer is parsed against the part of the shape the console uses. The browser never calls
 active-work, and no absolute file path is sent to it.
 

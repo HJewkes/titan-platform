@@ -16,6 +16,7 @@ const OPS: OwnerOp[] = [
   { kind: "factory-config-set", path: "shepherd.gateReset.heldRepair", value: "on", expectFrom: "off" },
   { kind: "deploy-pause-clear", pausedAt: "2026-01-01T00:00:00Z", target: "abc1234" },
   { kind: "retire-agent", name: "worker-a", agentId: "agent-1", force: true },
+  { kind: "host-command", command: "broker-restart-window" },
 ];
 
 function deposit(op: OwnerOp | undefined, overrides: Partial<OwnerItemDeposit> = {}): OwnerItemDeposit {
@@ -100,8 +101,66 @@ describe("a deposit carrying an op", () => {
   });
 });
 
+const START_SESSION = {
+  kind: "start-session",
+  name: "research-lead",
+  profile: "researcher",
+  host: "build-box",
+  account: "least-used",
+  cwd: "~/projects/example",
+  surface: "tmux",
+  remoteControl: true,
+  briefPath: "/srv/briefs/research.md",
+} as const;
+
+describe("a start-session op", () => {
+  it("parses with the least-used account", () => {
+    expect(ownerOpSchema.parse(START_SESSION)).toEqual(START_SESSION);
+  });
+
+  it("parses with a named account and the brief's sha256", () => {
+    const pinned = { ...START_SESSION, account: "work-2", cwd: "/srv/work/example", briefSha256: "c".repeat(64) };
+
+    expect(ownerOpSchema.parse(pinned)).toEqual(pinned);
+  });
+
+  it("refuses an extra key", () => {
+    expect(ownerOpSchema.safeParse({ ...START_SESSION, command: "claude --dangerously-skip-permissions" }).success).toBe(false);
+  });
+
+  it("refuses a relative cwd", () => {
+    expect(ownerOpSchema.safeParse({ ...START_SESSION, cwd: "projects/example" }).success).toBe(false);
+  });
+
+  it("refuses a cwd that climbs with ..", () => {
+    expect(ownerOpSchema.safeParse({ ...START_SESSION, cwd: "/srv/work/../../etc" }).success).toBe(false);
+  });
+
+  it("refuses a brief path carrying a control character", () => {
+    expect(ownerOpSchema.safeParse({ ...START_SESSION, briefPath: "/srv/briefs/research.md\nrm -rf ~" }).success).toBe(false);
+  });
+
+  it("refuses a 63-hex brief sha256", () => {
+    expect(ownerOpSchema.safeParse({ ...START_SESSION, briefSha256: "c".repeat(63) }).success).toBe(false);
+  });
+});
+
 describe("opKeys", () => {
   it("gives a gate op no key", () => {
     expect(opKeys(OPS[0]!)).toEqual([]);
+  });
+
+  it("keys a start-session op to the session it names", () => {
+    expect(opKeys(START_SESSION)).toEqual(["session:research-lead"]);
+  });
+});
+
+describe("a host-command op", () => {
+  it("refuses a command id off the vetted list", () => {
+    expect(ownerOpSchema.safeParse({ kind: "host-command", command: "rm-rf-home" }).success).toBe(false);
+  });
+
+  it("refuses a command given as a path", () => {
+    expect(ownerOpSchema.safeParse({ kind: "host-command", command: "/tmp/restart-window.sh" }).success).toBe(false);
   });
 });

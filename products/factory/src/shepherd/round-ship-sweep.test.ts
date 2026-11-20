@@ -5,8 +5,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { GateResolver } from "@titan-design/hitl";
 import type { WorkflowRun } from "@titan-design/workflow";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PendingGate } from "../host.js";
+import { OWNER_AT_HEAD_LEAD } from "../owner-at-head.js";
 import type { RoundFeedback } from "./round-merge.js";
 import { readRounds, roundShips, sweepRoundShips, type HeldAt, type StoredRound } from "./round-ship-sweep.js";
 
@@ -126,6 +127,40 @@ describe("roundShips", () => {
     it("a held visual-path gate stays pending", () => {
       const heldAt: HeldAt = (_repo, pr, headSha) => (pr === 101 && headSha === H1 ? "g10 review" : undefined);
       expect(guardShip("visual-path", [stored(1, 0, allShipped)], heldAt)).toMatchObject({ kind: "pending", reason: expect.stringContaining("held: g10 review") });
+    });
+  });
+
+  describe("a gate land marked with a D21 owner-at-head row (TP-5988)", () => {
+    const seatRun = (rule: { table: string; rowId: string }): WorkflowRun[] =>
+      recase(runs, '\\"table\\": \\"shepherd-seat\\", \\"rowId\\": \\"implementer\\"', `\\"table\\": \\"${rule.table}\\", \\"rowId\\": \\"${rule.rowId}\\"`);
+    const marked = (rule: string, row: string): PendingGate => ({
+      runId: "run-101",
+      stepId: "approve-merge",
+      gate: {
+        ...gates[0]!.gate,
+        prompt: `Merge PR #101 in example-org/example-repo at head ${H1}? CI is green. Policy ${rule}: the owner reads this\n${OWNER_AT_HEAD_LEAD}${row}.`,
+        schema: { properties: { headSha: { const: H1 } } },
+      },
+    });
+    const cases = [
+      { rule: "shepherd-seat/none", row: "skill-path", run: seatRun({ table: "shepherd-seat", rowId: "none" }) },
+      { rule: "shepherd-merge-guard/visual-path", row: "ci-policy-weakened", run: seatRun({ table: "shepherd-merge-guard", rowId: "visual-path" }) },
+    ];
+
+    it.each(cases)("a $rule gate marked $row stays pending under a matching Ship, and the sweep signals nothing", async ({ rule, row, run }) => {
+      const gate = marked(rule, row);
+      const signal = vi.fn();
+      const host = { pendingGates: () => [gate], runtime: { status: (runId: string) => run.find((each) => each.id === runId), signal } };
+      const root = mkdtempSync(join(tmpdir(), "round-ship-d21-"));
+      const round = stored(1, 0, allShipped);
+      mkdirSync(join(root, round.id));
+      writeFileSync(join(root, round.id, "round.json"), round.round);
+      writeFileSync(join(root, round.id, "feedback.json"), round.feedback!);
+
+      const ships = await sweepRoundShips(host, notHeld, root, NOW).finally(() => rmSync(root, { recursive: true, force: true }));
+
+      expect(ships).toEqual([{ kind: "pending", roundId: round.id, pr: "example-org/example-repo#101", reason: `run-101/approve-merge is a ${row} gate, which no Ship answer gives` }]);
+      expect(signal).not.toHaveBeenCalled();
     });
   });
 

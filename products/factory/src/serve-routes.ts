@@ -7,6 +7,7 @@ import { systemPauseClearPorts } from "./deploy-ports.js";
 import { mountGateAnswer, type ConsoleAnswersOptions } from "./gate-answer-rpc.js";
 import type { FactoryHost } from "./host.js";
 import type { OwnerKeys } from "./owner-keys.js";
+import { systemHostCommandPorts } from "./owner-ops/host-command.js";
 import { agentChatRetirePort } from "./owner-ops/retire-agent.js";
 import { mountResolveProof } from "./resolve-proof.js";
 import type { ShepherdServices } from "./shepherd/services.js";
@@ -44,5 +45,6 @@ export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, d
   const { actionsDir, agentChatBin } = consoleAnswers;
   const agentChat = agentChatBin === undefined ? undefined : agentChatRetirePort(agentChatBin);
   const deploy = { stateDir: deployStateDir, ports: systemPauseClearPorts() };
-  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, activeRoot, config });
+  const hostPorts = systemHostCommandPorts();
+  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, agentChatBin, hostPorts, activeRoot, config });
 }

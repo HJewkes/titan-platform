@@ -5,6 +5,7 @@ import {
   setWrapRunner,
 } from './hooks-agent-chat-complete.js';
 import { stashSpawnContext } from '../utils/agent-chat-hook-state.js';
+import { useTempStateRoot } from '../test-support/temp-state-root.js';
 
 interface WrapCall {
   args: string[];
@@ -22,6 +23,8 @@ function capturingWrapRunner(exitCode = 0): { calls: WrapCall[] } {
 afterEach(() => {
   resetWrapRunner();
 });
+
+useTempStateRoot();
 
 describe('handleOnComplete', () => {
   it('is a no-op when no context was stashed for this agentId', async () => {
@@ -76,6 +79,7 @@ describe('handleOnComplete', () => {
     expect(args).toContain('--no-loops');
     expect(args).toContain('--no-notes');
     expect(args).toContain('--no-tasks');
+    expect(args).toContain('--no-reports');
     const bodyIndex = args.indexOf('--body');
     expect(args[bodyIndex + 1]).toContain('scout');
     expect(args[bodyIndex + 1]).toContain('code 0');

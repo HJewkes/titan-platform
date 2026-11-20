@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the hallmark error line moves back above 30",
+      "file": "products/explainer/doctrine/writing-gate.json",
+      "find": "\"errorAbove\": 28,",
+      "replace": "\"errorAbove\": 32,",
+      "kills": [
+        "the shipped judged policy warns at 25 marked passages per 1,000 words and errors at 30"
+      ]
+    },
+    {
+      "name": "the hallmark warning line drops to the lab human p90",
+      "file": "products/explainer/doctrine/writing-gate.json",
+      "find": "\"warnAbove\": 20,",
+      "replace": "\"warnAbove\": 13.3,",
+      "kills": [
+        "the shipped judged policy passes 20 marked passages per 1,000 words, the warning line itself"
+      ]
+    },
+    {
+      "name": "words per term is an error again",
+      "file": "products/explainer/doctrine/writing-gate.json",
+      "find": "\"severity\": \"warning\",\n      \"floor\": 60,",
+      "replace": "\"severity\": \"error\",\n      \"floor\": 60,",
+      "kills": [
+        "the shipped judged policy only warns on words per term under the floor, so the row never fails the verdict alone"
+      ]
+    }
+  ]
+}

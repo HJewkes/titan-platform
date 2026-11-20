@@ -198,7 +198,7 @@ declare function workingTreeSource(): IndexSource;
  * index version is never reused, so a change to node/edge shape or to a metric's
  * value for the same bytes can never be carried forward from an incompatible graph.
  */
-declare const INDEX_VERSION = "0.35.0";
+declare const INDEX_VERSION = "0.36.0";
 interface IndexOptions {
     /** Roots to walk. Node ids are still rooted at the git toplevel, so importers across roots share an id space. */
     paths: string[];
@@ -634,7 +634,6 @@ declare function canonicalEdgeKind(name: string): string;
 interface RenamePair {
     oldPath: string;
     newPath: string;
-    similarity: number;
 }
 interface DetectRenamesOptions {
     repoRoot: string;

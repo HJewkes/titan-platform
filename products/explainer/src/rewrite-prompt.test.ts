@@ -28,7 +28,7 @@ const plan = (round: 1 | 2): RegisterEditPlan => ({
 
 const EVERY_REFUSAL: RefusalRule[] = [
   "empty", "entity", "markup", "terms", "length", "number-lost", "number-invented", "range-split", "number-vague", "device-added",
-  "closer-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "fact-id", "sentence-cap", "missing",
+  "closer-added", "hallmark-added", "list-lost", "list-emptied", "cue-lost", "cue-order", "new-term", "fact-id", "sentence-cap", "missing",
 ];
 const refusedPlan = (refused: RefusalRule[]): RegisterEditPlan => ({
   round: 2,
@@ -85,6 +85,16 @@ describe("renderRewritePrompt", () => {
     expect(prompt).not.toMatch(/the one that matters/i);
   });
 
+  it("quotes each cut sentence verbatim and says to delete or fold it, never reword it", () => {
+    const cuts = ["That little whistle is called the vent note.", "By the end of this, you'll be able to fix any kettle."];
+    const cutting: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", cuts }] };
+
+    const prompt = renderRewritePrompt(chapter, chapterBeats, cutting);
+
+    expect(prompt).toContain(`- Cuts: delete each of ${cuts.map((cut) => `"${cut}"`).join(", ")}, or fold what it says into a neighbouring sentence; never reword it.`);
+    expect(findPromptLeaks(prompt, loadDoctrine(), loadRuleRegistry())).toEqual([]);
+  });
+
   it("names the cue word a collapsing list holds as the item that stays in the line", () => {
     const cuedList: RegisterEditPlan = { round: 1, directives: [{ beat: "w2", chapter: "ch2", triads: ["the desk, the row and the label."] }] };
 
@@ -119,6 +129,13 @@ describe("renderRewritePrompt", () => {
     expect(refusalNote("some-new-rule")).toBe("it changed what the beat says; stay closer to the original");
     expect(new Set([...notes, refusalNote("some-new-rule")]).size).toBe(EVERY_REFUSAL.length + 1);
     expect(notesIn(renderRewritePrompt(chapter, chapterBeats, refusedPlan(EVERY_REFUSAL)))).toHaveLength(EVERY_REFUSAL.length);
+  });
+
+  it("renders a plain-words note for an added hallmark sentence", () => {
+    expect(notesIn(renderRewritePrompt(chapter, chapterBeats, refusedPlan(["hallmark-added"])))).toEqual([
+      `- Your last version was not used: ${refusalNote("hallmark-added")}.`,
+    ]);
+    expect(refusalNote("hallmark-added")).toContain("names a thing");
   });
 
   it("names no rule id, code-enforced rule or band number in any refusal note", () => {

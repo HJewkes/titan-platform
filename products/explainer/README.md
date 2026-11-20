@@ -655,15 +655,19 @@ nothing. Refusals (`PR_GATHER_CODES`, no `facts.jsonl`): `E-PR-REF`, `E-PR-READ`
 (no task id in the title, body or branch: the profile's `linked-task` precondition), `E-CALLGRAPH` (the clone cannot
 index the head) and `E-NO-CLONE`. `W-NO-FINDINGS` and `W-NO-EDGES` warn and still gather.
 
-`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--through audition|script] [--json] [--data-dir <dir>]` is the only
+`explainer pr trigger [--dry-run] [--clone <owner/repo=dir>]... [--port <n>] [--visual-path <glob>]... [--through audition|script] [--json] [--data-dir <dir>]` is the only
 automatic path (owner answer Q6). It reads `titan-factory shepherd waiting --json` and starts a decision-brief run
-only for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
+for an owner gate whose hold class is `visual-gate2`, on a head the gate still names (`autoBriefTargets`).
+With `--visual-path` (repeatable; `**` crosses directories, `*` and `?` stay in one segment) it also reads the open PRs from
+`titan-factory shepherd prs --json` and each one's changed files from `gh pr diff --name-only`, once per sweep, and starts
+every non-draft PR at its current head with a changed file matching a glob, owner gate or not; its `brief.json` records
+trigger `visual-path`. A PR whose files cannot be read is skipped. A PR found by both routes starts once.
 Every other PR, seat gates and other owner holds included, is on request only. A start writes
 `<data-dir>/pr-briefs/<owner>--<repo>--<N>--<head12>/brief.json` (profile `pr-overview`, cut `decision-brief`), then
 runs an `explainer-video` run from `gather` to `audition` (`briefRunStart`). `--through script` opts in to the script as well, planned on the spine the audition writes from its pick, at about $1 more a head; it is off by default while most champion scripts still fail L0 (TP-4095), so most such runs would pay to end `refused`: the gather stage writes `facts.jsonl` and
 `gather.json` into the same directory, and `run.json` names the run, its status and each stage's status. A directory
 that already holds `brief.json` is `already`, so a repeated sweep starts each head once. Right before each start the
-sweep reads the gates again, and a head no longer current there is `moved`. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
+sweep reads the gates (or, for a `--visual-path` PR, Shepherd's PR list) again and compares heads only, and a head no longer current there is `moved`. `--dry-run` prints `would-start` rows and writes nothing. Nothing schedules the sweep:
 run it by hand, or from whatever the owner wires. Exit 0, or 1 when a start was refused.
 
 `explainer eval pace <script.json> [--format spike|v1] [--timing <words.json>] [--config <id>]
@@ -687,7 +691,7 @@ durations, ch2 shows 20 items over 39.1 s, 30.7 a minute. On the pipeline-explai
 1 only when an error row (Q-E7 or Q-E11) fails. A warning row is recorded as failing but never changes
 the exit code.
 
-`explainer eval writing <script> [--format v1|spike|text] [--json] [--table <file>] [--bench <dir> --config <id>]`
+`explainer eval writing <script> [--format v1|spike|text] [--json] [--table <file>] [--bench <dir> --config <id>] [--judge <config>]`
 scores a script at $0 against `doctrine/writing-check.json`, reading each row's status at the script's own length
 bucket. `--format text` takes one beat per line. Rows print by dimension with value, band, human standing, status,
 verdict and up to 3 offending spans. Human standing is a percentile: the share of held-out human windows at that length
@@ -711,6 +715,26 @@ hallmark row reports only. `eval l0` carries the same rows through `writingGateC
 (Q-V17), plus `hallmark:named-before-defined` (Q-V18), which errors when a beat speaks a term a later beat declares in
 `new_terms`. The same file makes `phrases` (`register:phrases` too) and `variety:connector-share` report-only over
 whatever the calibrated table says, so a recalibration cannot undo the owner's call.
+
+`--judge <config>` adds the rows a model measures (TP-5721 S5); it is the only part of `eval writing` that spends.
+The config is the judge config every judged eval reads (`JudgeConfigSchema`) plus an optional `extractor_model`;
+`fixtures/writing-gate/judge.example.json` names opus for the hallmark judge and sonnet for the term extractor, the
+writing lab's validated pair. Two calls run through `createJudgeHarness`: with `claude-print` the credential is the
+Claude Code CLI's own keychain login on the host (the account in `CLAUDE_CONFIG_DIR`, `ANTHROPIC_API_KEY` stripped),
+each capped by `max_budget_usd`. The hallmark judge (`rubrics/writing-hallmark-judge.md` over
+`rubrics/writing-hallmark-checklist.json`) quotes every passage it marks; the term extractor
+(`rubrics/writing-terms-extract.md`) lists the technical terms the piece introduces. A mark counts only when its quote
+is found in the text and its item is on the checklist, and a term only when the text says it; the rest are dropped and
+counted. A synthetic naming-refrain paragraph is put after the piece as a canary: its marks never count, and a run in
+which the judge marks none of it is untrusted. `writing:hallmark-marks` is distinct marked passages per 1,000 words,
+an error over 28 and a warning over 20, a margin of more than 5 from both the rejected scripts and the human controls
+in the S5 acceptance runs; `writing:words-per-term` is words over verified terms, a warning under 60 with one term
+always allowed, kept at warning level because a human control fell inside the rejected range, until a larger human
+calibration exists; `writing:terms-first-400` reports the terms in the first 400 words. The thresholds and their
+evidence are in the `judged` block of `doctrine/writing-gate.json`. A failed call or an untrusted run leaves both rows
+unmeasured, and an unmeasured row fails at its severity, so an unmeasured hallmark row fails the verdict. The report carries `judged` (trust, canary marks, dropped counts, terms,
+spend and `eval_version`, which hashes the three rubrics, both models and the canary). `--bench` with `--judge` is
+refused for now. Expect a few tens of cents of subscription usage per script.
 
 A story spine (`spine/v1`, `parseSpine` in `src/spine-schema.ts`) is the planner's `spine.md`, read
 from its numbered tables: §3 journey, §4 architecture, §5 constraints, §6 item ledger and, optionally,
@@ -1130,3 +1154,30 @@ which writes `<stem>.mp4` (stem from the `beats.json` name), `captions.vtt` and 
   the render and write `qa.json`. `--no-qa` skips the gate and the manifest records `qaGate: "skipped"`.
 
 The `render` stage of `explainer run` takes the same path from script and resolved (above). TP-2993 writes the full first-video guide.
+
+### Audio library
+
+`explainer audio` keeps a local library of licensed background beds (`bgm`) and sound effects (`sfx`) for the
+mix stage. The repo ships code and synthetic test tones only, never a music or SFX file. The library lives at
+`<dataDir>/audio-library/`; `--audio-library <dir>` or `EXPLAINER_AUDIO_LIBRARY` moves it.
+
+- `originals/<sha256>.<ext>` keeps each file as received, for provenance.
+- `wav/<sha256>.wav` is that file normalised once at import by ffmpeg (through `runFfmpeg`) to 48 kHz mono PCM16,
+  so the mix only reads WAV. The name is the original's sha.
+- `ledger.jsonl` holds one `explainer.audio-ledger/v1` entry per asset (`LedgerEntrySchema`): id, kind, both shas,
+  source, licence, creator, title, retrieval time, duration, integrated LUFS from ffmpeg `ebur128`, sample peak,
+  tags, a bed's loop points, an SFX's `anchorS` (where its hit lands) and a generated asset's generator, seed and
+  params. It is append-only; re-importing a file the ledger already holds is a no-op.
+
+Import accepts only `generated-own` and `CC0-1.0` (`ALLOWED_LICENCES`); CC BY waits on the attribution policy
+(TP-3991 Q2). It refuses any other licence by name, an id already used by another file, and a silent file.
+
+- `explainer audio import <file> --id <id> --kind bgm|sfx --licence <id> --source-kind <kind> --source-name <name>
+  [--source-url] [--creator] [--title] [--tags a,b] [--anchor-s <s>] [--loop]` adds one file.
+- `explainer audio gen --kind bgm --seed <n> [--duration-s <s>]` or `--kind sfx --name click|pop|whoosh|chime|riser
+  --seed <n>` makes a clip with the procedural generator and imports it as `generated-own`. A bed is a seeded
+  four-chord pad of additive sines that loops cleanly; each SFX records its `anchorS`. One seed always makes the
+  same file.
+- `explainer audio list` prints id, kind, licence, seconds, integrated LUFS and tags.
+
+ffmpeg must be on `PATH` for import and gen.

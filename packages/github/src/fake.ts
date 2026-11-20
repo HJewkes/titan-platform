@@ -3,6 +3,7 @@ import { GITHUB_ACTIONS_APP_ID } from "./readiness.js";
 import { PR_COMMITS_CAP, PR_FILES_CAP } from "./port-types.js";
 import type { CreateCheckRunRequest } from "./check-run-create.js";
 import { FORCE_PUSHES_CAP, type ForcePush } from "./force-pushes.js";
+import { fakePrOutcome } from "./fake-pr-outcome.js";
 import type { OpenPrRequest } from "./pr-list.js";
 import type { CheckRun, GitHubWire, LoggedCommit, MergeMethod, PrFile, PullRequest, PutFileRequest } from "./port-types.js";
 import type { FakeEffects, FakeFaultyRead, FakeGitHub } from "./fake-types.js";
@@ -65,6 +66,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     branchProtected: false,
     createdCheckRuns: [],
     commits: new Map(),
+    refActivity: new Map(),
     statuses: new Map(),
     readFaults: {},
     refs: new Map([[base, options.baseSha ?? fakeSha("base")]]),
@@ -89,6 +91,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     reviews: new Map(),
     appLogin: "fake-app[bot]",
     forcePushes: new Map(),
+    outcomes: new Map(),
     addPr(fields) {
       const number = prs.size + 1;
       const pr: PullRequest = {
@@ -104,6 +107,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     pushHead: (number, sha) => {
       mustPr(prs, number).headSha = sha;
     },
+    cleanMergeTree: async (baseParent, reviewed) => mergeTreeOf(baseParent, reviewed),
   };
   const record = <T>(name: string, value: T): T => (fake.calls.push(name), value);
   const read = <T>(name: FakeFaultyRead, answer: () => T): T => {
@@ -146,6 +150,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     listCheckRuns: async (_repo, sha, filter) => read("listCheckRuns", () => (filter === "all" ? [...(runs.get(sha) ?? [])] : latestAttempts(runs.get(sha) ?? []))),
     createCheckRun: async (target, request) => record("createCheckRun", createCheckRun(fake, runs, options.appId ?? FAKE_APP_ID, target, request, ++counter)),
     getCommit: async (_repo, sha) => record("getCommit", fake.commits.get(sha) ?? { sha, parents: [], tree: fakeSha(`tree:${sha}`) }),
+    listRefActivity: async (_repo, branch) => read("listRefActivity", () => (fake.refActivity.get(branch) ?? []).map((entry) => ({ ...entry }))),
     resolveCommit: async (_repo, sha) => read("resolveCommit", () => resolveCommit(fake, runs, sha)),
     listCommitStatuses: async (_repo, sha) => read("listCommitStatuses", () => (fake.statuses.get(sha) ?? []).map((status) => ({ ...status }))),
     getWorkflowRunStatus: async (_repo, runId) => record("getWorkflowRunStatus", runStatus.get(runId) ?? openJobStatus(runs, runId) ?? "completed"),
@@ -189,6 +194,7 @@ export function fakeGitHub(options: { base?: string; baseSha?: string; repo?: st
     },
     listReviewComments: async (_repo, number) => record("listReviewComments", (fake.reviewComments.get(number) ?? []).map((comment) => ({ ...comment }))),
     listForcePushes: async (_repo, number) => record("listForcePushes", listForcePushes(fake, number)),
+    getPrOutcome: async (_repo, number) => record("getPrOutcome", fakePrOutcome(fake, number, (one) => mustPr(prs, one))),
     ...fakeReviewWire(() => fake, (number) => mustPr(prs, number).number, record, () => 7000 + ++counter),
   };
   const fake: FakeGitHub = Object.assign(state, { wire, gitExec: fakeLsRemote(prs, () => read("lsRemote", () => undefined)) });
@@ -335,10 +341,13 @@ function updateBranch(fake: FakeGitHub, pr: PullRequest, expected: string, nextS
   landUpdate(fake, pr, nextSha);
 }
 
+const mergeTreeOf = (baseParent: string, reviewed: string): string => fakeSha(`tree:merge:${reviewed}:${baseParent}`);
+
 function landUpdate(fake: FakeGitHub, pr: PullRequest, nextSha: (tag: string) => string): void {
   fake.effects.updateBranch += 1;
   const merged = nextSha("update");
-  fake.commits.set(merged, { sha: merged, parents: [pr.headSha, fake.refs.get(pr.baseRef) ?? ""] });
+  const baseTip = fake.refs.get(pr.baseRef) ?? "";
+  fake.commits.set(merged, { sha: merged, parents: [pr.headSha, baseTip], tree: mergeTreeOf(baseTip, pr.headSha) });
   pr.headSha = merged;
   pr.behind = false;
 }

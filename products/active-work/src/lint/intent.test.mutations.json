@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "schema failures are not reported",
+      "file": "products/active-work/src/lint/intent.ts",
+      "find": "return result.success ? [] :",
+      "replace": "return true ? [] :",
+      "kills": ["lintIntent refuses a line without a quote and a line without a date, naming each file"]
+    },
+    {
+      "name": "a file that is not YAML passes",
+      "file": "products/active-work/src/lint/intent.ts",
+      "find": "return [`not YAML: ${err instanceof Error ? err.message : String(err)}`];",
+      "replace": "return [];",
+      "kills": ["lintIntent reports a file that is not YAML instead of throwing"]
+    }
+  ]
+}

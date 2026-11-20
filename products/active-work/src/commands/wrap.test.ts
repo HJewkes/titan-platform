@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as paths from '../utils/paths.js';
 import YAML from 'yaml';
 import { z } from 'zod';
 import wrap from './wrap.js';
@@ -11,6 +12,7 @@ import { withTempActiveRoot } from '../test-support/test-helpers.js';
 import { today } from '../utils/today.js';
 import { setGitRunner, resetRunners, type CommandRunner } from '../utils/git-gh.js';
 import { expandTilde } from '../utils/paths.js';
+import { ValidationError } from '../errors.js';
 import type { CommandContext } from '../registry/index.js';
 
 function makeCtx(activeRoot: string): CommandContext {
@@ -80,6 +82,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
     body: 'what happened\n',
     no_notes: true,
     no_tasks: true,
+    no_reports: true,
     ...overrides,
   });
 }
@@ -150,9 +153,9 @@ describe('wrap', () => {
         makeCtx(activeRoot),
       );
 
-      const [loop] = await deriveOpenLoops(path.join(activeRoot, SLUG), { now: new Date() });
+      const loop = (await deriveOpenLoops(path.join(activeRoot, SLUG), { now: new Date() })).at(0);
       expect(result.ready_to_end).toBe(true);
-      expect(loop.due).toBe(due);
+      expect(loop?.due).toBe(due);
     });
   });
 
@@ -471,6 +474,7 @@ describe('wrap', () => {
             no_loops: true,
             no_notes: true,
             no_tasks: true,
+            no_reports: true,
           }),
           makeCtx(activeRoot),
         );
@@ -705,6 +709,88 @@ describe('wrap', () => {
     });
   });
 
+  describe('--reports / --no-reports', () => {
+    const REPORTS = [
+      { ref: 'sources/notes/2026-05-12-finding.md', answer: 'SI-1' },
+      { ref: 'msg-0042', answer: 'none' },
+    ];
+
+    async function onlySessionFrontmatter(activeRoot: string, filename: string) {
+      const raw = await fs.readFile(path.join(activeRoot, SLUG, 'sessions', filename), 'utf8');
+      return z.record(z.string(), z.unknown()).parse(YAML.parse(raw.split('---')[1] ?? ''));
+    }
+
+    it('refuses without either flag, without naming --no-reports', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const args = () =>
+          baseArgs({ no_reports: undefined, no_loops: true, session_id: 'sess-noreports' });
+
+        await expect(wrap.run(args(), makeCtx(activeRoot))).rejects.toThrow(/reports.*--reports/s);
+        await expect(wrap.run(args(), makeCtx(activeRoot))).rejects.toThrow(
+          expect.objectContaining({ message: expect.not.stringContaining('--no-reports') }),
+        );
+      });
+    });
+
+    it('refuses --no-reports alongside --reports', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        await expect(
+          wrap.run(
+            baseArgs({ session_id: 'sess-bothreports', no_loops: true, reports: REPORTS }),
+            makeCtx(activeRoot),
+          ),
+        ).rejects.toThrow(/--no-reports asserts/);
+      });
+    });
+
+    it('records no_reports: true in the session file', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const result = await wrap.run(
+          baseArgs({ session_id: 'sess-nr', no_loops: true }),
+          makeCtx(activeRoot),
+        );
+        const fm = await onlySessionFrontmatter(activeRoot, result.filename);
+        expect(fm['no_reports']).toBe(true);
+        expect(fm['reports']).toBeUndefined();
+      });
+    });
+
+    it('records the --reports array in the session file', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const result = await wrap.run(
+          baseArgs({
+            session_id: 'sess-r',
+            no_loops: true,
+            no_reports: undefined,
+            reports: JSON.stringify(REPORTS),
+          }),
+          makeCtx(activeRoot),
+        );
+        const fm = await onlySessionFrontmatter(activeRoot, result.filename);
+        expect(fm['reports']).toEqual(REPORTS);
+        expect(fm['no_reports']).toBeUndefined();
+      });
+    });
+
+    it('rejects a malformed --reports array as a ValidationError', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const run = (reports: string) =>
+          wrap.run(
+            baseArgs({
+              session_id: 'sess-badreports',
+              no_loops: true,
+              no_reports: undefined,
+              reports,
+            }),
+            makeCtx(activeRoot),
+          );
+
+        await expect(run('not json')).rejects.toBeInstanceOf(ValidationError);
+        await expect(run('[{"ref":"msg-1"}]')).rejects.toBeInstanceOf(ValidationError);
+      });
+    });
+  });
+
   describe('--tasks-filed', () => {
     it('rejects an id that names no task, and writes nothing', async () => {
       await withTempActiveRoot(async (activeRoot) => {
@@ -775,16 +861,17 @@ describe('wrap', () => {
         const notesDir = path.join(activeRoot, SLUG, 'sources', 'notes');
         const files = await fs.readdir(notesDir);
         expect(files).toEqual([`${today()}-flock-is-per-initiative.md`]);
-        const frontmatter = await readFrontmatter(path.join(notesDir, files[0]));
+        const noteFile = files.at(0) ?? '';
+        const frontmatter = await readFrontmatter(path.join(notesDir, noteFile));
         expect(frontmatter).toMatchObject({
           kind: 'gotcha',
           title: 'flock is per-initiative',
           created: today(),
           tags: ['locking'],
         });
-        const raw = await fs.readFile(path.join(notesDir, files[0]), 'utf8');
+        const raw = await fs.readFile(path.join(notesDir, noteFile), 'utf8');
         expect(raw).toContain('Nesting a second lock');
-        expect(result.files_updated).toContain(path.join('sources', 'notes', files[0]));
+        expect(result.files_updated).toContain(path.join('sources', 'notes', noteFile));
       });
     });
 
@@ -832,7 +919,7 @@ describe('wrap', () => {
         }
         return GIT_WITH_WORK(
           bin,
-          args[1] === LINKED ? [args[0], sampleRepo(), ...args.slice(2)] : args,
+          args.at(1) === LINKED ? [args.at(0) ?? '', sampleRepo(), ...args.slice(2)] : args,
         );
       });
       await withTempActiveRoot(async (activeRoot) => {
@@ -969,6 +1056,46 @@ describe('wrap', () => {
 
       const filenames = results.map((r) => r.filename).sort();
       expect(filenames).toEqual(['2026-05-12-0900-race-1.md', '2026-05-12-0900-race.md']);
+    });
+  });
+
+  describe('promotion candidates', () => {
+    const hit = (slug: string, day: number): string =>
+      JSON.stringify({ ts: `2026-11-0${day}T00:00:00Z`, slug, ref: 'note:shared', rank: 1 }) + '\n';
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('returns a note surfaced in 3 renders across 2 initiatives and warns about it', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        const stateRoot = await fs.mkdtemp(path.join(activeRoot, 'state-'));
+        await fs.writeFile(
+          path.join(stateRoot, 'retrieval-hits.jsonl'),
+          hit('alpha', 1) + hit('alpha', 2) + hit('beta', 3),
+        );
+        vi.spyOn(paths, 'getStateRoot').mockReturnValue(stateRoot);
+        const ctx = makeCtx(activeRoot);
+
+        const result = await wrap.run(baseArgs({ no_loops: true }), ctx);
+
+        expect(result.promotion_candidates).toEqual([
+          { ref: 'note:shared', renders: 3, initiatives: 2 },
+        ]);
+        expect(ctx.warnings).toContain(
+          'note:shared has surfaced in 3 sessions across 2 initiatives; consider note promote',
+        );
+      });
+    });
+
+    it('returns no candidates when the log is absent', async () => {
+      await withTempActiveRoot(async (activeRoot) => {
+        vi.spyOn(paths, 'getStateRoot').mockReturnValue(path.join(activeRoot, 'no-state'));
+
+        const result = await wrap.run(baseArgs({ no_loops: true }), makeCtx(activeRoot));
+
+        expect(result.promotion_candidates).toEqual([]);
+      });
     });
   });
 });

@@ -9,6 +9,24 @@
       "kills": [
         "shepherd.register slice a re-register without lastSlice keeps the stored last-slice mark"
       ]
+    },
+    {
+      "name": "a draft PR stops not-mergeable",
+      "file": "products/factory/src/workflows/land.ts",
+      "find": "  if (ci.verdict !== \"green\" && ci.mergeableState === \"draft\") return stopped(\"draft\",",
+      "replace": "  if (false) return stopped(\"draft\",",
+      "kills": [
+        "shepherd.register after a stopped run a draft pull request ends the run stopped draft, not not-mergeable"
+      ]
+    },
+    {
+      "name": "a draft stop is not restartable",
+      "file": "products/factory/src/shepherd/restart.ts",
+      "find": "\"not-mergeable\", \"draft\", \"conflict\"",
+      "replace": "\"not-mergeable\", \"conflict\"",
+      "kills": [
+        "shepherd.register after a stopped run a run stopped draft gets a new run once registered again"
+      ]
     }
   ]
 }

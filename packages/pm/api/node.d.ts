@@ -1,5 +1,5 @@
 import { ZodType } from 'zod';
-import { f as Outcome, B as Bet, F as Freeze, O as OutOfScope, T as Task } from './planning.js';
+import { i as Outcome, B as Bet, F as Freeze, O as OutOfScope, I as IntentLine, T as Task, S as ScorecardWeekRow } from './prediction-check.js';
 
 type PlanStoreErrorKind = "invalid" | "not-found" | "lock-timeout";
 /** A plan-store refusal the host maps onto its own error kinds; `kind` says which. */
@@ -21,6 +21,7 @@ interface PlanRecords {
     bet: Bet;
     freeze: Freeze;
     "out-of-scope": OutOfScope;
+    intent: IntentLine;
 }
 type PlanKind = keyof PlanRecords;
 declare function planSchema<K extends PlanKind>(kind: K): ZodType<PlanRecords[K]>;
@@ -31,6 +32,10 @@ declare function loadPlanRecords<K extends PlanKind>(activeRoot: string, initiat
 declare function readPlanRecord<K extends PlanKind>(activeRoot: string, kind: K, id: string): Promise<PlanRecords[K] | null>;
 /** Validates the record before any disk write, then writes it atomically to the file its id names. */
 declare function writePlanRecord<K extends PlanKind>(activeRoot: string, kind: K, record: PlanRecords[K]): Promise<PlanRecords[K]>;
+/** Every intent line of one lane, in filename order; a missing lane holds none. */
+declare function loadLaneIntentLines(activeRoot: string, initiative: string, lane: string): Promise<IntentLine[]>;
+/** Validates the line, then writes it atomically under its lane; the id's prefix must be the lane. */
+declare function writeLaneIntentLine(activeRoot: string, initiative: string, lane: string, line: IntentLine): Promise<IntentLine>;
 /** The next free `<initiative>/<letter><n>` id, one above the highest number in use. */
 declare function nextPlanId(initiative: string, letter: string, records: readonly {
     id: string;
@@ -63,25 +68,28 @@ declare function readInitiativeTasks(activeRoot: string, slug: string, options?:
     archive?: boolean;
 }): Promise<InitiativeTasks>;
 
-export { type InitiativeTasks, type PlanKind, type PlanRecords, PlanStoreError, type PlanStoreErrorKind, type TaskFileRow, type UnparsedTaskFile, loadPlanRecords, nextPlanId, planLabel, planSchema, readInitiativeTasks, readPlanRecord, withPlanLock, writePlanRecord };
+/** Reads every bet of the initiative against the rows and stores the result on the bet; returns the bets as written. */
+declare function recordPredictionChecks(activeRoot: string, initiative: string, rows: readonly ScorecardWeekRow[]): Promise<Bet[]>;
 
-// ./dist/planning.d.ts
+export { type InitiativeTasks, type PlanKind, type PlanRecords, PlanStoreError, type PlanStoreErrorKind, type TaskFileRow, type UnparsedTaskFile, loadLaneIntentLines, loadPlanRecords, nextPlanId, planLabel, planSchema, readInitiativeTasks, readPlanRecord, recordPredictionChecks, withPlanLock, writeLaneIntentLine, writePlanRecord };
+
+// ./dist/prediction-check.d.ts
 import { z } from 'zod';
 
 declare const DELIVERABLE_ID_REGEX: RegExp;
 declare const TaskSchema: z.ZodObject<{
     field_origin: z.ZodOptional<z.ZodRecord<z.ZodEnum<{
-        class: "class";
-        source: "source";
-        rank: "rank";
-        done_reason: "done_reason";
-        blocked_on: "blocked_on";
-        serves: "serves";
-        source_ref: "source_ref";
-        filed_by: "filed_by";
         bet: "bet";
+        blocked_on: "blocked_on";
+        class: "class";
+        done_reason: "done_reason";
+        filed_by: "filed_by";
         fold: "fold";
         owner_steps: "owner_steps";
+        rank: "rank";
+        serves: "serves";
+        source: "source";
+        source_ref: "source_ref";
     }> & z.core.$partial, z.ZodString>>;
     class: z.ZodOptional<z.ZodEnum<{
         product: "product";
@@ -89,14 +97,14 @@ declare const TaskSchema: z.ZodObject<{
     }>>;
     serves: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"none">, z.ZodString]>>;
     source: z.ZodOptional<z.ZodEnum<{
-        owner: "owner";
-        plan: "plan";
-        "follow-up": "follow-up";
-        review: "review";
-        sweep: "sweep";
         audit: "audit";
         coordinator: "coordinator";
+        "follow-up": "follow-up";
         incident: "incident";
+        owner: "owner";
+        plan: "plan";
+        review: "review";
+        sweep: "sweep";
     }>>;
     source_ref: z.ZodOptional<z.ZodUnion<readonly [z.ZodString, z.ZodObject<{
         from_pr: z.ZodString;
@@ -111,29 +119,29 @@ declare const TaskSchema: z.ZodObject<{
         p3: "p3";
     }>>;
     done_reason: z.ZodOptional<z.ZodEnum<{
-        shipped: "shipped";
-        superseded: "superseded";
         duplicate: "duplicate";
         moot: "moot";
-        "wont-do": "wont-do";
         moved: "moved";
+        shipped: "shipped";
+        superseded: "superseded";
+        "wont-do": "wont-do";
     }>>;
     blocked_on: z.ZodOptional<z.ZodEnum<{
-        owner: "owner";
         decision: "decision";
-        task: "task";
         external: "external";
+        owner: "owner";
+        task: "task";
     }>>;
     bet: z.ZodOptional<z.ZodString>;
     fold: z.ZodOptional<z.ZodUnion<readonly [z.ZodLiteral<"independent">, z.ZodString]>>;
     owner_steps: z.ZodOptional<z.ZodArray<z.ZodObject<{
         kind: z.ZodEnum<{
+            config: "config";
+            credential: "credential";
+            publish: "publish";
             release: "release";
             restart: "restart";
-            credential: "credential";
             sitting: "sitting";
-            config: "config";
-            publish: "publish";
         }>;
         note: z.ZodString;
     }, z.core.$strict>>>;
@@ -146,8 +154,8 @@ declare const TaskSchema: z.ZodObject<{
     severity: z.ZodOptional<z.ZodEnum<{
         critical: "critical";
         high: "high";
-        medium: "medium";
         low: "low";
+        medium: "medium";
     }>>;
     estimate: z.ZodOptional<z.ZodNumber>;
     done_when: z.ZodOptional<z.ZodString>;
@@ -195,8 +203,8 @@ declare const OutcomeSchema: z.ZodObject<{
     statement: z.ZodString;
     measure: z.ZodString;
     state: z.ZodEnum<{
-        draft: "draft";
         active: "active";
+        draft: "draft";
         retired: "retired";
     }>;
     owner_intent: z.ZodOptional<z.ZodObject<{
@@ -209,8 +217,8 @@ type Outcome = z.infer<typeof OutcomeSchema>;
 declare const PredictionSchema: z.ZodObject<{
     metric: z.ZodString;
     direction: z.ZodEnum<{
-        increase: "increase";
         decrease: "decrease";
+        increase: "increase";
     }>;
     baseline: z.ZodNumber;
     expected: z.ZodNumber;
@@ -228,18 +236,23 @@ declare const BetSchema: z.ZodObject<{
     prediction: z.ZodObject<{
         metric: z.ZodString;
         direction: z.ZodEnum<{
-            increase: "increase";
             decrease: "decrease";
+            increase: "increase";
         }>;
         baseline: z.ZodNumber;
         expected: z.ZodNumber;
         read_by: z.ZodString;
     }, z.core.$strict>;
+    prediction_check: z.ZodOptional<z.ZodEnum<{
+        confirmed: "confirmed";
+        missed: "missed";
+        unread: "unread";
+    }>>;
     state: z.ZodEnum<{
+        done: "done";
+        dropped: "dropped";
         proposed: "proposed";
         selected: "selected";
-        dropped: "dropped";
-        done: "done";
     }>;
     cites: z.ZodOptional<z.ZodArray<z.ZodObject<{
         intent_ref: z.ZodString;
@@ -257,8 +270,8 @@ declare const FreezeEndConditionSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     kind: z.ZodLiteral<"measure">;
     metric: z.ZodString;
     direction: z.ZodEnum<{
-        increase: "increase";
         decrease: "decrease";
+        increase: "increase";
     }>;
     threshold: z.ZodNumber;
 }, z.core.$strict>, z.ZodObject<{
@@ -284,16 +297,16 @@ declare const FreezeSchema: z.ZodObject<{
         kind: z.ZodLiteral<"measure">;
         metric: z.ZodString;
         direction: z.ZodEnum<{
-            increase: "increase";
             decrease: "decrease";
+            increase: "increase";
         }>;
         threshold: z.ZodNumber;
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"owner">;
     }, z.core.$strict>], "kind">;
     set_by: z.ZodEnum<{
-        owner: "owner";
         decider: "decider";
+        owner: "owner";
     }>;
 }, z.core.$strict>;
 type Freeze = z.infer<typeof FreezeSchema>;
@@ -308,5 +321,42 @@ declare const OutOfScopeSchema: z.ZodObject<{
     statement: z.ZodString;
 }, z.core.$strict>;
 type OutOfScope = z.infer<typeof OutOfScopeSchema>;
+declare const INTENT_SECTIONS: readonly ["Standing direction", "Reasons", "Ruled out", "Taste", "Open questions", "Superseded"];
+type IntentSection = (typeof INTENT_SECTIONS)[number];
+declare const IntentLineSchema: z.ZodObject<{
+    id: z.ZodString;
+    section: z.ZodEnum<{
+        "Open questions": "Open questions";
+        Reasons: "Reasons";
+        "Ruled out": "Ruled out";
+        "Standing direction": "Standing direction";
+        Superseded: "Superseded";
+        Taste: "Taste";
+    }>;
+    date: z.ZodString;
+    quote: z.ZodString;
+    ref: z.ZodString;
+    superseded_by: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+type IntentLine = z.infer<typeof IntentLineSchema>;
 
-export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type OutOfScope as O, type Prediction as P, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, OutOfScopeSchema as e, type Outcome as f, OutcomeSchema as g, type OwnerIntentRef as h, OwnerIntentRefSchema as i, PredictionSchema as j, TaskSchema as k };
+/** What the scorecard says about a bet's prediction: `unread` means no week row carried the metric. */
+declare const PREDICTION_CHECKS: readonly ["confirmed", "missed", "unread"];
+type PredictionCheck = (typeof PREDICTION_CHECKS)[number];
+/** The slice of a session-analytics `WeekRow` the check reads, so pm's pure root takes no dependency on it. */
+interface ScorecardWeekRow {
+    isoWeek: string;
+    dimension: string;
+    key: string;
+    metrics: Readonly<Record<string, number | null>>;
+}
+/** Reads the bet's prediction against its initiative's scorecard row for the bet's week. */
+declare function checkPrediction(bet: Bet, rows: readonly ScorecardWeekRow[]): PredictionCheck;
+interface SheetBet {
+    bet: Bet;
+    check?: PredictionCheck;
+}
+/** Bets grouped by initiative, a missed prediction ahead of every other bet in its group, then by `order`. */
+declare function orderBetsForSheet<T extends SheetBet>(entries: readonly T[]): T[];
+
+export { type Bet as B, DELIVERABLE_ID_REGEX as D, type Freeze as F, type IntentLine as I, type OutOfScope as O, PREDICTION_CHECKS as P, type ScorecardWeekRow as S, type Task as T, BetSchema as a, type FreezeEndCondition as b, FreezeEndConditionSchema as c, FreezeSchema as d, INTENT_SECTIONS as e, IntentLineSchema as f, type IntentSection as g, OutOfScopeSchema as h, type Outcome as i, OutcomeSchema as j, type OwnerIntentRef as k, OwnerIntentRefSchema as l, type Prediction as m, type PredictionCheck as n, PredictionSchema as o, type SheetBet as p, TaskSchema as q, checkPrediction as r, orderBetsForSheet as s };

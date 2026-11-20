@@ -371,6 +371,7 @@ const pull = { number: 7, changed_files: 0, state: "open", merged: false, merge_
 /** Answers by the REST path in argv, the element after `-X <method>`. */
 const ROUTES: [RegExp, unknown][] = [
   [/pulls\/7\/merge$/, { sha: "m1" }],
+  [/\/activity$/, []],
   [/\/merges$/, { sha: H2 }],
   [/pulls\/7\/update-branch$/, {}],
   [/pulls\/7$/, pull],
@@ -402,7 +403,7 @@ const ROUTES: [RegExp, unknown][] = [
   [/actions\/jobs\/\d+\/logs$/, "line 1\nline 2\nline 3\n"],
   [/actions\/jobs\/\d+$/, { id: 42, steps: [{ name: "Set up job", conclusion: "success", number: 1 }, { name: "Run pnpm test", conclusion: "failure", number: 2 }] }],
   [/^repos\/octo\/demo$/, { default_branch: "main" }],
-  [/^graphql$/, { data: { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] }, timelineItems: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }],
+  [/^graphql$/, { data: { repository: { pullRequest: { state: "OPEN", mergedAt: null, closedAt: null, reviews: { pageInfo: { hasNextPage: false }, nodes: [] }, commits: { pageInfo: { hasNextPage: false }, nodes: [] }, reviewThreads: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] }, timelineItems: { pageInfo: { hasNextPage: false }, nodes: [] } } } } }],
 ];
 
 const pathOf = (args: readonly string[]): string => (args[2] === "-X" ? args[4] : args[2])?.split("?")[0] ?? "";
@@ -420,10 +421,10 @@ function routedGh(): { exec: GhExec; argv: (readonly string[])[] } {
 }
 
 /** Review-thread resolution and a force-push's replaced head exist only in GraphQL, so these are the methods that post to it. */
-const GRAPHQL_METHODS = ["listReviewComments", "listForcePushes"];
+const GRAPHQL_METHODS = ["listReviewComments", "listForcePushes", "readPrOutcome"];
 
 describe("gh api adapter, REST only", () => {
-  it("drives every port method with argv that never names graphql or pr view, but for listReviewComments and listForcePushes", async () => {
+  it("drives every port method with argv that never names graphql or pr view, but for listReviewComments, listForcePushes and readPrOutcome", async () => {
     const gh = routedGh();
     const port = githubPort(ghCliWire(gh.exec, { appToken: async () => "app-token" }));
     const calls: Record<keyof typeof port, () => Promise<unknown>> = {
@@ -451,6 +452,7 @@ describe("gh api adapter, REST only", () => {
       latestCheckRuns: () => port.latestCheckRuns(REPO, H1),
       createCheckRun: () => port.createCheckRun(REPO, { name: "n", headSha: H1, conclusion: "success", title: "t", summary: "s", externalId: "e" }),
       getCommit: () => port.getCommit(REPO, H1),
+      refActivity: () => port.refActivity(REPO, "topic"),
       resolveCommit: () => port.resolveCommit(REPO, H1.slice(0, 7)),
       commitStatuses: () => port.commitStatuses(REPO, H1),
       jobLogTail: () => port.jobLogTail(REPO, 42, 2),
@@ -475,6 +477,7 @@ describe("gh api adapter, REST only", () => {
       upsertComment: () => port.upsertComment(REPO, 7, "<!-- m -->", "<!-- m --> b"),
       listReviewComments: () => port.listReviewComments(REPO, 7),
       listForcePushes: () => port.listForcePushes(REPO, 7),
+      readPrOutcome: () => port.readPrOutcome(REPO, 7),
       listReviews: () => port.listReviews(REPO, 7),
       createReview: () => port.createReview(REPO, 7, { commitId: H1, body: "b" }),
       dismissReview: () => port.dismissReview(REPO, 7, 9, "m"),

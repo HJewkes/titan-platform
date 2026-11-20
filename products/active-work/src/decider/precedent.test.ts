@@ -362,6 +362,39 @@ describe('v1 precedents.jsonl rows', () => {
   });
 });
 
+describe('an edited decision note that a v1 row also holds', () => {
+  const NOTE_KEY = 'note:sample-initiative/2026-01-01-queue.md';
+  const FRONTMATTER = "kind: decision\ntitle: Approach for the refresh is a queue\ncreated: '2026-01-01'";
+
+  async function extractEditedNote(activeRoot: string): Promise<void> {
+    writeV1(activeRoot, 'sample-initiative/sources/precedents.jsonl', [
+      v1Row('Approach for the refresh is a queue', 'Cron drifts; the queue retries.', {
+        key: NOTE_KEY,
+        source: 'note',
+        session_id: null,
+        tool_use_id: null,
+        class: 'tech_design',
+        header: null,
+        options: [],
+        recommended: null,
+        pick_type: 'none',
+      }),
+    ]);
+    writeNote(activeRoot, '2026-01-01-queue.md', FRONTMATTER, 'Cron is fine after all.');
+    await run(activeRoot);
+  }
+
+  it('reads back one row under the base key, holding the edited answer', async () => {
+    await withTempActiveRoot(async (activeRoot) => {
+      await extractEditedNote(activeRoot);
+
+      const rows = (await ledgerRows(activeRoot)).filter((r) => r.source === 'note');
+
+      expect(rows.map((r) => [r.key, r.answer])).toEqual([[NOTE_KEY, 'Cron is fine after all.']]);
+    });
+  });
+});
+
 function markOwnerOnly(activeRoot: string): void {
   const brief = path.join(activeRoot, 'sample-initiative', 'brief.md');
   writeFileSync(brief, readFileSync(brief, 'utf8').replace('visibility: agent-visible', 'visibility: owner-only'));
@@ -380,7 +413,7 @@ describe('precedent search', () => {
         isVisible: () => true,
       });
 
-      expect(hits[0].row.locator?.toolUseId).toBe('tu-merge');
+      expect(hits.at(0)?.row.locator?.toolUseId).toBe('tu-merge');
       expect(tasteOnly).toEqual([]);
     });
   });
@@ -464,7 +497,7 @@ describe('precedent search', () => {
       expect(summary(result, 'transcript').written).toBe(2);
       expect(rows.every((r) => r.unclaimed)).toBe(true);
       expect(hidden).toEqual([]);
-      expect(shown[0].row.question).toBe(MERGE_Q);
+      expect(shown.at(0)?.row.question).toBe(MERGE_Q);
     });
   });
 });

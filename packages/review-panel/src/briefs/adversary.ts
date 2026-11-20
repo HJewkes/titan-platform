@@ -1,4 +1,4 @@
-import { labelledLineRest } from "@titan-design/session-read";
+import { foldLabelledLine, labelledLineRest } from "@titan-design/session-read";
 import { boundedFindings, findingsText } from "../fix-first-findings.js";
 
 /** The line an adversary verdict must carry above its block; a verdict without it is malformed. */
@@ -20,7 +20,7 @@ export const ADVERSARY_OVERLAY: readonly string[] = [
   "- An error path that allows: a throw, timeout or parse failure that ends in the permitted branch.",
   "For each probe, give the input you tried and what the code did with it. A fail-open or bypass you can show is blocking.",
   `Whatever your verdict, above the verdict lines write a line that starts \`${PROBES_HEADING}\` and lists each probe as \`<input> -> <what the code did>\`, separated by \`;\`. A verdict without that line is not read.`,
-  `Above the verdict lines also write \`${AUTHORITY_HEADING} unchanged\`, \`${AUTHORITY_HEADING} tightened\` or \`${AUTHORITY_HEADING} widened\`: whether this change lets any agent, account or path do something it could not before (widened), less (tightened), or neither (unchanged). Nothing else on the line.`,
+  `Above the verdict lines also write \`${AUTHORITY_HEADING} unchanged\`, \`${AUTHORITY_HEADING} tightened\` or \`${AUTHORITY_HEADING} widened\`: whether this change lets any agent, account or path do something it could not before (widened), less (tightened), or neither (unchanged). Nothing else on the line. Start no other line with the word Authority, not even in bold or in a list; a reply where another line does is not read.`,
 ];
 
 /** Why a hold asked for an adversary, as the host knows it; every field is text other agents wrote, so it is rendered as data. */
@@ -71,20 +71,30 @@ export function hasProbesLine(text: string): boolean {
 
 const SAFER_VALUES: readonly AuthorityLine[] = ["unchanged", "tightened"];
 const WIDENED: AuthorityLine = "widened";
+const AUTHORITY_LABEL = foldLabelledLine(AUTHORITY_HEADING);
+const COLON = ":";
 /** Strictest first: a widening is never read away, and an unreadable line is never read as the safer value. */
 const STRICTNESS = ["widened", "malformed", "unchanged", "tightened"] as const;
 
+/** The fold after the first colon, so a label glued to a word (`Authority-gate: widened`) still yields its value. */
+const valueAfterColon = (raw: string): string => {
+  const line = raw.normalize("NFKC");
+  const at = line.indexOf(COLON);
+  return at < 0 ? "" : foldLabelledLine(line.slice(at + 1));
+};
+
 /**
- * One raw line's reading, or undefined when it carries no Authority label. The label is found through session-read's
- * `labelledLineRest`, the fold the CI-policy line is read with, so a bullet, bold, quote, any case or a full-width colon
- * still labels the line. A rest that folds to exactly `widened` reads widened however it is decorated; unchanged and
- * tightened count only on a plain `Authority: <value>` line, as CI-policy's unchanged counts only when canonical. Any
- * other labelled line reads malformed.
+ * One raw line's reading, or undefined when it carries no Authority label. Any line whose session-read fold starts
+ * `authority` is labelled: unlike CI-policy, Authority takes no identifier-glue exemption (TP-6624), so `Authority-gate:`
+ * or an `authorityLevel` lead is a reading, never skipped beside a safe line. A rest from `labelledLineRest`, or a value
+ * after the colon, that folds to exactly `widened` reads widened however it is decorated; unchanged and tightened count
+ * only on a plain `Authority: <value>` line, as CI-policy's unchanged counts only when canonical. Any other labelled
+ * line reads malformed.
  */
 function authorityReading(raw: string): AuthorityLine | "malformed" | undefined {
+  if (!foldLabelledLine(raw).startsWith(AUTHORITY_LABEL)) return undefined;
   const rest = labelledLineRest(raw, AUTHORITY_HEADING, WIDENED);
-  if (rest === undefined) return undefined;
-  if (rest === WIDENED) return WIDENED;
+  if (rest === WIDENED || valueAfterColon(raw) === WIDENED) return WIDENED;
   const line = raw.trim();
   const value = line.startsWith(AUTHORITY_HEADING) ? line.slice(AUTHORITY_HEADING.length).trim() : undefined;
   return SAFER_VALUES.find((known) => known === value) ?? "malformed";
@@ -97,4 +107,10 @@ function authorityReading(raw: string): AuthorityLine | "malformed" | undefined 
 export function authorityLine(text: string): AuthorityLine | "malformed" | undefined {
   const readings = text.split("\n").map(authorityReading);
   return STRICTNESS.find((reading) => readings.includes(reading));
+}
+
+/** The first line that reads malformed, trimmed, so an authority_missing correction shows the reviewer what to reword. */
+export function malformedAuthorityLines(text: string): string[] {
+  const line = text.split("\n").find((raw) => authorityReading(raw) === "malformed");
+  return line === undefined ? [] : [line.trim()];
 }

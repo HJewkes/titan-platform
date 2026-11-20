@@ -18,6 +18,25 @@
       "kills": [
         "shepherd follow-ups the verb exits 69 when active-work is down"
       ]
+    },
+    {
+      "name": "a low follow-up is filed as a task",
+      "file": "products/factory/src/shepherd/follow-ups-file.ts",
+      "find": "new Set([\"medium\", \"high\"])",
+      "replace": "new Set([\"low\", \"medium\", \"high\"])",
+      "kills": [
+        "shepherd follow-ups the verb files a seat verdict's medium follow-up, digests its low one, and prints both"
+      ]
+    },
+    {
+      "name": "the verb files from a stopped PR",
+      "file": "products/factory/src/cli-shepherd-follow-ups.ts",
+      "find": "(await prStopped(where, verbs)) ?",
+      "replace": "false ?",
+      "kills": [
+        "shepherd follow-ups the verb files nothing, task or digest row, from a PR whose Shepherd run stopped (TP-6714)",
+        "shepherd follow-ups the verb files nothing and exits 69 when it cannot read whether the PR stopped"
+      ]
     }
   ]
 }

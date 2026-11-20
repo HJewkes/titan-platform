@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "warm reads every PR at once",
+      "file": "apps/console/server/gate-strip.ts",
+      "find": "Math.max(1, Math.floor(maxInFlight / CALLS_PER_PR))",
+      "replace": "Number.MAX_SAFE_INTEGER",
+      "kills": ["gateStripReader.warm keeps at most six upstream reads in flight across many PRs"]
+    },
+    {
+      "name": "warm skips the waiting gates",
+      "file": "apps/console/server/gate-strip.ts",
+      "find": "    await settle(() => waiting.read());\n    await settleBounded",
+      "replace": "    await settleBounded",
+      "kills": [
+        "gateStripReader.warm fills the kept reads, so the first readMany after it makes no upstream call",
+        "gateStripReader.warm reads the waiting gates even when no run is pinned to a head"
+      ]
+    },
+    {
+      "name": "warm skips the per-PR reads",
+      "file": "apps/console/server/gate-strip.ts",
+      "find": "settleBounded(rows.filter(isPinned), Math.max(1, Math.floor(maxInFlight / CALLS_PER_PR)), readPr)",
+      "replace": "settleBounded([], 1, readPr)",
+      "kills": ["gateStripReader.warm fills the kept reads, so the first readMany after it makes no upstream call"]
+    }
+  ]
+}

@@ -82,7 +82,7 @@ function sentBackThenMergedMain(fake: FakeGitHub): ShepherdPhases {
 function openHost(fake: FakeGitHub, phases: ShepherdPhases, dbPath = ":memory:"): FactoryHost {
   const base = githubPort(fake.wire);
   const port = { ...base, checkRuns: async (repo: string, sha: string) => (sha === fake.pr(1).mergeSha && fake.setRuns(sha, [successRun("validate", 9), successRun("dag-check", 10)]), base.checkRuns(repo, sha)) };
-  const routes = factoryRoutesFor({ port, store: shepherdStoreRef(), now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
+  const routes = factoryRoutesFor({ port, mergeUpTree: () => fake.cleanMergeTree, store: shepherdStoreRef(), now: () => 0, sleep: async (_ms, signal) => sleep(1, signal) });
   const host = openFactoryHost({ dbPath, workflows: [shepherdPrWorkflow(phases)], routes, gatePollMs: 5 });
   hosts.push(host);
   return host;

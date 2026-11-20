@@ -51,8 +51,13 @@ When you wrap up a session, capture it:
 active-work wrap my-feature --session-id <id> \
   --started 2026-05-12T09:00:00Z --ended 2026-05-12T11:30:00Z \
   --track canonical --body "Wired up the OAuth flow; tests still pending." \
-  --next-steps '[{"id":"n1","text":"Finish the OAuth tests","kind":"task","ref":"MF-4"}]'
+  --next-steps '[{"id":"n1","text":"Finish the OAuth tests","kind":"task","ref":"MF-4"}]' \
+  --no-notes --no-tasks \
+  --reports '[{"ref":"msg-0042","answer":"MF-4"}]'
 ```
+
+`--reports` names each report this session received (a sources path or a message id) and
+what became of it: a task id, a seat name or `none`. Pass `--no-reports` when it received none.
 
 `wrap` writes the session, files the ledger, and bumps `brief.updated` in one
 locked operation. It records what this session left hanging (`--next-steps`) and

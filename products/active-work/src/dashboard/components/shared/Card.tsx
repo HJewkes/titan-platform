@@ -27,55 +27,49 @@ export function Card({
   padding = 10,
   radius = radii.md,
 }: CardProps): React.JSX.Element {
-  const resolvedBorder = borderColor ?? palette.border;
-
   const baseStyle = {
     borderRadius: radius,
     padding,
     borderWidth: 1,
-    borderColor: resolvedBorder,
+    borderColor: borderColor ?? palette.border,
   };
+  const accent = accentColor ?? palette.brand;
 
-  if (variant === 'accent') {
-    const accent = accentColor ?? palette.brand;
-    return (
-      <View
-        style={{
-          ...baseStyle,
-          backgroundColor: bg ?? palette.surface2,
-          borderLeftWidth: accentWidth,
-          borderLeftColor: accent,
-        }}
-      >
-        {children}
-      </View>
-    );
-  }
-
-  if (variant === 'subtle') {
-    const accent = accentColor ?? palette.brand;
-    return (
-      <View
-        style={{
-          ...baseStyle,
-          backgroundColor: bg ?? palette.surface1,
-          borderColor: borderColor ?? `${accent}40`,
-        }}
-      >
-        {children}
-      </View>
-    );
-  }
-
-  // plain
   return (
     <View
       style={{
         ...baseStyle,
-        backgroundColor: bg ?? palette.surface2,
+        ...variantStyle(variant, { accent, accentWidth, borderColor, bg }),
       }}
     >
       {children}
     </View>
   );
+}
+
+interface VariantOptions {
+  accent: string;
+  accentWidth: number;
+  borderColor?: string;
+  bg?: string;
+}
+
+function variantStyle(
+  variant: NonNullable<CardProps['variant']>,
+  { accent, accentWidth, borderColor, bg }: VariantOptions,
+) {
+  if (variant === 'accent') {
+    return {
+      backgroundColor: bg ?? palette.surface2,
+      borderLeftWidth: accentWidth,
+      borderLeftColor: accent,
+    };
+  }
+  if (variant === 'subtle') {
+    return {
+      backgroundColor: bg ?? palette.surface1,
+      borderColor: borderColor ?? `${accent}40`,
+    };
+  }
+  return { backgroundColor: bg ?? palette.surface2 };
 }

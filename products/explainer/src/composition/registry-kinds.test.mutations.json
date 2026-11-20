@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "held draws on the whole page instead of in the stage box",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "HeldBeat, { stage: true })",
+      "replace": "HeldBeat, { stage: false })",
+      "kills": [
+        "the beat registry's kinds hook and catalogue draw on the whole page and every spec kind past them in the stage box"
+      ]
+    },
+    {
+      "name": "proof is registered under another key and draws on the whole page",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "proof: defineBeat(BEAT_SLOTS.proof, ProofKindBeat, { stage: true })",
+      "replace": "\"proof-run\": defineBeat(BEAT_SLOTS.proof, ProofKindBeat)",
+      "kills": [
+        "the beat registry's kinds an unknown kind throws and names the kinds it knows",
+        "the beat registry's kinds hook and catalogue draw on the whole page and every spec kind past them in the stage box"
+      ]
+    },
+    {
+      "name": "the known kinds are listed without their separating commas",
+      "file": "products/explainer/src/composition/registry.tsx",
+      "find": "Object.keys(BEATS).join(\", \")",
+      "replace": "Object.keys(BEATS).join(\" \")",
+      "kills": [
+        "the beat registry's kinds an unknown kind throws and names the kinds it knows"
+      ]
+    }
+  ]
+}

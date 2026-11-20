@@ -35,7 +35,7 @@ describe('MinerIngestor.ingestBlob', () => {
 
     const templates = await loadTemplates(dir);
     expect(templates).toHaveLength(1);
-    expect(templates[0].occurrenceCount).toBe(1);
+    expect(templates[0]?.occurrenceCount).toBe(1);
   });
 
   it('reuses the same template for structurally identical blobs and bumps occurrenceCount', async () => {
@@ -52,7 +52,7 @@ describe('MinerIngestor.ingestBlob', () => {
 
     const templates = await loadTemplates(dir);
     expect(templates).toHaveLength(1);
-    expect(templates[0].occurrenceCount).toBe(2);
+    expect(templates[0]?.occurrenceCount).toBe(2);
   });
 
   it('keeps distinct toolTypes as distinct templates even with the same body', async () => {
@@ -79,7 +79,7 @@ describe('MinerIngestor.ingestBlob', () => {
 
     const occurrences = [];
     for await (const occ of readOccurrences(dir)) occurrences.push(occ);
-    expect(occurrences[0].extractedParams?.NUM).toBe('2304');
+    expect(occurrences[0]?.extractedParams?.NUM).toBe('2304');
   });
 
   it('produces identical templateIds across two independent runs over the same corpus (determinism)', async () => {
@@ -127,6 +127,6 @@ describe('MinerIngestor.ingestBlob', () => {
 
     const templates = await loadTemplates(dir);
     expect(templates).toHaveLength(1);
-    expect(templates[0].occurrenceCount).toBe(2);
+    expect(templates[0]?.occurrenceCount).toBe(2);
   });
 });

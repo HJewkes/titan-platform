@@ -231,7 +231,7 @@ describe('note read_if round trip', () => {
       const listed = await noteListCmd.run({ slug: SLUG }, ctx);
       const read = await noteReadCmd.run({ slug: SLUG, note: added.filename }, ctx);
 
-      for (const result of [added, listed.notes[0], read]) {
+      for (const result of [added, listed.notes.at(0) ?? added, read]) {
         expect(result).toMatchObject(expected);
         expect('read_if' in result).toBe('read_if' in expected);
       }
@@ -289,7 +289,7 @@ describe('note.list', () => {
       const res = await noteListCmd.run({ slug: SLUG }, ctx);
       expect(res.notes.map((n) => n.title)).toEqual(['Good']);
       expect(res.errors).toHaveLength(1);
-      expect(res.errors[0].filename).toBe('2026-01-03-bad.md');
+      expect(res.errors.at(0)?.filename).toBe('2026-01-03-bad.md');
     });
   });
 

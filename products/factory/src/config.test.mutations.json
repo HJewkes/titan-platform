@@ -20,15 +20,6 @@
       ]
     },
     {
-      "name": "a misspelt visual threshold key is stripped instead of refused",
-      "file": "products/factory/src/shepherd/visual-threshold-config.ts",
-      "find": "const VisualThresholdSchema = z.strictObject({",
-      "replace": "const VisualThresholdSchema = z.object({",
-      "kills": [
-        "loadConfig keeps each repo's visual threshold, and refuses a misspelt key, a share above 1 or a repo that is not owner/name"
-      ]
-    },
-    {
       "name": "the visual threshold refuses mode on, so nothing can decide on it",
       "file": "products/factory/src/shepherd/visual-threshold-config.ts",
       "find": "z.strictObject({\n  mode: z.enum([\"off\", \"shadow\", \"on\"]),",
@@ -44,6 +35,15 @@
       "replace": "  login: z.string().min(1).optional(),",
       "kills": [
         "loadConfig rejects \"my-app\" as the review-check App's login, which must be a bot login"
+      ]
+    },
+    {
+      "name": "the release App login takes a bare slug a user could register",
+      "file": "products/factory/src/config.ts",
+      "find": "releaseAppLogin: z.string().regex(/^[^\\s[\\]]+\\[bot\\]$/, \"must be an App's <app-slug>[bot] login\").optional(),",
+      "replace": "releaseAppLogin: z.string().min(1).optional(),",
+      "kills": [
+        "loadConfig reads an App's [bot] login as shepherd.releaseAppLogin and refuses a bare slug, which a user could register"
       ]
     }
   ]

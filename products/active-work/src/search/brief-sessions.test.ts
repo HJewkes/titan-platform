@@ -51,12 +51,19 @@ function seedGraph(): void {
   touch(graph, 'hidden-cwd-session', daysAgo(1), { cwd: path.join(root, HIDDEN), title: 'Hidden folder' });
   touch(graph, 'no-initiative', daysAgo(1), { cwd: '/work/projects/demo', title: 'Nobody owns this' });
   touch(graph, 'alpha-old-session', daysAgo(20), { cwd: path.join(root, 'alpha'), title: 'Alpha long ago' });
+  touch(graph, 'mixed-session', daysAgo(1), { cwd: path.join(root, 'alpha'), title: 'Alpha and hidden' });
+  ranTask(graph, 'mixed-session', 'AL-2', 'alpha');
+  ranTask(graph, 'mixed-session', 'AL-3', 'alpha');
+  ranTask(graph, 'mixed-session', 'HW-2', HIDDEN);
+  touch(graph, 'unknown-session', daysAgo(1), { cwd: path.join(root, 'alpha'), title: 'Alpha and unknown' });
+  ranTask(graph, 'unknown-session', 'AL-4', 'alpha');
+  ranTask(graph, 'unknown-session', 'GW-1', 'gone-work');
   graph.db.close();
 }
 
-beforeEach(() => {
+function seedWorkspace(rootName: string): void {
   dir = mkdtempSync(path.join(os.tmpdir(), 'aw-brief-sessions-'));
-  root = path.join(dir, 'active-work');
+  root = path.join(dir, rootName);
   dbPath = path.join(dir, 'graph.sqlite3');
   scaffold(root);
   writeCharter(root);
@@ -66,6 +73,10 @@ beforeEach(() => {
     '---\nschema_version: 5\ntitle: hidden\nupdated: 2026-09-01\nstate: backburner\ntask_prefix: HW\n---\n\nBody.\n',
   );
   seedGraph();
+}
+
+beforeEach(() => {
+  seedWorkspace('active-work');
 });
 
 afterEach(() => {
@@ -83,10 +94,31 @@ describe('briefSessions', () => {
     ]);
   });
 
+  it('a session linked to a visible and an owner-only task is withheld', async () => {
+    const result = await briefSessions({ text: ASSIGNMENT, activeRoot: root, now: NOW, dbPath });
+
+    expect(result.refs).not.toContain('mixed-session');
+  });
+
+  it('a session linked to a task in an initiative of unknown visibility is withheld', async () => {
+    const result = await briefSessions({ text: ASSIGNMENT, activeRoot: root, now: NOW, dbPath });
+
+    expect(result.refs).not.toContain('unknown-session');
+  });
+
+  it('a session cwd under a non-default activeRoot maps to its initiative', async () => {
+    rmSync(dir, { recursive: true, force: true });
+    seedWorkspace('workspace-root');
+
+    const result = await briefSessions({ text: ASSIGNMENT, activeRoot: root, now: NOW, dbPath });
+
+    expect(result.refs).toEqual(['alpha-cwd-session', 'alpha-task-session']);
+  });
+
   it('reads nothing when the assignment names no file', async () => {
     const result = await briefSessions({ text: 'No paths here.', activeRoot: root, now: NOW, dbPath });
 
-    expect(result).toEqual({ lines: [], degraded: [] });
+    expect(result).toEqual({ lines: [], refs: [], degraded: [] });
   });
 
   it('a missing graph is a degraded source, not an error', async () => {
@@ -105,7 +137,8 @@ describe('withSessions', () => {
   it('keeps the section inside its byte share however long the titles are', () => {
     const long = `- 12345678 2026-10-19 ${'é'.repeat(60)}`;
 
-    const block = withSessions(empty, { lines: Array.from({ length: 4 }, () => long), degraded: [] }, 2600);
+    const lines = Array.from({ length: 4 }, () => long);
+    const block = withSessions(empty, { lines, refs: lines.map(() => 'sess-1'), degraded: [] }, 2600);
 
     expect(block.bytes).toBeLessThanOrEqual(500);
     expect(block.bytes).toBe(utf8Bytes(block.text));
@@ -115,7 +148,8 @@ describe('withSessions', () => {
   it('never passes the whole budget', () => {
     const workspace = { text: 'x'.repeat(2550), refs: [], bytes: 2550 };
 
-    const block = withSessions(workspace, { lines: ['- 12345678 2026-10-19 A session'], degraded: [] }, 2600);
+    const sessions = { lines: ['- 12345678 2026-10-19 A session'], refs: ['12345678-full-id'], degraded: [] };
+    const block = withSessions(workspace, sessions, 2600);
 
     expect(block).toEqual(workspace);
   });

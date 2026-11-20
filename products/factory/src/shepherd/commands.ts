@@ -44,6 +44,7 @@ import { visualWeekCommand } from "./visual-week-command.js";
 import { visualFeedbackCommand } from "./visual-feedback-command.js";
 import { visualFeedbackNotesCommand } from "./visual-feedback-notes-command.js";
 import { watchCommand } from "./watch-command.js";
+import { ownerMeterCommand } from "./owner-meter-command.js";
 import { timelineEntries, type PrTimeline } from "./view.js";
 import type { WatchRow } from "./view-schema.js";
 import { LIST_FILTER, mapRows, rowOf, runFinished, waitingFilter, watchRows, withOrder } from "./watch-rows.js";
@@ -239,7 +240,7 @@ type PrRefArgs = z.infer<typeof PrRefArgs>;
 
 const registerCommand = defineCommand<RegisterArgs, Registered, FactoryContext>({
   name: "shepherd.register",
-  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed, was cancelled, or stopped not-mergeable, on a conflict, abandoned, or closed, with its PR still open",
+  description: "Shepherd owner/repo#pr, or a branch whose PR is not open yet; a repeat registration returns the existing run, or starts a new one when that run failed, was cancelled, or stopped not-mergeable or draft, on a conflict, abandoned, or closed, with its PR still open",
   args: RegisterArgs,
   result: z.custom<Registered>(),
   run: registerWithHold,
@@ -375,6 +376,7 @@ export const SHEPHERD_COMMAND_MAP = {
   "shepherd.visual-week-feedback": visualFeedbackCommand,
   "shepherd.visual-feedback-notes": visualFeedbackNotesCommand,
   "shepherd.brief": briefCommand,
+  "shepherd.ownerMeter": ownerMeterCommand,
 };
 
 export type ShepherdCommandName = keyof typeof SHEPHERD_COMMAND_MAP;

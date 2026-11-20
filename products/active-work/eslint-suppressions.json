@@ -1,9 +1,4 @@
 {
-  "products/active-work/src/bootstrap/archive-tasks.ts": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
   "products/active-work/src/commands/archive.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -119,51 +114,6 @@
       "count": 2
     }
   },
-  "products/active-work/src/dashboard/App.tsx": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/dashboard/components/InitiativeCard.tsx": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/dashboard/components/Toast.tsx": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/dashboard/components/shared/Badge.tsx": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/dashboard/components/shared/Card.tsx": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/dashboard/components/shared/DataTable.tsx": {
-    "titan/max-function-lines": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/dashboard/views/Artifacts.tsx": {
-    "titan/max-function-lines": {
-      "count": 1
-    }
-  },
-  "products/active-work/src/dashboard/views/Initiatives.tsx": {
-    "titan/max-function-lines": {
-      "count": 2
-    }
-  },
-  "products/active-work/src/dashboard/views/Tasks.tsx": {
-    "titan/max-function-lines": {
-      "count": 3
-    }
-  },
   "products/active-work/src/discover/claude.ts": {
     "titan/max-function-lines": {
       "count": 1
@@ -222,11 +172,6 @@
   "products/active-work/src/migrations/v1-to-v2-artifacts.ts": {
     "titan/max-function-lines": {
       "count": 2
-    }
-  },
-  "products/active-work/src/schemas/artifacts.ts": {
-    "titan/max-function-lines": {
-      "count": 1
     }
   },
   "products/active-work/src/search/index.ts": {
@@ -316,7 +261,7 @@
   },
   "products/active-work/src/setup/supervision-launchd.ts": {
     "titan/max-function-lines": {
-      "count": 3
+      "count": 2
     }
   },
   "products/active-work/src/setup/supervision-systemd.ts": {

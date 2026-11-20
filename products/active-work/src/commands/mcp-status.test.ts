@@ -73,7 +73,7 @@ describe('mcp status', () => {
     expect(result.running).toBe(true);
     expect(result.orphaned).toBe(true);
     expect(result.port).toBe(8123);
-    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://127.0.0.1:8123/health');
+    expect(vi.mocked(fetch).mock.calls.at(0)?.at(0)).toBe('http://127.0.0.1:8123/health');
   });
 
   it('prefers the health payload over the PID file for a live daemon', async () => {

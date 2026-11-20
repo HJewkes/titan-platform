@@ -53,8 +53,8 @@ describe('lintTasks', () => {
         slug: 'sample-initiative',
         file: 'tasks/SI-9.yml',
       });
-      expect(findings[0].message).toContain('task SI-9 notes are 8 lines');
-      expect(findings[0].message).toContain('done_when');
+      expect(findings.at(0)?.message).toContain('task SI-9 notes are 8 lines');
+      expect(findings.at(0)?.message).toContain('done_when');
     });
   });
 

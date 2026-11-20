@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
-import type { PrRef } from "./pr-read.js";
+import type { GhRun, PrRef } from "./pr-read.js";
 
 /** Shepherd's hold class for a PR waiting on the owner's Gate 2 visual sign-off. */
 export const VISUAL_GATE_CLASS = "visual-gate2";
@@ -66,12 +66,97 @@ export async function shepherdWaiting(port?: number, exec: FactoryExec = execFac
   }
 }
 
+/** `shepherd prs --json`: the open PRs of each seat repo from Shepherd's snapshot. */
+export async function shepherdPrs(port?: number, exec: FactoryExec = execFactory): Promise<unknown> {
+  return JSON.parse((await exec(["shepherd", "prs", "--json", ...(port === undefined ? [] : ["--port", String(port)])])).stdout);
+}
+
 /** Starts a decision-brief run for one PR, keeping its brief, gather and run record in `dir`. */
 export type StartBrief = (target: BriefTarget, dir: string) => Promise<"started" | "refused">;
+
+/** Marks a target found by changed-file path rather than by an owner gate. */
+export const VISUAL_PATH_TRIGGER = "visual-path";
+
+/** The fields of one `titan-factory shepherd prs --json` row the trigger reads; the rest pass through unread. */
+const PrRowSchema = z.looseObject({
+  repo: z.string(),
+  number: z.number().int(),
+  headSha: z.string().nullable(),
+  state: z.string(),
+  draft: z.boolean(),
+});
+const PrRowsSchema = z.array(PrRowSchema);
+
+/** `**` crosses directories, `*` and `?` stay inside one path segment; every other character is literal. */
+function globToRegExp(glob: string): RegExp {
+  let source = "";
+  for (let i = 0; i < glob.length; i++) {
+    const char = glob[i]!;
+    if (glob.startsWith("**/", i)) {
+      source += "(?:.*/)?";
+      i += 2;
+    } else if (glob.startsWith("**", i)) {
+      source += ".*";
+      i += 1;
+    } else if (char === "*") source += "[^/]*";
+    else if (char === "?") source += "[^/]";
+    else source += char.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${source}$`);
+}
+
+const matchesAny = (patterns: RegExp[], file: string): boolean => patterns.some((pattern) => pattern.test(file));
+
+/** The PR's changed file names through `gh pr diff --name-only`. */
+export async function prChangedFiles(ref: PrRef, gh: GhRun): Promise<string[]> {
+  const out = await gh(["pr", "diff", String(ref.number), "--repo", ref.repo, "--name-only"]);
+  return out.split("\n").filter((line) => line.length > 0);
+}
+
+type OpenPr = PrRef & { head: string };
+
+/** Non-draft open PRs with a head, from Shepherd's snapshot alone. */
+async function openPrs(readPrs: () => Promise<unknown>): Promise<OpenPr[]> {
+  const rows = PrRowsSchema.parse(await readPrs()).filter((row) => row.state === "open" && !row.draft && row.headSha !== null);
+  return rows.map((row) => ({ repo: row.repo, number: row.number, head: row.headSha! }));
+}
+
+/** A PR whose files cannot be read is skipped, so one failing `gh` call does not end the sweep. */
+async function touchesVisualPath(readFiles: (ref: PrRef) => Promise<string[]>, patterns: RegExp[], pr: OpenPr): Promise<boolean> {
+  try {
+    return (await readFiles(pr)).some((file) => matchesAny(patterns, file));
+  } catch {
+    return false;
+  }
+}
+
+/** Every non-draft open PR at its current head with a changed file under a visual glob; each PR's files are read once. */
+async function visualPathTargets(options: TriggerOptions): Promise<BriefTarget[]> {
+  const { visualPaths, readPrs, readFiles } = options;
+  if (!visualPaths?.length || !readPrs || !readFiles) return [];
+  const patterns = visualPaths.map(globToRegExp);
+  const targets: BriefTarget[] = [];
+  for (const pr of await openPrs(readPrs)) {
+    if (await touchesVisualPath(readFiles, patterns, pr)) targets.push({ repo: pr.repo, number: pr.number, head: pr.head, gateId: VISUAL_PATH_TRIGGER });
+  }
+  return targets;
+}
+
+/** A PR found by both routes keeps its owner gate and is started once. */
+async function sweepTargets(options: TriggerOptions): Promise<BriefTarget[]> {
+  const targets = new Map<string, BriefTarget>();
+  const all = [...autoBriefTargets(WaitingSchema.parse(await options.readWaiting())), ...(await visualPathTargets(options))];
+  for (const target of all) if (!targets.has(`${target.repo}#${target.number}`)) targets.set(`${target.repo}#${target.number}`, target);
+  return [...targets.values()];
+}
 
 export interface TriggerOptions {
   dataDir: string;
   readWaiting: () => Promise<unknown>;
+  /** Open PRs from `shepherd prs --json`; read only when `visualPaths` is set. */
+  readPrs?: () => Promise<unknown>;
+  readFiles?: (ref: PrRef) => Promise<string[]>;
+  visualPaths?: string[];
   start: StartBrief;
   dryRun?: boolean;
 }
@@ -86,14 +171,19 @@ export interface TriggerRow {
 
 const sameHead = (a: BriefTarget) => (b: BriefTarget): boolean => a.repo === b.repo && a.number === b.number && a.head === b.head;
 
-/** Re-read right before a gather: an earlier brief in the sweep can take minutes, and the head can move meanwhile. */
+/**
+ * Re-read right before a gather: an earlier brief in the sweep can take minutes, and the head can move meanwhile.
+ * Only heads are compared; a head fixes the changed files, so no file is read again.
+ */
 async function stillCurrent(options: TriggerOptions, target: BriefTarget): Promise<boolean> {
-  return autoBriefTargets(WaitingSchema.parse(await options.readWaiting())).some(sameHead(target));
+  if (target.gateId !== VISUAL_PATH_TRIGGER) return autoBriefTargets(WaitingSchema.parse(await options.readWaiting())).some(sameHead(target));
+  const open = options.readPrs ? await openPrs(options.readPrs) : [];
+  return open.some((pr) => sameHead(target)({ ...pr, gateId: target.gateId }));
 }
 
-/** One sweep: reads the waiting gates, picks the visual-gate PRs, and starts a brief for each head not yet briefed. */
+/** One sweep: picks the visual-gate PRs and, with `visualPaths`, the open PRs touching them, and starts a brief for each head not yet briefed. */
 export async function runPrVideoTrigger(options: TriggerOptions): Promise<TriggerRow[]> {
-  const targets = autoBriefTargets(WaitingSchema.parse(await options.readWaiting()));
+  const targets = await sweepTargets(options);
   const rows: TriggerRow[] = [];
   for (const target of targets) {
     const dir = briefDir(options.dataDir, target);
@@ -110,6 +200,7 @@ export async function runPrVideoTrigger(options: TriggerOptions): Promise<Trigge
 export async function writeBrief(dir: string, target: BriefTarget): Promise<void> {
   await mkdir(dir, { recursive: true });
   const pr = `${target.repo}#${target.number}`;
-  const brief = { schema: "explainer.pr-brief/v1", profile: "pr-overview", cut: DECISION_BRIEF_CUT, trigger: VISUAL_GATE_CLASS, pr, head: target.head, gateId: target.gateId };
+  const trigger = target.gateId === VISUAL_PATH_TRIGGER ? VISUAL_PATH_TRIGGER : VISUAL_GATE_CLASS;
+  const brief = { schema: "explainer.pr-brief/v1", profile: "pr-overview", cut: DECISION_BRIEF_CUT, trigger, pr, head: target.head, gateId: target.gateId };
   await writeFile(join(dir, "brief.json"), `${JSON.stringify(brief, null, 2)}\n`);
 }

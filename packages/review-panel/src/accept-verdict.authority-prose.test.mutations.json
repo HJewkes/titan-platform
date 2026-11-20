@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "an authority_missing refusal quotes nothing",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "  if (refusal === \"authority_missing\") return malformedAuthorityLines(text);\n",
+      "replace": "",
+      "kills": [
+        "acceptVerdict on an adversary MERGE with prose that starts with the word Authority a reply with a bold paragraph lead is refused authority_missing quoting that lead",
+        "acceptVerdict on an adversary MERGE with prose that starts with the word Authority a reply with a bold bullet lead is refused authority_missing quoting that lead"
+      ]
+    },
+    {
+      "name": "the reply text is not passed to the authority_missing refusal",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "malformedNone(\"authority_missing\", final.writtenAt, final.text)",
+      "replace": "malformedNone(\"authority_missing\", final.writtenAt)",
+      "kills": [
+        "acceptVerdict on an adversary MERGE with prose that starts with the word Authority a reply with a bold paragraph lead is refused authority_missing quoting that lead"
+      ]
+    },
+    {
+      "name": "a malformed Authority reading is accepted",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "(authority === undefined || authority === \"malformed\")",
+      "replace": "authority === undefined",
+      "kills": [
+        "acceptVerdict on an adversary MERGE with prose that starts with the word Authority a reply with a bold paragraph lead is refused authority_missing quoting that lead"
+      ]
+    },
+    {
+      "name": "a MERGE with no Authority line is accepted",
+      "file": "packages/review-panel/src/accept-verdict.ts",
+      "find": "(authority === undefined || authority === \"malformed\")",
+      "replace": "authority === \"malformed\"",
+      "kills": [
+        "acceptVerdict on an adversary MERGE with prose that starts with the word Authority a reply with no Authority line is refused with no quote"
+      ]
+    }
+  ]
+}

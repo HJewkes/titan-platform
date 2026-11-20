@@ -5,14 +5,15 @@ import type { RunHost } from "../../workflow/host.js";
 import { pairs } from "../../workflow/run-cli.js";
 import type { CallEdgeReader } from "./call-edges.js";
 import { gatherPr, writeGather } from "./gather.js";
-import type { GhRun } from "./pr-read.js";
-import { runPrVideoTrigger, shepherdWaiting, type TriggerRow } from "./trigger.js";
+import { spawnGh, type GhRun, type PrRef } from "./pr-read.js";
+import { prChangedFiles, runPrVideoTrigger, shepherdPrs, shepherdWaiting, type TriggerRow } from "./trigger.js";
 
 /** Every outside reader is injectable, so the CLI runs on a fake gh, fake Shepherd and fake call graph in a test. */
 export interface PrCliDeps {
   gh?: GhRun;
   callEdges?: CallEdgeReader;
   readWaiting?: (port?: number) => Promise<unknown>;
+  readPrs?: (port?: number) => Promise<unknown>;
   /** The decision-brief run's host, but its data dir; tests pass fake models and a fake clone. */
   host?: Omit<RunHost, "dataDir">;
   out?: (text: string) => void;
@@ -45,25 +46,34 @@ function gatherCommand(deps: PrCliDeps, io: Io, exit: { code: number }): Command
     });
 }
 
-const rowLine = (row: TriggerRow): string => `${row.outcome} ${row.pr} ${row.head.slice(0, 12)} ${row.dir}\n`;
+/** The readers behind `--visual-path`: Shepherd's open-PR list and each PR's changed files through gh. */
+const visualSources = (deps: PrCliDeps, gh: GhRun | undefined, port: number | undefined) => ({
+  readPrs: () => (deps.readPrs ?? shepherdPrs)(port),
+  readFiles: (ref: PrRef) => prChangedFiles(ref, gh ?? spawnGh),
+});
+
+const rowLine =(row: TriggerRow): string => `${row.outcome} ${row.pr} ${row.head.slice(0, 12)} ${row.dir}\n`;
 
 function triggerCommand(deps: PrCliDeps, io: Io, exit: { code: number }): Command {
   return new Command("trigger")
-    .description("Start a decision-brief run (gather, then audition) for each PR held at the owner's visual gate (visual-gate2); no other PR auto-starts")
-    .addOption(new Option("--through <stage>", "the last stage each run takes; script spends about $1 more a head").choices(BRIEF_STOPS).default(BRIEF_DEFAULT_STOP))
+    .description("Start a decision-brief run (gather, then audition) for each PR held at the owner's visual gate (visual-gate2), and with --visual-path for each open PR touching a matching file; no other PR auto-starts")
+    .addOption(new Option("--through <stage>", "the last stage each run takes; script spends about $1 more a head, export runs tts and render too").choices(BRIEF_STOPS).default(BRIEF_DEFAULT_STOP))
     .option("--data-dir <dir>", "where pr-briefs/ is written (default: the per-user data dir)")
     .option("--clone <repo=dir>", "the clone to index for a repo (repeatable)", pairs("--clone", (_repo, dir) => dir), {})
     .option("--port <n>", "port titan-factory serve listens on", port)
+    .option("--visual-path <glob>", "also start each open non-draft PR with a changed file matching the glob, owner gate or not (repeatable)", (glob: string, all: string[]) => [...all, glob], [] as string[])
     .option("--dry-run", "list what would start and start nothing")
     .option("--json", "print the rows as JSON")
     .exitOverride()
-    .action(async (flags: { dataDir?: string; clone: Record<string, string>; port?: number; through: BriefStop; dryRun?: boolean; json?: boolean }) => {
+    .action(async (flags: { dataDir?: string; clone: Record<string, string>; port?: number; visualPath: string[]; through: BriefStop; dryRun?: boolean; json?: boolean }) => {
       const dataDir = flags.dataDir ?? appDirs("explainer").data;
       const { gh, ...rest } = readers(deps);
       const host: RunHost = { ...deps.host, dataDir, gather: { ...(gh ? { prGh: gh } : {}), ...rest, ...deps.host?.gather } };
       const rows = await runPrVideoTrigger({
         dataDir,
+        ...visualSources(deps, gh, flags.port),
         readWaiting: () => (deps.readWaiting ?? shepherdWaiting)(flags.port),
+        visualPaths: flags.visualPath,
         start: briefRunStart(host, (repo) => flags.clone[repo], flags.through),
         dryRun: flags.dryRun ?? false,
       });

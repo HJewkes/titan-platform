@@ -46,7 +46,7 @@ describe('open loop cap', () => {
   it.each([[12, 0], [13, 1], [40, 28]])('with %i loops renders 12 and %i more', (n, more) => {
     const out = renderLoops(n);
 
-    expect(itemLines(out, '- [')).toHaveLength(Math.min(n, 12));
+    expect(out.split('\n').filter((l) => l.includes('(from '))).toHaveLength(Math.min(n, 12));
     expect(out).toContain(`# Open loops (${n} hanging`);
     if (more === 0) expect(out).not.toContain('more —');
     else expect(out).toContain(`(+${more} more — \`active-work loops alpha\`)`);

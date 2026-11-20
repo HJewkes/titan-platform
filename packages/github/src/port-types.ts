@@ -6,7 +6,8 @@ import type { CreateReviewRequest, PullReview } from "./pull-reviews.js";
 import type { Ancestry } from "./compare.js";
 import type { MergeIntoBranchRequest, MergeIntoBranchResult } from "./merge-into-branch.js";
 import type { ForcePush, ForcePushPage } from "./force-pushes.js";
-import type { BranchCommits, CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
+import type { PrOutcome } from "./pr-outcome.js";
+import type { BranchCommits, CheckRun, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RefActivity, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
 export type { BranchCommit, BranchCommits, CheckRun, CheckRunPr, Commit, CommitStatus, JobStep, LoggedCommit, MergeMessage, PutFileRequest, RepoEntry, RepoFile, SquashSource } from "./port-records.js";
 
 /** `owner/name`. */
@@ -126,6 +127,8 @@ export interface GitHubWire {
   /** Posts a completed check run as the GitHub App the wire was given a token for; the wire refuses when it has none. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** `GET activity?ref=refs/heads/{branch}`, the first page of 100, newest first. */
+  listRefActivity(repo: RepoSlug, branch: string): Promise<RefActivity[]>;
   /** Null when GitHub has no such commit (HTTP 422 or 404). */
   resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
   listCommitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
@@ -167,6 +170,8 @@ export interface GitHubWire {
   dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
   /** The PR's first `FORCE_PUSHES_CAP` head force-pushes, oldest first, and whether more exist. */
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePushPage>;
+  /** One GraphQL read of the PR's state, mergedAt, closedAt, reviews' submit times and commits' committed dates. */
+  getPrOutcome(repo: RepoSlug, number: number): Promise<PrOutcome>;
 }
 
 export type SkipReason = "exists" | "unchanged" | "merged" | "closed" | "head-moved" | "base-changed" | "up-to-date" | "in-progress" | "absent" | "default-branch" | "fork-head";
@@ -215,6 +220,8 @@ export interface GitHubPort {
   /** Posts a completed check run under the App identity the wire was configured with; `conclusion` outside success, failure and action_required throws `GitHubInputError` before any call. */
   createCheckRun(repo: RepoSlug, request: CreateCheckRunRequest): Promise<{ id: number }>;
   getCommit(repo: RepoSlug, sha: string): Promise<Commit>;
+  /** The branch's latest 100 moves, newest first, each with the account that pushed it: an App reads as its `<slug>[bot]` login. A failed read throws. */
+  refActivity(repo: RepoSlug, branch: string): Promise<RefActivity[]>;
   /** Expands an abbreviated sha to the full one GitHub has; null when GitHub has no such commit, so a caller never polls a sha that cannot report. */
   resolveCommit(repo: RepoSlug, sha: string): Promise<string | null>;
   commitStatuses(repo: RepoSlug, sha: string): Promise<CommitStatus[]>;
@@ -274,6 +281,8 @@ export interface GitHubPort {
   dismissReview(repo: RepoSlug, number: number, reviewId: number, message: string): Promise<void>;
   /** The PR's head force-pushes, oldest first, each with the head it replaced and the new one. Throws `ForcePushesTruncated` rather than return a short list. */
   listForcePushes(repo: RepoSlug, number: number): Promise<ForcePush[]>;
+  /** How the PR ended, or that it is still open: state, `mergedAt`, `closedAt`, each review's `submittedAt` and each commit's committed date, in one read. A malformed answer throws `PrOutcomeMalformed`; `truncated` is set past 100 reviews or commits. */
+  readPrOutcome(repo: RepoSlug, number: number): Promise<PrOutcome>;
 }
 
 export interface GitHubPortOptions {

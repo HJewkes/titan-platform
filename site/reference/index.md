@@ -54,10 +54,12 @@ Reusable machinery over the primitives.
 | [`registry`](/reference/registry) | zod command registry projected to CLI, MCP, and HTTP surfaces | `rpc-protocol` |
 | [`retrieval`](/reference/retrieval) | FTS + vector + graph retrieval with RRF fusion, rerank cascade, and fail-open | `embed`, `store-sqlite` |
 | [`rpc-client`](/reference/rpc-client) | Browser-safe typed client for titan daemons, with live (HTTP + SSE) and static (snapshot file) data sources | `rpc-protocol` |
+| [`service-supervisor`](/reference/service-supervisor) | Render systemd user units and launchd plists for a long-running job | `daemon` |
 | [`speech-g2p`](/reference/speech-g2p) | English text to misaki phoneme tokens in pure TypeScript: lexicon G2P, spaCy-compatible tokenizer, compromise POS tagger | `rpc-protocol` |
 | [`speech-stt`](/reference/speech-stt) | Speech-recognition helpers: a transformers.js Whisper recogniser with an audio-hash cache, a wav2vec2 phone recogniser with CTC logits, a CPython-parity SequenceMatcher, script alignment, transcript diff, Word and Transcript schemas, and a resampler | `rpc-protocol` |
 | [`speech-tts`](/reference/speech-tts) | Swappable text-to-speech provider contract, registry and command/HTTP adapters | `app-paths`, `rpc-protocol` |
 | [`test-timing`](/reference/test-timing) | titan.test-timing/v1 per-file vitest timing record and its SQLite corpus store | `store-sqlite` |
+| [`text-ingest`](/reference/text-ingest) |  | none |
 | [`worktree`](/reference/worktree) | Git worktree mechanics for headless agents: budgeted allocation, release safety, park, re-create and sweep | none |
 
 ## Tier 2 — domain
@@ -67,7 +69,7 @@ Modules that know about a subject: transcripts, code, rules.
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
 | [`autoresearch`](/reference/autoresearch) | Target-agnostic autoresearch engine: planner queue, Thompson selection, fidelity ladder and a noise-banded keep rule over ports | `fix-proof`, `rpc-client`, `workflow` |
-| [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `evidence`, `fix-proof`, `retrieval`, `rpc-protocol`, `store-sqlite` |
+| [`code-graph`](/reference/code-graph) | TypeScript/Python code graph: ts-morph + tree-sitter extraction with incremental reuse, on the store kit | `code-parser`, `embed`, `evidence`, `fix-proof`, `retrieval`, `review-burden`, `rpc-protocol`, `store-sqlite` |
 | [`code-read`](/reference/code-read) | Versioned read API over code-graph snapshots: a contract, a per-snapshot ReadModel, browser-safe query functions, and registry commands | `code-graph`, `registry`, `rpc-protocol` |
 | [`coordinator`](/reference/coordinator) | Seat config and charter policy schemas for the autonomy coordinator (pure code: zod schemas and inferred types). | `agent-dispatch`, `rpc-protocol` |
 | [`decider`](/reference/decider) | Decision ledger: v2 row schema, outcome classifier, exclusion, append-only store and the AskUserQuestion transcript source | `locator`, `memory`, `session-read`, `store-sqlite` |
@@ -105,15 +107,16 @@ Thin compositions of the tiers. A linked product is published; the rest are priv
 
 | Package | What it does | Titan dependencies |
 | --- | --- | --- |
-| [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-dispatch`, `agent-protocol`, `anthropic-account`, `app-paths`, `cluster`, `code-read`, `daemon`, `decider`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `rpc-protocol`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite` |
+| [`active-work`](/reference/active-work) | Durable workspace state for engineering work — CLI, MCP, and Claude skill for tracking initiatives across sessions | `agent-dispatch`, `agent-protocol`, `anthropic-account`, `app-paths`, `cluster`, `code-read`, `daemon`, `decider`, `locator`, `memory`, `pm`, `registry`, `retrieval`, `rpc-protocol`, `session-analytics`, `session-graph`, `service-supervisor`, `session-read`, `store-sqlite` |
 | `corpus-query` | Cheap one-line questions over a large local text corpus: deterministic index and retrieval, verified judge calls | `agent`, `agent-protocol`, `app-paths`, `evidence`, `hitl`, `store-sqlite`, `workflow` |
 | `evals` | Eval registry: spec schemas for units, variants, cases, suites, checks and scorecards, with canonical content hashing | `agent`, `app-paths`, `authority`, `evidence`, `fix-proof`, `health`, `hitl`, `pm`, `review-panel`, `review-workflow`, `session-analytics`, `session-read`, `store-sqlite`, `workflow` |
-| `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-dispatch`, `agent-protocol`, `app-paths`, `code-graph`, `code-read`, `evidence`, `frame-capture`, `github`, `graph-layout`, `hitl`, `owner-queue`, `pm`, `react-ui`, `render-qa`, `rpc-protocol`, `session-read`, `speech-g2p`, `speech-stt`, `speech-tts`, `speech-vet`, `store-sqlite`, `workflow` |
+| `explainer` | Explainer video pipeline: beats.json and digest.json schemas, packet builder, finding attribution | `agent`, `agent-dispatch`, `agent-protocol`, `app-paths`, `autoresearch`, `code-graph`, `code-read`, `evidence`, `frame-capture`, `github`, `graph-layout`, `hitl`, `owner-queue`, `pm`, `react-ui`, `render-qa`, `rpc-protocol`, `session-read`, `speech-g2p`, `speech-stt`, `speech-tts`, `speech-vet`, `store-sqlite`, `workflow` |
 | `factory` | Code-driven software-factory workflows: durable runs, routed step runners, evidence and gate-policy seams | `agent`, `agent-dispatch`, `anthropic-account`, `app-paths`, `authority`, `autoresearch`, `cluster`, `code-graph`, `coordinator`, `daemon`, `dispatch-ledger`, `evidence`, `fix-proof`, `github`, `health`, `hitl`, `owner-queue`, `pm`, `png-delta`, `registry`, `review-panel`, `review-schema`, `review-workflow`, `rpc-client`, `rpc-protocol`, `session-analytics`, `session-read`, `store-sqlite`, `workflow`, `worktree` |
 | `fleet-panel` | Claude Code mod: a live panel of running agent-chat agents, their accounts, context and spend | `anthropic-account`, `rpc-protocol` |
-| `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `app-paths`, `embed`, `retrieval`, `rpc-protocol`, `session-read`, `store-sqlite` |
+| `retrieval-eval` | Retrieval eval harness: transcript-mined query/label pairs scored over candidate retrievers | `app-paths`, `embed`, `evidence`, `retrieval`, `rpc-protocol`, `session-read`, `store-sqlite` |
 | `session-miner` | The session miner: index Claude Code transcripts into a session graph and serve it over CLI, MCP, and HTTP | `anthropic-account`, `app-paths`, `daemon`, `embed`, `github`, `hitl`, `locator`, `memory`, `owner-queue`, `pm`, `registry`, `retrieval`, `rpc-protocol`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `throughput`, `workflow` |
 | `titan` | The titan host CLI: health sampling of the factory and the host | `anthropic-account`, `daemon`, `health` |
 | `yt-scout` | Scheduled AI-video scout: watch list, seen-set and video state for poll, transcribe, score and digest | `agent`, `app-paths`, `owner-queue`, `store-sqlite` |
 | `codewatch` | codewatch's layered code report: the first consumer of @titan-design/react-app and @titan-design/code-read | `code-read`, `react-app`, `react-ui`, `rpc-client`, `rpc-protocol` |
 | `titan-console` | The titan console: one read-only loopback daemon and react-ui shell over active-work, the agent-chat broker and the session graph | `agent`, `agent-dispatch`, `app-paths`, `chat-protocol`, `coordinator`, `daemon`, `decider`, `fix-proof`, `github`, `owner-queue`, `pm`, `png-delta`, `react-app`, `react-ui`, `registry`, `review-schema`, `rpc-client`, `session-analytics`, `session-graph`, `session-read`, `store-sqlite`, `worktree` |
+| `titan-docs` | The titan-platform docs site on react-ui, prerendered to static HTML and hydrated in the browser | `react-ui` |

@@ -21,9 +21,12 @@ import { readBuildInfo } from "./build-info.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
+import { inboxReadCache } from "./inbox-rows.js";
+import { warmShownRows } from "./inbox-view.js";
+import { keepWarm } from "./keep-warm.js";
 import { linkHost } from "./lan-cert.js";
 import { APP_VERSION } from "./paths.js";
-import type { ConsoleSources } from "./commands.js";
+import { warmCards, type ConsoleSources } from "./commands.js";
 import type { ClassedCommand, ConsoleContext } from "./owner-guard.js";
 import { consoleContextFor, createConsoleRegistry } from "./registry.js";
 import { mountRoundMedia } from "./round-clip.js";
@@ -52,7 +55,7 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   const logger = options.logger ?? consoleLogger;
   const ports = { console: config.port, story: config.storyPort ?? null };
   const perf = createPerfRecorder({ dir: path.join(config.stateDir, "perf") });
-  const sources = withStoryOrigin(createSources(config, logger, perf), config, ports);
+  const sources = withKeptInbox(withStoryOrigin(createSources(config, logger, perf), config, ports));
   const { upstreams } = sources;
   const build = readBuildInfo();
   const registry: CommandRegistry<ConsoleContext> = createConsoleRegistry(sources, [...(options.extraCommands ?? []), ...perfCommandList(perf, () => registry.list().map(({ name }) => name))]);
@@ -86,10 +89,30 @@ function perfCommandList(perf: PerfRecorder, commandNames: () => readonly string
   return Object.values(perfCommands(perf, commandNames));
 }
 
-/** Upstream frames reach the browser and mark the caches stale; a cache that has caught up says so to the browser too. */
-function relayEvents(hub: DaemonHandle["hub"], sources: ConsoleSources, config: ConsoleConfig, logger: Logger): EventsRelay {
+type KeptSources = ConsoleSources & Required<Pick<ConsoleSources, "inboxCache">>;
+
+/** The inbox's kept reads, built here rather than in the registry so the keep-warm primer reads the same ones (TP-6703). */
+function withKeptInbox(sources: ConsoleSources): KeptSources {
+  return { ...sources, inboxCache: inboxReadCache(sources) };
+}
+
+/**
+ * Upstream frames reach the browser and mark the caches stale; a cache that has caught up says so to the browser too.
+ * The kept reads are primed now, and a reopened stream may mean a restarted upstream, so its kept reads are read again.
+ */
+function relayEvents(hub: DaemonHandle["hub"], sources: KeptSources, config: ConsoleConfig, logger: Logger): EventsRelay {
+  const inbox = { ...sources.inboxCache, shown: () => warmShownRows(sources, sources.inboxCache) };
+  const evidence = sources.evidence === undefined ? {} : { evidence: sources.evidence };
+  const warm = keepWarm({ activeWork: sources.activeWork, inbox, shepherd: sources.shepherd, ...evidence, cards: () => warmCards(sources), logger });
+  void warm.prime();
   sources.invalidation?.onRefreshed("active-work", () => announceRefreshed(hub, "active-work"));
-  return startEventsRelay({ hub, upstreams: relayUpstreams(config), logger, onFrame: (source) => sources.invalidation?.emit(source) });
+  return startEventsRelay({
+    hub,
+    upstreams: relayUpstreams(config),
+    logger,
+    onFrame: (source) => sources.invalidation?.emit(source),
+    onReconnected: (source) => void warm.reconnected(source),
+  });
 }
 
 /** Media routes go ahead of the static app, whose `/*` would answer them with the page. */
@@ -149,15 +172,6 @@ function lanListener(config: ConsoleConfig): RemoteListenerOptions | null {
   if (config.lanTls === null) throw new Error(LAN_NEEDS_TLS);
   ensureLanToken(config);
   return { host: config.lanHost, tokenFile: config.lanTokenPath, allowedHosts: config.lanNames, tls: config.lanTls, signInHint: SIGN_IN_HINT };
-}
-
-/** Closes on SIGINT or SIGTERM, then runs `onClose` so a caller can stop what it started beside the daemon. */
-export function closeOnSignal(handle: DaemonHandle, onClose: () => Promise<void> = async () => {}): void {
-  const stop = (): void => {
-    void onClose().finally(() => handle.close());
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
 }
 
 /** The HTTPS address a browser dials: the first LAN name, which the certificate covers, else the bound IP. */

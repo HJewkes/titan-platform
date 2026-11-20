@@ -145,8 +145,8 @@ interface LoopRelated {
 }
 
 /**
- * Loops are already unresolved and oldest-first; `ageDays` comes from the
- * derivation so the render never recomputes time. The full `ref` is printed
+ * Loops are already unresolved and oldest-first; ages render as the absolute
+ * open date so the prompt does not change with the clock. The full `ref` is printed
  * rather than an abbreviated session id because it is the handle `wrap
  * --resolve` takes. A loop's `see:` lines sit under it because the reader
  * works loop by loop (TP-85); a loop with none renders exactly as before.
@@ -162,22 +162,20 @@ function renderOpenLoops(
     return `# Open loops${note}\n${renderNoOpenLoops(newestSession)}`;
   }
   const total = loops.length;
-  const oldest = loops[0].ageDays;
+  const oldest = loops[0]?.openedAt.slice(0, 10) ?? '';
   loops = loops.slice(0, OPEN_LOOPS_LIMIT);
   const labels = loops.map(loopLabel);
-  const ageWidth = Math.max(...loops.map((l) => String(l.ageDays).length));
   const labelWidth = Math.max(...labels.map((l) => l.length));
   const lines = loops.map((loop, i) => {
-    const age = `[${String(loop.ageDays).padStart(ageWidth)}d]`;
-    const label = labels[i].padEnd(labelWidth);
+    const label = (labels.at(i) ?? '').padEnd(labelWidth);
     const from = loop.openedAt.slice(0, 10);
     const see = (related.hits.get(loop.ref) ?? []).map((hit) => renderSeeLine(hit, related.slug));
-    return [`- ${age} ${label}   (from ${from}, ref ${loop.ref})`, ...see].join('\n');
+    return [`- ${label}   (from ${from}, ref ${loop.ref})`, ...see].join('\n');
   });
   if (total > loops.length) {
     lines.push(`(+${total - loops.length} more — \`active-work loops ${related.slug}\`)`);
   }
-  return `# Open loops (${total} hanging, oldest ${oldest}d)${note}\n${lines.join('\n')}`;
+  return `# Open loops (${total} hanging, oldest from ${oldest})${note}\n${lines.join('\n')}`;
 }
 
 /** `renderOpenLoops`, plus a pointer to the loops a facet hid. */

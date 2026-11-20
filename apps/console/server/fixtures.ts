@@ -151,6 +151,39 @@ function readNote(args: Args) {
   return { id: note.id, slug, filename, path: `sources/notes/${filename}`, kind, title, created, body: NOTE_BODY, truncated: false };
 }
 
+const SHEET_MARKDOWN = [
+  "# Weekly sheet: orbit-relay, 2031-W10",
+  "",
+  "## Statement",
+  "- orbit-relay/steady-routing: Stations reconnect without a lost message (measure: dropped messages per week)",
+  "",
+  "## Moved",
+  "- orbit-relay/B1 · intent: orbit-relay/I2 · metric: merged (increase 2 → 4 by 2031-03-09) · confirmed",
+  "",
+  "## Not moved",
+  "- orbit-relay/B2 · intent: orbit-relay/I3 · metric: leadDispatchMergeMedianH (decrease 30 → 20 by 2031-03-09) · missed",
+  "",
+  "## Proposed bets",
+  "- orbit-relay/B3 · intent: orbit-relay/I4 · metric: merged (increase 4 → 6 by 2031-03-16) · default: select",
+  "- orbit-relay/B4 · intent: FLAG cites no intent line · metric: usd (decrease 40 → 30 by 2031-03-16) · default: hold",
+  "",
+  "## Proposed stops",
+  "- orbit-relay/B2 · intent: orbit-relay/I3 · metric: leadDispatchMergeMedianH (decrease 30 → 20 by 2031-03-09) · missed · default: stop",
+  "",
+].join("\n");
+
+function showSheet(args: Args) {
+  if (args.initiative !== "orbit-relay") throw notFound(`weekly sheet for ${String(args.initiative)}`);
+  const flags = [{ bet: "orbit-relay/B4", problem: "cites no intent line" }];
+  return { initiative: "orbit-relay", week: "2031-W10", next_week: "2031-W11", deadline: "2031-03-10", defaults: [], flags, markdown: SHEET_MARKDOWN, decisions: null };
+}
+
+/** The one-record reads: a note, a source file or the newest weekly sheet. */
+function readOne(command: "note.read" | "source.read" | "plan.sheet.show", args: Args) {
+  if (command === "note.read") return readNote(args);
+  return command === "source.read" ? readSource(args) : showSheet(args);
+}
+
 function readSource(args: Args) {
   const content = args.path === "brief.md" ? brief(args.slug) : sourceContent(args);
   return { path: args.path, content, truncated: false, bytes: content.length };
@@ -213,11 +246,11 @@ export function fixtureAnswer(command: string, args: Args, options: FixtureOptio
     case "note.list":
       return { notes: forSlug(NOTES, args), errors: [] };
     case "note.read":
-      return readNote(args);
+    case "source.read":
+    case "plan.sheet.show":
+      return readOne(command, args);
     case "source.list":
       return { sources: forSlug(SOURCES, args).filter((source) => args.nested || !source.nested), drift: [] };
-    case "source.read":
-      return readSource(args);
     case "search":
       return search(args);
     case "loop.board":

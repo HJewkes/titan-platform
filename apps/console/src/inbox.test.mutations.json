@@ -24,12 +24,12 @@
       ]
     },
     {
-      "name": "the op read-back drops who proposed it",
-      "file": "apps/console/src/pages/InboxReadBack.tsx",
-      "find": "{`Proposed by ${readBack.proposedBy}: ${readBack.proposal}`}",
-      "replace": "{`Proposed: ${readBack.proposal}`}",
+      "name": "an answer-chat item is left on the terminal",
+      "file": "apps/console/src/pages/InboxPage.tsx",
+      "find": "\"approve-chat\", \"answer-chat\"]",
+      "replace": "\"approve-chat\"]",
       "kills": [
-        "the inbox page, acting from the console taps a deposit's merge-at-head op, reads back the proposal as the agent's, and shows a queued land run as landed"
+        "the inbox page, acting from the console labels each console tap with its verb and leaves the rest on the terminal"
       ]
     },
     {

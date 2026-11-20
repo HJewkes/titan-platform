@@ -4,6 +4,7 @@ import type { OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 /**
  * The authority action each op is, as data. Until the table gains `pr-close`, `fleet-config` and `deploy-resume` (TP-3939 S0),
  * those ops sit under the nearest existing class, each of which denies owner-remote, so the console can never run them early.
+ * A host command sits under `destructive-local` the same way until the owner picks its row (TP-5265).
  */
 const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "resolve-gate": "merge",
@@ -16,6 +17,8 @@ const OP_ACTIONS: Readonly<Record<OwnerOpKind, ActionClass>> = Object.freeze({
   "plan-bet-select": "human-verb",
   "plan-outcome-edit": "human-verb",
   "plan-freeze-set": "human-verb",
+  "start-session": "spawn",
+  "host-command": "destructive-local",
 });
 
 /** The console's tap as the table sees it: always owner-remote, never tainted, whatever the depositing agent was. */

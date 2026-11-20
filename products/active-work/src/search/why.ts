@@ -3,13 +3,14 @@ import { commitLineage, openSessionGraph, type CommitLinks, type SessionGraph } 
 import { repoForCwd } from '@titan-design/session-read';
 import { UsageError } from '../errors.js';
 import type { CommandRunner } from '../utils/git-gh.js';
-import { initiativeOf } from './brief-sessions.js';
+import { initiativeOf, sessionShown } from './brief-sessions.js';
 import type { Shown } from '../sessions/visibility.js';
 
 /**
  * `why <path>:<range>` (TP-2771): the commits `git blame` names for the lines at HEAD, and for each
  * the PR its squash subject ends with, the tasks behind it and the sessions that did the work. A
- * session or task is served only when the caller's `Shown` serves its initiative.
+ * task is served only when the caller's `Shown` serves its initiative, and a session only when it
+ * serves every initiative the session's task edges name.
  */
 
 interface WhyTarget {
@@ -116,13 +117,14 @@ async function blameCommits(run: CommandRunner, cwd: string, target: WhyTarget):
   return [...bySha].map(([sha, lines]) => ({ sha, lines: runs(lines), message: messages.get(sha) ?? '' }));
 }
 
-function servedLineage(graph: SessionGraph, commit: BlamedCommit, repoName: string | null, shown: Shown): WhyCommit {
+function servedLineage(graph: SessionGraph, commit: BlamedCommit, repoName: string | null, input: WhyInput): WhyCommit {
+  const { shown, activeRoot } = input;
   const { subject, ...links } = linksOf(commit.message, repoName);
   const lineage = commitLineage(graph, links);
   const tasks = lineage.tasks.filter((task) => shown(task.initiative));
   const sessions = lineage.sessions
-    .map((s) => ({ sessionId: s.sessionId, step: s.step, title: s.title, initiative: initiativeOf(s) }))
-    .filter((s) => shown(s.initiative));
+    .filter((s) => sessionShown(s, activeRoot, shown))
+    .map((s) => ({ sessionId: s.sessionId, step: s.step, title: s.title, initiative: initiativeOf(s, activeRoot) }));
   const hidden = lineage.tasks.length - tasks.length + lineage.sessions.length - sessions.length;
   return { sha: commit.sha, subject, lines: commit.lines, prNumber: links.prNumber, prRefs: lineage.prRefs, tasks, sessions, hidden };
 }
@@ -131,6 +133,7 @@ interface WhyInput {
   target: WhyTarget;
   cwd: string;
   dbPath: string;
+  activeRoot: string;
   shown: Shown;
   run: CommandRunner;
 }
@@ -142,7 +145,7 @@ export async function why(input: WhyInput): Promise<WhyCommit[]> {
   if (!existsSync(input.dbPath)) return commits.map((commit) => noLineage(commit, repoName));
   const graph = openSessionGraph(input.dbPath, { readonly: true });
   try {
-    return commits.map((commit) => servedLineage(graph, commit, repoName, input.shown));
+    return commits.map((commit) => servedLineage(graph, commit, repoName, input));
   } finally {
     graph.db.close();
   }

@@ -1,6 +1,11 @@
 import path from 'node:path';
 import { z } from 'zod';
-import { defineCommand } from '../registry/index.js';
+import { readEdges } from '@titan-design/pm';
+import { defineCommand, type CommandContext } from '../registry/index.js';
+import { splitByShown, unrestrictedScan } from '../sessions/visibility.js';
+import { createDepFinder, openDeps } from '../tasks/blockers.js';
+import { closedStatusIds } from './_categories.js';
+import taskList from './task-list.js';
 import { TaskSchema, type Task } from '../schemas/task.js';
 import { getActiveRoot, getInitiativeDir, getLockPath } from '../utils/paths.js';
 import { withFileLock } from '../utils/fs-atomic.js';
@@ -31,6 +36,48 @@ function doneReason(task: Task, reason: Args['reason']): Partial<Task> {
   return { done_reason: reason, field_origin: filedOrigins(task.field_origin, ['done_reason']) };
 }
 
+interface Unblocked {
+  named: string[];
+  hidden: number;
+}
+
+/**
+ * The open tasks, in any initiative, whose last open dep was `done`. The scan reuses task.list's
+ * parse cache; an initiative the caller may not see is counted so its ids do not leak.
+ */
+async function findUnblocked(done: Task, ctx: CommandContext): Promise<Unblocked> {
+  const activeRoot = getActiveRoot();
+  const { tasks } = await taskList.run({ all_initiatives: true, status: 'open' }, unrestrictedScan(ctx));
+  const lookup = { closed: await closedStatusIds(activeRoot), find: createDepFinder(activeRoot) };
+  const ready: Array<Task & { slug: string }> = [];
+  for (const task of tasks) {
+    if (task.id === done.id || !readEdges(task).dep.includes(done.id)) continue;
+    if ((await openDeps(task, lookup)).length === 0) ready.push(task);
+  }
+  const { shown, hidden } = await splitByShown(ctx, ready);
+  return { named: shown.map((task) => task.id), hidden };
+}
+
+function describeUnblocked({ named, hidden }: Unblocked): string {
+  return hidden > 0 ? [...named, `${hidden} hidden`].join(', ') : named.join(', ');
+}
+
+// Advisory, and it runs after the close is written: an unreadable task file anywhere in the root must not
+// fail a command whose write already happened. The reason stays generic so a path never names a hidden initiative.
+async function reportUnblocked(done: Task, ctx: CommandContext): Promise<string> {
+  let unblocked: Unblocked;
+  try {
+    unblocked = await findUnblocked(done, ctx);
+  } catch {
+    ctx.warnings.push(`could not list what ${done.id} unblocks: a task file in the root could not be read`);
+    return '';
+  }
+  if (unblocked.named.length + unblocked.hidden === 0) return '';
+  const names = describeUnblocked(unblocked);
+  ctx.warnings.push(`completing ${done.id} unblocks ${names}`);
+  return ` (unblocks ${names})`;
+}
+
 export default defineCommand<Args, TaskOrLine>({
   name: 'task.done',
   description: 'Mark a task as done',
@@ -45,7 +92,7 @@ export default defineCommand<Args, TaskOrLine>({
   },
   async run(args, ctx) {
     getActiveRoot();
-    return withFileLock(getLockPath(args.slug), async () => {
+    const updated = await withFileLock(getLockPath(args.slug), async () => {
       const file = path.join(getInitiativeDir(args.slug), 'tasks', `${args.id}.yml`);
       let task: Task;
       try {
@@ -65,7 +112,9 @@ export default defineCommand<Args, TaskOrLine>({
         ...doneReason(task, args.reason),
       };
       await writeYaml(file, updated, TaskSchema);
-      return quietOr(args.quiet, ctx, updated, () => `${updated.id} done ${date}`);
+      return updated;
     });
+    const suffix = await reportUnblocked(updated, ctx);
+    return quietOr(args.quiet, ctx, updated, () => `${updated.id} done ${updated.updated}${suffix}`);
   },
 });

@@ -10,6 +10,7 @@
  */
 import type { MERGE_WAITS, OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { holdClassOf } from "./gate-strip.js";
+import { isG10Class } from "./g10-hold.js";
 import type { InboxItem } from "./inbox-view.js";
 import type { ActionOutcome } from "./owner-action.js";
 import { isPlanOp, planMessageOf, planReadBackOf, postedPlanOp, type PlanReadBack } from "./inbox-plan-op.js";
@@ -20,6 +21,7 @@ export type MergeWait = (typeof MERGE_WAITS)[number];
 type PrFacts = NonNullable<OpPreview["pr"]>;
 type AgentFacts = NonNullable<OpPreview["agent"]>;
 export type RetireOp = Extract<OwnerOp, { kind: "retire-agent" }>;
+export type PrOp = Extract<OwnerOp, { kind: "merge-at-head" | "close-pr" }>;
 
 export type OpReadBack = PrOpReadBack | AgentOpReadBack | PauseReadBack | PlanReadBack;
 
@@ -31,7 +33,7 @@ interface Proposed {
   effect: string;
 }
 
-interface PrOpReadBack extends Proposed {
+export interface PrOpReadBack extends Proposed {
   repo: string;
   pr: number;
   title: string;
@@ -84,8 +86,7 @@ const NO_FORCE_STOP = "the factory does not report agent-chat's grace, so a forc
 
 const short = (sha: string): string => sha.slice(0, 7);
 
-const G10_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
-const isG10Hold = (hold: { class: string } | undefined): boolean => hold !== undefined && G10_CLASSES.has(hold.class);
+const isG10Hold = (hold: { class: string } | undefined): boolean => hold !== undefined && isG10Class(hold.class);
 
 const PAST_HOLD = "; the g10 hold is skipped, with whatever verdicts it still waits for";
 const afterLoop = (at: string): string =>
@@ -96,12 +97,14 @@ function holdOf(shepherd: PrFacts["shepherd"]): PrOpReadBack["hold"] {
   return reason === null ? undefined : { class: holdClassOf(reason) ?? "unclassed", reason };
 }
 
-const proposalOf = (item: OwnerItem) => ({ proposedBy: item.asker ?? "an agent", proposal: item.summary });
+type Proposal = Pick<Proposed, "proposedBy" | "proposal">;
 
-function factsOf(item: OwnerItem, pr: PrFacts & { head: string }, authority: string, effect: string): PrOpReadBack {
+const proposalOf = (item: OwnerItem): Proposal => ({ proposedBy: item.asker ?? "an agent", proposal: item.summary });
+
+function factsOf(proposed: Proposal, pr: PrFacts & { head: string }, authority: string, effect: string): PrOpReadBack {
   const hold = holdOf(pr.shepherd);
   const { repo, base, behind, mergeableState } = pr;
-  return { repo, pr: pr.pr, title: pr.title ?? item.summary, headSha: pr.head, base, behind, mergeableState, ...(hold && { hold }), authority, ...proposalOf(item), effect };
+  return { repo, pr: pr.pr, title: pr.title ?? proposed.proposal, headSha: pr.head, base, behind, mergeableState, ...(hold && { hold }), authority, ...proposed, effect };
 }
 
 /** The read-back, or the reason there is nothing the console may do: the table denies the op, its target is gone, or the pause is not the deposit's. */
@@ -111,15 +114,23 @@ export async function opReadBackOf(shepherd: ShepherdSource, item: OwnerItem, { 
   const effect = EFFECT[op.kind];
   if (effect === undefined) return `a ${op.kind} op has no console tap yet`;
   if (op.kind === "retire-agent") return op.force ? FORCE_AT_TERMINAL : (await retireReadOf(shepherd, op, proposalOf(item))).readBack;
+  if (op.kind === "merge-at-head" || op.kind === "close-pr") return prReadOf(shepherd, op, proposalOf(item), waitFor);
   const preview = await shepherd.previewOp(op);
   const denied = deniedBy(op, preview);
   if (denied !== undefined) return denied;
-  const authority = authorityOf(preview);
-  if (op.kind === "deploy-pause-clear") return pauseReadBackOf(item, op, preview.pause, { authority, effect });
+  if (op.kind === "deploy-pause-clear") return pauseReadBackOf(item, op, preview.pause, { authority: authorityOf(preview), effect });
+  return `a ${op.kind} op has no console tap yet`;
+}
+
+/** A PR op's read-back from the factory's preview, for a deposit's op or a PR page's own (`pr-tap.ts`); refused once the PR is not open. */
+export async function prReadOf(shepherd: ShepherdSource, op: PrOp, proposed: Proposal, waitFor?: MergeWait): Promise<PrOpReadBack | string> {
+  const preview = await shepherd.previewOp(op);
+  const denied = deniedBy(op, preview);
+  if (denied !== undefined) return denied;
   const { pr } = preview;
   if (pr === undefined) return `the factory read no PR back for this ${op.kind} op`;
   if (pr.head === undefined) return `${pr.repo}#${pr.pr} is ${pr.state} on GitHub, so there is nothing to act on`;
-  const facts = factsOf(item, { ...pr, head: pr.head }, authority, effect(`${pr.repo}#${pr.pr} at ${short(pr.head)}`));
+  const facts = factsOf(proposed, { ...pr, head: pr.head }, authorityOf(preview), EFFECT[op.kind]!(`${pr.repo}#${pr.pr} at ${short(pr.head)}`));
   return op.kind === "merge-at-head" ? mergeFacts(facts, waitFor) : facts;
 }
 

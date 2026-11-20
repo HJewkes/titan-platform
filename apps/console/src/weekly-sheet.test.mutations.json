@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a missing sheet fails the read",
+      "file": "apps/console/server/weekly-sheet.ts",
+      "find": "    if (hasCode(error, EXIT.NOINPUT)) return { slug, sheet: null };\n",
+      "replace": "",
+      "kills": [
+        "the weekly sheet on the initiative page says so when the initiative has no sheet yet"
+      ]
+    },
+    {
+      "name": "flagged bet lines are not named",
+      "file": "apps/console/src/pages/WeeklySheetPanel.tsx",
+      "find": "{flagged > 0 ?",
+      "replace": "{false ?",
+      "kills": [
+        "the weekly sheet on the initiative page shows every section of the sheet and names the bet lines that cite no intent line"
+      ]
+    },
+    {
+      "name": "the deadline is not shown",
+      "file": "apps/console/src/pages/WeeklySheetPanel.tsx",
+      "find": "`Open until ${sheet.deadline}`",
+      "replace": "\"Open\"",
+      "kills": [
+        "the weekly sheet on the initiative page shows every section of the sheet and names the bet lines that cite no intent line"
+      ]
+    }
+  ]
+}

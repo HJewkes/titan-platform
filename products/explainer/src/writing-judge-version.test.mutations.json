@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the judge rubric is left out of eval_version",
+      "file": "products/explainer/src/writing-judge.ts",
+      "find": "`${rubrics.judge}\\n${rubrics.checklist}\\n${rubrics.extract}`",
+      "replace": "`${rubrics.checklist}\\n${rubrics.extract}`",
+      "kills": [
+        "writing judge eval_version changes when the judge rubric, the checklist or the extractor model changes, and not with the budget"
+      ]
+    }
+  ]
+}

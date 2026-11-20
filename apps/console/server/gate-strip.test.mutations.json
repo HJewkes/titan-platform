@@ -32,9 +32,12 @@
     {
       "name": "a kept strip past its window waits for the refresh instead of being served",
       "file": "apps/console/server/gate-strip.ts",
-      "find": "const STRIP_TIMES: CacheTimes = { freshMs: 30_000, staleMs: 5 * 60_000 };",
+      "find": "const STRIP_TIMES: CacheTimes = { freshMs: 30_000, staleMs: 5 * 60_000, keptMs: 30 * 60_000 };",
       "replace": "const STRIP_TIMES: CacheTimes = { freshMs: 30_000, staleMs: 30_000 };",
-      "kills": ["gateStripReader serves the kept strip past its window while one refresh runs behind it"]
+      "kills": [
+        "gateStripReader serves the kept strip past its window while one refresh runs behind it",
+        "gateStripReader serves a strip and the waiting read idle sixteen minutes kept, so the inbox's first read after a gap waits on neither"
+      ]
     }
   ]
 }

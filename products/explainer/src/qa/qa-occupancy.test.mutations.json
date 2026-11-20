@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "occupancy tables take every probed moment, not only the settled ones",
+      "file": "products/explainer/src/qa/qa-measured.ts",
+      "find": "input.moments[i]?.kind === \"end\"",
+      "replace": "input.moments[i]?.kind !== undefined",
+      "kills": [
+        "settledOccupancy matches buildOccupancy over the settled probed moments only"
+      ]
+    }
+  ]
+}
