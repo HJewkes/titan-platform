@@ -1,19 +1,5 @@
-import { InitiativeVisibilitySchema, TaskRequireSchema } from '@titan-design/pm';
+import { InitiativeVisibilitySchema, TaskRequireSchema, isoDate } from '@titan-design/pm';
 import { z } from 'zod';
-
-const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-const isValidIsoDate = (value: string): boolean => {
-  if (!ISO_DATE_REGEX.test(value)) return false;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return false;
-  // Reject dates like 2026-02-30 that JS happily rolls forward.
-  return parsed.toISOString().slice(0, 10) === value;
-};
-
-const isoDate = z
-  .string()
-  .refine(isValidIsoDate, { message: 'Must be a valid zero-padded YYYY-MM-DD date' });
 
 const positiveInt = z.number().int().positive();
 
