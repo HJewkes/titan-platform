@@ -14,7 +14,7 @@
  * and writes would-resolve rows only, so switching to live still answers the rounds shadow saw.
  */
 import path from "node:path";
-import { BY_REC_RESOLVER, BY_REC_ROW_SCHEMA, byRecDecision, roundItemId, type ByRecPolicy, type ByRecRecommendation, type ByRecRow, type ByRecSubject } from "@titan-design/owner-queue";
+import { BY_REC_RESOLVER, BY_REC_ROW_SCHEMA, byRecDecision, byRecRoundSubject, type ByRecDecision, type ByRecPolicy, type ByRecRecommendation, type ByRecRow, type ByRecSubject } from "@titan-design/owner-queue";
 import { appendByRecRows, readByRecPolicy } from "./by-rec-log.js";
 import { byRecOpenedAt } from "./by-rec-seen.js";
 import { recAnswers } from "./round-nudge.js";
@@ -58,42 +58,35 @@ interface Judged {
   at: string;
 }
 
-type RoundVerdict = { eligible: true; judged: Judged[]; answers: SubmittedAnswer[] } | { eligible: false; reason: string; waiting: boolean };
+/** `at` is when the round goes with its recommendations, set on an eligible round and on one waiting only on the clock. */
+export type RoundVerdict = { eligible: true; at: string; judged: Judged[]; answers: SubmittedAnswer[] } | { eligible: false; reason: string; waiting: boolean; at?: string };
 
 const clip = (text: string): string => text.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT);
 
-function recommendationOf(question: Question): ByRecRecommendation | undefined {
-  if (question.kind === "text" || question.recommendation === undefined) return undefined;
-  const { answer, by, rationale, confidence } = question.recommendation;
-  return { answer: Array.isArray(answer) ? answer.join(", ") : String(answer), by, rationale, confidence };
+function judgeQuestion(round: QueueRound, openedAt: string, question: Question, now: Date, policy: ByRecPolicy): ByRecDecision & { subject: ByRecSubject } {
+  const planApprovalIds = (round.manifest.planApprovals ?? []).map((binding) => binding.questionId);
+  const subject = byRecRoundSubject(question, round.manifest, { roundId: round.id, openedAt, planApprovalIds });
+  return { ...byRecDecision(subject, now, policy), subject };
 }
 
-function questionSubject(round: QueueRound, openedAt: string, question: Question, recommendation: ByRecRecommendation | undefined): ByRecSubject {
-  return {
-    source: "round", id: roundItemId(round.id, question.id), openedAt, summary: clip(question.prompt),
-    ...(recommendation && { recommendation }),
-    kind: "decide", door: "two-way",
-    blind: round.manifest.recommendations === "after-answer",
-    ship: question.kind === "pick-one" && question.merge !== undefined,
-    planApproval: (round.manifest.planApprovals ?? []).some((binding) => binding.questionId === question.id),
-    text: [question.prompt, ...("options" in question ? question.options : [])],
-  };
-}
+const latest = (times: readonly string[]): string => times.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a));
 
-/** Every question must be eligible; the first that is not names the round's skip. */
-function judgeRound(round: QueueRound, openedAt: string, now: Date, policy: ByRecPolicy): RoundVerdict {
-  const judged: Judged[] = [];
-  for (const question of round.manifest.questions) {
-    const recommendation = recommendationOf(question);
-    const subject = questionSubject(round, openedAt, question, recommendation);
-    const decision = byRecDecision(subject, now, policy);
-    if (!decision.eligible) return { eligible: false, reason: `question "${question.id}": ${decision.reason}`, waiting: decision.reason === "too-early" };
-    // The floor already refuses a missing recommendation; this narrows the type.
-    if (recommendation === undefined) return { eligible: false, reason: `question "${question.id}": floor:no-recommendation`, waiting: false };
-    judged.push({ question, subject, recommendation, at: decision.at });
-  }
+/**
+ * The one by-rec verdict on a round, which the sweep acts on and the inbox's countdown shows. Every question must be
+ * eligible, and any refusal other than the clock names the round's skip; a round only waiting on the clock carries the
+ * time it will go.
+ */
+export function byRecRoundVerdict(round: QueueRound, openedAt: string, now: Date, policy: ByRecPolicy): RoundVerdict {
+  const decisions = round.manifest.questions.map((question) => ({ question, decision: judgeQuestion(round, openedAt, question, now, policy) }));
+  const refused = decisions.find(({ decision }) => !decision.eligible && decision.reason !== "too-early");
+  if (refused !== undefined && !refused.decision.eligible) return { eligible: false, reason: `question "${refused.question.id}": ${refused.decision.reason}`, waiting: false };
   const built = recAnswers(round.manifest);
-  return "reason" in built ? { eligible: false, reason: built.reason, waiting: false } : { eligible: true, judged, answers: built.answers };
+  if ("reason" in built) return { eligible: false, reason: built.reason, waiting: false };
+  const at = latest(decisions.flatMap(({ decision }) => (decision.at === undefined ? [] : [decision.at])));
+  const early = decisions.find(({ decision }) => !decision.eligible);
+  if (early !== undefined) return { eligible: false, reason: `question "${early.question.id}": too-early`, waiting: true, at };
+  const judged = decisions.flatMap(({ question, decision }) => (decision.subject.recommendation === undefined ? [] : [{ question, subject: decision.subject, recommendation: decision.subject.recommendation, at: decision.at ?? at }]));
+  return { eligible: true, at, judged, answers: built.answers };
 }
 
 function rowOf(round: QueueRound, { question, subject, recommendation, at }: Judged, mode: ActiveMode, now: Date, result: ByRecRow["result"], reason?: string): ByRecRow {
@@ -123,7 +116,7 @@ async function answer(options: SweepOptions, round: QueueRound, answers: Submitt
 }
 
 async function sweepRound(options: SweepOptions, round: QueueRound, policy: ByRecPolicy, mode: ActiveMode): Promise<ByRecRoundOutcome> {
-  const verdict = judgeRound(round, await byRecOpenedAt(options.stateDir, round, options.now), options.now, policy);
+  const verdict = byRecRoundVerdict(round, await byRecOpenedAt(options.stateDir, round, options.now), options.now, policy);
   if (!verdict.eligible) return { roundId: round.id, result: "skipped", reason: verdict.reason, waiting: verdict.waiting };
   if (!(await claim(path.join(options.dir, round.id), mode, options.now))) return { roundId: round.id, result: "skipped", reason: "claimed", waiting: true };
   const done = mode === "shadow" ? { result: "would-resolve" as const } : await answer(options, round, verdict.answers);
@@ -132,7 +125,7 @@ async function sweepRound(options: SweepOptions, round: QueueRound, policy: ByRe
 }
 
 /** Open as the queue reads it and with no feedback.json at all: one the queue could not parse still answers the round. */
-async function openRounds(dir: string): Promise<QueueRound[]> {
+export async function openRounds(dir: string): Promise<QueueRound[]> {
   const candidates = (await readQueueRounds({ dir })).rounds.filter((round) => round.manifest.kind !== "feedback" && round.feedback === null && round.withdrawn === null);
   const unanswered = await Promise.all(candidates.map(async (round) => !(await exists(path.join(dir, round.id, FEEDBACK_FILE)))));
   return candidates.filter((_, index) => unanswered[index]);

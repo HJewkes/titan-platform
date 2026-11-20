@@ -32,6 +32,11 @@ export async function byRecOpenedAt(stateDir: string, round: SeenRound, now: Dat
   const file = seenFile(stateDir, round);
   await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   await writeJsonOnce(file, { schema: SEEN_SCHEMA, at: now.toISOString() });
-  const seen = (await readStateJson(file, seenSchema))?.at ?? now.toISOString();
+  return byRecSeenAt(stateDir, round, now);
+}
+
+/** The same start, read only: a round no sweep has seen yet starts its wait `now`, as the sweep's first sighting would. */
+export async function byRecSeenAt(stateDir: string, round: SeenRound, now: Date): Promise<string> {
+  const seen = (await readStateJson(seenFile(stateDir, round), seenSchema))?.at ?? now.toISOString();
   return later(seen, round.updatedAt);
 }

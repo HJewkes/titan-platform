@@ -21,6 +21,8 @@ export { HOLD_CLASSES, MERGE_WAITS, opKeys, ownerOpSchema } from "./op.js";
 export type { HostCommand, OwnerOp, OwnerOpKind } from "./op.js";
 export { byRecDecision, byRecSubjectOfItem } from "./by-rec.js";
 export type { ByRecDecision } from "./by-rec.js";
+export { byRecRoundSubject } from "./by-rec-round.js";
+export type { ByRecRoundContext } from "./by-rec-round.js";
 export { BY_REC_FLOOR, floorReason, isGuardPath } from "./by-rec-floor.js";
 export type { ByRecRecommendation, ByRecSubject } from "./by-rec-floor.js";
 export {

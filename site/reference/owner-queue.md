@@ -529,7 +529,12 @@ const decision = byRecDecision(byRecSubjectOfItem(item), new Date(), policy);
 - **Subject.** `ByRecSubject` normalizes a gate, a round question or a deposit: open time,
   recommendation, kind, door, hold classes, D-row, authority rows, owner-at-head rows, changed
   paths, category, op, audience and the text to scan. `byRecSubjectOfItem(item)` builds one
-  from an `OwnerItem`; a gate sweep builds its own from facts it re-reads.
+  from an `OwnerItem`; `byRecRoundSubject(question, manifest, { roundId, openedAt,
+  planApprovalIds })` builds one from a round@2 question, with the section or round context and
+  option details in its text, and is the one builder for every reader of a round (the sweep that
+  answers it and any line that says when it will). A pick-one offers its labels and a scale its
+  whole steps; a pick-many offers none, so it refuses as answer-unsound. A gate sweep builds its
+  own subject from facts it re-reads.
 - **Policy file** (`titan/auto-by-rec-policy@1`, strict): `mode` (`off`, `shadow` by
   default, `live`), `afterHours` (24 by default), an optional `minConfidence`, and `exclude`
   rules `{ field, value }` over `source`, `id`, `class`, `category`, `by` (exact) and `hold`,

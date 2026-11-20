@@ -4,7 +4,7 @@ import * as zod_v4_core from 'zod/v4/core';
 import * as zod from 'zod';
 import { z } from 'zod';
 export { D as DEPOSIT_LENS, O as OwnerItemDeposit, d as depositItemId, f as fromDeposit, o as ownerItemDepositSchema } from './deposit.js';
-import { ManifestInput, FeedbackSchema } from '@titan-design/review-schema';
+import { Question, Manifest, ManifestInput, FeedbackSchema } from '@titan-design/review-schema';
 
 declare const CARD_RULES: readonly ["card:options", "card:consequence", "card:class", "card:on-silence", "card:default-not-option", "card:apply-default-needs-default", "card:one-way-irreversible", "card:one-way-waits"];
 type CardRule = (typeof CARD_RULES)[number];
@@ -566,6 +566,21 @@ declare function byRecDecision(subject: ByRecSubject, now: Date, policy: ByRecPo
 /** An owner-queue item (a deposit, or a round question read back) as a by-rec subject. */
 declare function byRecSubjectOfItem(item: OwnerItem): ByRecSubject;
 
+interface ByRecRoundContext {
+    roundId: string;
+    /** When the round's wait starts: a time the asker cannot set. */
+    openedAt: string;
+    /** The questions a plan approval binds (console `planApprovals`); review-schema does not carry them. */
+    planApprovalIds?: readonly string[];
+}
+type RoundManifest = Pick<Manifest, "sections" | "context" | "recommendations">;
+/**
+ * A round@2 question as a by-rec subject: the one builder every reader of a round uses, the sweep that answers it and
+ * the inbox line that says when it will, so both judge the same facts. `text` holds everything the owner reads with the
+ * question (prompt, section or round context, option labels and details), so a dollar amount anywhere floors it.
+ */
+declare function byRecRoundSubject(question: Question, manifest: RoundManifest, context: ByRecRoundContext): ByRecSubject;
+
 /**
  * Why A likely changes B: `base` (A is on B's base PR), `pr-decision` (A decides on B's PR),
  * `shared-unit` (A decides or is one-way on B's component or token), `unblocks` (A unblocks B's
@@ -1014,7 +1029,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, BY_REC_EXCLUDE_FIELDS, BY_REC_FEEDBACK_GENERAL, BY_REC_FLOOR, BY_REC_MODES, BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_RESULTS, BY_REC_ROW_SCHEMA, BY_REC_SOURCES, type ByRecDecision, type ByRecExclusion, type ByRecPolicy, type ByRecPolicyInput, type ByRecRecommendation, type ByRecRow, type ByRecSource, type ByRecSubject, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OnSilence, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, byRecDecision, byRecPolicySchema, byRecRowSchema, byRecSubjectOfItem, cardLint, collapseRepeats, componentKey, consolidate, feedbackAnswerer, floorReason, forAudience, fromRoundQuestions, influenceEdges, isGuardPath, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, BY_REC_EXCLUDE_FIELDS, BY_REC_FEEDBACK_GENERAL, BY_REC_FLOOR, BY_REC_MODES, BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_RESULTS, BY_REC_ROW_SCHEMA, BY_REC_SOURCES, type ByRecDecision, type ByRecExclusion, type ByRecPolicy, type ByRecPolicyInput, type ByRecRecommendation, type ByRecRoundContext, type ByRecRow, type ByRecSource, type ByRecSubject, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OnSilence, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, byRecDecision, byRecPolicySchema, byRecRoundSubject, byRecRowSchema, byRecSubjectOfItem, cardLint, collapseRepeats, componentKey, consolidate, feedbackAnswerer, floorReason, forAudience, fromRoundQuestions, influenceEdges, isGuardPath, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';

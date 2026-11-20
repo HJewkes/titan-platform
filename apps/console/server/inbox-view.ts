@@ -324,7 +324,8 @@ async function readOwnerQueue({ shepherd, agents, now = Date.now, ...sources }: 
     agents === undefined ? undefined : readOrGap("agents", () => readRoster(agents), undefined),
   ]);
   const liveAgents = roster?.value === undefined ? undefined : liveAgentNames(roster.value);
-  const placed = await withByRecCountdown(inboxItems(approvals.flow.order, live.value, { liveAgents, now: now() }), sources.inbox.byRecStateDir, now());
+  const byRec = sources.inbox.byRecStateDir === undefined ? undefined : { stateDir: sources.inbox.byRecStateDir, roundsDir: sources.rounds.dir };
+  const placed = await withByRecCountdown(inboxItems(approvals.flow.order, live.value, { liveAgents, now: now() }), byRec, now());
   const byRun = byRunId(live.value);
   const items = await withShownReads(placed, (item) => rowOfItem(item, byRun), sources.rounds.lineage, reads);
   return { list: { items, gaps: [...approvals.gaps, ...live.gaps], fyiCount: approvals.fyiCount, readAt: approvals.readAt }, live, roster };
