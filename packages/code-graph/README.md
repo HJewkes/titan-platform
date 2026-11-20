@@ -421,7 +421,8 @@ Python, and are written on every function or file, zeros included:
 - Per symbol: `symbol_comment_lines` (rows holding a comment inside the function, docstring
   excluded), `symbol_docstring_lines` (the Python docstring, or a JSDoc block ending on the row
   above the declaration), `symbol_body_lines` (rows holding code), `symbol_comment_ratio`
-  (comment lines over `max(body lines, 1)`), `symbol_narrating_comments` (comments whose words
+  (comment lines over `max(body lines, 1)`, and 0 for a body under `COMMENT_RATIO_MIN_BODY_LINES`
+  (6) code rows, which `computeSourceMetrics` takes as `commentRatioMinBodyLines`), `symbol_narrating_comments` (comments whose words
   share at least 2 tokens, or half their tokens, with the identifiers of the statement they sit
   above or trail), and `symbol_pass_through` (1 when the body is one call that forwards every
   parameter, in order, as a bare argument, skipping a `self` or `cls` receiver; a function
