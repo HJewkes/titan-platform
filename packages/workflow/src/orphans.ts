@@ -16,6 +16,11 @@ interface OrphanHooks {
   now: () => string;
 }
 
+/** Emits `step_abandoned` for each step a cancel drops unsettled: the only record left once the run's active steps are cleared. */
+export function announceDropped(run: WorkflowRun, reason: string, emit: (event: WorkflowEvent) => void): void {
+  for (const step of Object.values(run.activeSteps)) emit({ type: "step_abandoned", runId: run.id, stepId: step.stepId, reason: `cancelled: ${reason}` });
+}
+
 /** Drops each orphan `abandonsOrphan` allows, then marks the run for recovery on a step still active; true when it did. */
 export function settleUnfinished(run: WorkflowRun, orphans: ActiveStep[], abandonsOrphan: AbandonsOrphan | undefined, hooks: OrphanHooks): boolean {
   const dropped = orphans.filter((step) => abandonsOrphan?.(step.stepId) === true);
