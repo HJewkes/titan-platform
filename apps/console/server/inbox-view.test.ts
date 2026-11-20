@@ -5,7 +5,7 @@ import { depositItemId, type OwnerItem } from "@titan-design/owner-queue";
 import { writeDeposit } from "@titan-design/owner-queue/spool";
 import { LINEAR_WORK_LIMIT, callMeter, linearWork } from "@titan-design/test-kit";
 import { BLOCKED_AGENT_AFTER_MS, STALLED_RUN_AFTER_MS } from "./inbox-derived.js";
-import { actionFor, DIVERGED_HOLD, inboxItems } from "./inbox-view.js";
+import { actionFor, inboxItems } from "./inbox-view.js";
 import { ASKER, byId, FACTORY_ITEMS, fixtureFactory, gate, HEAD, item, MINUTE, okEnvelope, REPO, ROWS, row, RUN_G10, RUN_GONE, RUN_OWNER, RUN_PLAIN, TOKEN, useInboxViewWorld, type World } from "./inbox-view.test-helpers.js";
 import { closedPort, send, startFakeBroker, type FakeBroker, type FakeDaemon, type RpcAnswer } from "./test-support.js";
 
@@ -40,6 +40,8 @@ const world: World = {
     handle = value;
   },
 };
+
+const ROWLESS_GATE = "no live Shepherd row pins this gate's PR and head";
 
 const { writeShipRound, writeImpostorDeposit, listInbox, serveFactory } = useInboxViewWorld(world);
 
@@ -234,21 +236,21 @@ describe("actionFor", () => {
     expect(actionFor(approval, undefined).action).toEqual({ kind: "approve-chat", msgId: "msg-8" });
   });
 
-  it("holds a gate on a replay-diverged run to the terminal, and still taps a healthy one", () => {
+  it("taps a gate on a replay-diverged run at its row's head, since the diverged sweep merges on that answer", () => {
     const diverged = { ...row(RUN_PLAIN, 1), stalled: { reason: "replay diverged: step sh-await-verdict:2 changed" } };
 
-    const held = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), diverged).action;
-    const healthy = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), row(RUN_PLAIN, 1)).action;
+    const { action } = actionFor(gate(RUN_PLAIN, "2026-10-10T00:00:00.000Z"), diverged);
 
-    expect(held).toEqual({ kind: "terminal", reason: DIVERGED_HOLD, command: `titan-factory gate resolve ${RUN_PLAIN} approve-merge --json '<payload>'` });
-    expect(DIVERGED_HOLD).toBe("resolve from the terminal with the command shown");
-    expect(healthy.kind).toBe("resolve-gate");
+    expect(action).toEqual({ kind: "resolve-gate", gateId: `${RUN_PLAIN}/approve-merge`, runId: RUN_PLAIN, stepId: "approve-merge", repo: REPO, pr: 1, headSha: HEAD, decision: "merge" });
   });
 
-  it("holds every rowless gate to the terminal, even a land run's whose prompt names its head, since the item cannot rule out a diverged run", () => {
+  it("keeps a rowless gate on the terminal with its command, even a land run's whose prompt names its head", () => {
     const land = { ...gate(RUN_GONE, "2026-10-10T00:00:00.000Z"), context: `Merge PR #9 in ${REPO} at head ${HEAD}? CI is green. Policy land/default: owner gate` };
 
-    expect(actionFor(land, undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
+    const { action } = actionFor(land, undefined);
+
+    expect(action).toEqual({ kind: "terminal", reason: ROWLESS_GATE, command: `titan-factory gate resolve ${RUN_GONE} approve-merge --json '<payload>'` });
+    expect(action.kind === "terminal" && action.reason).not.toMatch(/Morning/);
   });
 });
 
@@ -282,7 +284,10 @@ describe("a deposit's typed op", () => {
   it("holds a gate op with no live row to the terminal, as a rowless hitl gate is", () => {
     const op = { kind: "resolve-gate", gateId: `${RUN_GONE}/approve-merge`, headSha: HEAD, decision: "merge" } as const;
 
-    expect(actionFor(deposited(op), undefined).action).toMatchObject({ kind: "terminal", reason: DIVERGED_HOLD });
+    const { action } = actionFor(deposited(op), undefined);
+
+    expect(action).toMatchObject({ kind: "terminal", reason: ROWLESS_GATE });
+    expect(action.kind === "terminal" && action.reason).not.toMatch(/Morning/);
   });
 
   it("offers the gate's own tap, never the agent-written refusal, while the gate is open at the deposit's head", () => {
@@ -318,6 +323,18 @@ describe("a deposit's typed op", () => {
 
     expect(held!.action).toEqual({ kind: "owner-release", repo: REPO, pr: 2, headSha: HEAD });
     expect(other!.action.kind === "terminal" && other!.action.reason).toBe(`${REPO}#2 is held as g10-review, not owner-asked`);
+  });
+
+  it("maps a g10 hold op onto a hold-release for whichever g10 class the row is held in", () => {
+    const op = { kind: "release-hold", repo: REPO, pr: 2, headSha: HEAD, holdClass: "g10" } as const;
+
+    const [review] = inboxItems([deposited(op)], [row(RUN_G10, 2, "g10-review: opus review at head")]);
+    const [adversary] = inboxItems([deposited(op)], [row(RUN_G10, 2, "g10-adversary: authority change")]);
+    const [owner] = inboxItems([deposited(op)], [row(RUN_OWNER, 2, "owner-asked: wait for me")]);
+
+    expect(review!.action).toEqual({ kind: "hold-release", repo: REPO, pr: 2, headSha: HEAD, holdClass: "g10-review" });
+    expect(adversary!.action).toMatchObject({ kind: "hold-release", holdClass: "g10-adversary" });
+    expect(owner!.action.kind === "terminal" && owner!.action.reason).toBe(`${REPO}#2 is held as owner-asked, not g10`);
   });
 
   it("shows the live row's g10 hold on a merge-at-head, so the page can offer the approve-and-wait tap beside the forced merge", () => {

@@ -26,7 +26,7 @@ export type {
 export { planForHead, type HeadPlan, type HoldMember, type PlanFacts, type ReviewPlanPolicy } from "./plan-for-head.js";
 export { preflight, type PreflightDecision, type PreflightSnapshot } from "./preflight.js";
 export { preflightRead, type PreflightPorts, type PreflightReadInput } from "./preflight-read.js";
-export { applyHeal, healOnce, type HealEffect, type HealPassResult, type HealPorts, type HealRequest, type HealSubject } from "./heal.js";
+export { applyHeal, type HealEffect, type HealPorts, type HealRequest, type HealSubject } from "./heal.js";
 export {
   fixerBrief,
   fixerFingerprint,

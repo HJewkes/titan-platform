@@ -5,10 +5,12 @@ import { BranchEntrySchema, StashEntrySchema, WorktreeEntrySchema } from '../sch
 import { NotFoundError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
 import { sweepInitiative } from '../wrap/sweep.js';
+import { findUnreferencedSources } from '../wrap/unreferenced-sources.js';
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
   cwd: z.string().min(1).optional(),
+  since: z.string().datetime().optional(),
 });
 
 const DirtyTreeSchema = z.object({
@@ -36,6 +38,9 @@ const ResultSchema = z.object({
   }),
   dirty: z.array(DirtyTreeSchema),
   unpushed: z.array(UnpushedBranchSchema),
+  unreferenced_sources: z.array(
+    z.object({ filename: z.string(), path: z.string(), mtime: z.string() }),
+  ),
   checklist: z.array(z.string()),
 });
 
@@ -44,13 +49,14 @@ type Result = z.infer<typeof ResultSchema>;
 
 /**
  * The categories a wrap has to answer. Git state is swept deterministically;
- * these are the four things only the session itself knows.
+ * these are the things only the session itself knows.
  */
 const CHECKLIST = [
   'open loops: what this session leaves hanging, filed as wrap --next-steps, plus the prior loops it closed via --resolves',
   'durable notes: anything learned that outlives the session, filed with note.add',
   'tasks filed: work you named but did not do, filed with task.add',
   'worktree/artifact state: what each dirty or unpushed worktree is holding, and whether every branch and stash worth keeping is recorded',
+  'reports: each unreferenced source and agent report is answered with a task id, a seat name or none',
 ];
 
 export default defineCommand<Args, Result>({
@@ -66,8 +72,13 @@ export default defineCommand<Args, Result>({
         long: '--cwd',
         description: 'Directory to include in the swept repo set (default: current directory).',
       },
+      since: {
+        long: '--since',
+        description:
+          'ISO time; list sources files written at or after it that no task, note or session names.',
+      },
     },
-    usage: 'active-work preflight <slug> [--cwd <dir>]',
+    usage: 'active-work preflight <slug> [--cwd <dir>] [--since <iso>]',
   },
   async run(args, ctx) {
     const briefPath = path.join(ctx.activeRoot, args.slug, 'brief.md');
@@ -78,6 +89,9 @@ export default defineCommand<Args, Result>({
     }
     const cwd = args.cwd ?? ctx.cwd ?? process.cwd();
     const sweep = await sweepInitiative(args.slug, ctx.activeRoot, cwd);
-    return { slug: args.slug, ...sweep, checklist: CHECKLIST };
+    const unreferenced_sources = args.since
+      ? await findUnreferencedSources(ctx.activeRoot, args.slug, args.since)
+      : [];
+    return { slug: args.slug, ...sweep, unreferenced_sources, checklist: CHECKLIST };
   },
 });
