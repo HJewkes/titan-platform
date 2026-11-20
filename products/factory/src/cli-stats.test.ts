@@ -5,6 +5,7 @@ import { SqliteGateStore } from "@titan-design/hitl/sqlite";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
+import { seatLogsDir } from "./cli-stats.js";
 import { runCli } from "./cli.js";
 import { OWNER_GATE_POLICY } from "./shepherd/policy.js";
 import { ShepherdStore } from "./shepherd/store.js";
@@ -341,5 +342,26 @@ describe("shepherd stats verb", () => {
     expect(code).toBe(2);
     expect(err.join("").trimEnd().split("\n")).toHaveLength(1);
     expect(err.join("")).toContain("cannot read the store");
+  });
+});
+
+describe("seatLogsDir", () => {
+  const home = join(tmpdir(), "synthetic-home");
+  const darwin = { home, platform: "darwin" as const };
+
+  it("reads active-work's macOS data directory when neither root variable is set", () => {
+    expect(seatLogsDir({}, darwin)).toBe(join(home, "Library", "Application Support", "active-work", "claude-channels", "sources", "autonomy", "logs"));
+  });
+
+  it("expands ~ in ACTIVE_ROOT", () => {
+    expect(seatLogsDir({ ACTIVE_ROOT: "~/aw" }, darwin)).toBe(join(home, "aw", "claude-channels", "sources", "autonomy", "logs"));
+  });
+
+  it("prefers AUTONOMY_ROOT", () => {
+    expect(seatLogsDir({ AUTONOMY_ROOT: "/srv/auto", ACTIVE_ROOT: "/x" }, darwin)).toBe(join("/srv/auto", "logs"));
+  });
+
+  it("uses the XDG data directory on linux", () => {
+    expect(seatLogsDir({}, { home, platform: "linux" })).toBe(join(home, ".local", "share", "active-work", "claude-channels", "sources", "autonomy", "logs"));
   });
 });
