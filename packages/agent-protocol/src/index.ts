@@ -86,3 +86,4 @@ export type UsageMeasurement = {
 );
 
 export { foldUsage, type UsageFold } from "./usage-fold.js";
+export { canonicalJson } from "./canonical-json.js";
