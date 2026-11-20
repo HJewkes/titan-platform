@@ -59,11 +59,22 @@ function makeTempPaths(): {
 }
 
 describe('stepCheckNode', () => {
-  it('passes on Node 22+', async () => {
+  it('passes on the running Node', async () => {
     const result = await stepCheckNode();
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.message).toContain('OK');
+    }
+  });
+
+  it('fails on Node 23, below the engines floor', async () => {
+    const orig = process.versions.node;
+    Object.defineProperty(process.versions, 'node', { value: '23.9.0', configurable: true });
+    try {
+      const result = await stepCheckNode();
+      expect(result.ok).toBe(false);
+    } finally {
+      Object.defineProperty(process.versions, 'node', { value: orig, configurable: true });
     }
   });
 
@@ -77,7 +88,7 @@ describe('stepCheckNode', () => {
       const result = await stepCheckNode();
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        expect(result.error).toMatch(/Node 22\+ required/);
+        expect(result.error).toMatch(/Node 24\+ required/);
       }
     } finally {
       Object.defineProperty(process.versions, 'node', {

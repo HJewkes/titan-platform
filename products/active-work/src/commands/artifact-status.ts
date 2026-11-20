@@ -1,19 +1,24 @@
-import path from 'node:path';
-import { z } from 'zod';
-import { ArtifactsSchema, type WorktreeEntry } from '../schemas/artifacts.js';
-import { getInitiativeDir, getLockPath } from '../utils/paths.js';
-import { withFileLock } from '../utils/fs-atomic.js';
-import { readYaml } from '../utils/yaml-io.js';
-import { defineCommand } from '../registry/index.js';
+import path from "node:path";
+import { z } from "zod";
+import { ArtifactsSchema, type WorktreeEntry } from "../schemas/artifacts.js";
+import { getInitiativeDir, getLockPath } from "../utils/paths.js";
+import { withFileLock } from "../utils/fs-atomic.js";
+import { readYaml } from "../utils/yaml-io.js";
+import { defineCommand } from "../registry/index.js";
 import {
   getGhRunner,
-  getGitRunner,
   resolveLocalRepoPath,
   resolveOrgRepo,
-} from '../utils/git-gh.js';
-import { parseGhPrList, type GhPrListEntry } from '../utils/gh-pr-wire.js';
-import { readWorktreeState } from '../utils/git-worktrees.js';
-import { mapConcurrent } from '../utils/map-concurrent.js';
+} from "../utils/git-gh.js";
+import { parseGhPrList } from "../utils/gh-pr-wire.js";
+import {
+  isBranchPresent,
+  readAheadBehind,
+  readLastCommitIso,
+  summarizeChecks,
+} from "../utils/branch-probes.js";
+import { readWorktreeState } from "../utils/git-worktrees.js";
+import { mapConcurrent } from "../utils/map-concurrent.js";
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
@@ -79,103 +84,34 @@ interface BranchInput {
 
 const MAX_CONCURRENCY = 8;
 
-export { setGitRunner, setGhRunner, resetRunners } from '../utils/git-gh.js';
+export { setGitRunner, setGhRunner, resetRunners } from "../utils/git-gh.js";
 
-async function checkBranchPresent(repoPath: string, name: string): Promise<boolean> {
-  const git = getGitRunner();
-  try {
-    const res = await git('git', ['-C', repoPath, 'rev-parse', '--verify', `refs/heads/${name}`]);
-    return res.code === 0;
-  } catch {
-    return false;
-  }
-}
-
-async function lastCommitIso(repoPath: string, name: string): Promise<string | null> {
-  const git = getGitRunner();
-  try {
-    const res = await git('git', ['-C', repoPath, 'log', '-1', '--format=%cI', name]);
-    if (res.code !== 0) return null;
-    const stamp = res.stdout.trim();
-    return stamp.length > 0 ? stamp : null;
-  } catch {
-    return null;
-  }
-}
-
-async function detectDefaultBase(repoPath: string): Promise<string | null> {
-  const git = getGitRunner();
-  for (const candidate of ['main', 'master']) {
-    try {
-      const res = await git('git', [
-        '-C',
-        repoPath,
-        'rev-parse',
-        '--verify',
-        `refs/remotes/origin/${candidate}`,
-      ]);
-      if (res.code === 0) return candidate;
-    } catch {
-      // continue
-    }
-  }
-  return null;
-}
-
-async function aheadBehind(
-  repoPath: string,
-  name: string,
-): Promise<{ ahead: number | null; behind: number | null }> {
-  const base = await detectDefaultBase(repoPath);
-  if (!base) return { ahead: null, behind: null };
-  const git = getGitRunner();
-  try {
-    const res = await git('git', [
-      '-C',
-      repoPath,
-      'rev-list',
-      '--left-right',
-      '--count',
-      `origin/${base}...${name}`,
-    ]);
-    if (res.code !== 0) return { ahead: null, behind: null };
-    // Output is "<behind>\t<ahead>" (left is base, right is branch).
-    const parts = res.stdout.trim().split(/\s+/);
-    if (parts.length !== 2) return { ahead: null, behind: null };
-    const behind = Number(parts[0]);
-    const ahead = Number(parts[1]);
-    if (!Number.isFinite(behind) || !Number.isFinite(ahead)) {
-      return { ahead: null, behind: null };
-    }
-    return { ahead, behind };
-  } catch {
-    return { ahead: null, behind: null };
-  }
-}
-
-async function fetchPrInfo(orgRepo: string, name: string): Promise<PrInfo | null> {
+async function fetchPrInfo(
+  orgRepo: string,
+  name: string
+): Promise<PrInfo | null> {
   const gh = getGhRunner();
   try {
-    const res = await gh('gh', [
-      'pr',
-      'list',
-      '--head',
+    const res = await gh("gh", [
+      "pr",
+      "list",
+      "--head",
       name,
-      '--repo',
+      "--repo",
       orgRepo,
-      '--json',
-      'number,state,title,url,statusCheckRollup',
-      '--limit',
-      '1',
+      "--json",
+      "number,state,title,url,statusCheckRollup",
+      "--limit",
+      "1",
     ]);
     if (res.code !== 0) return null;
     const first = parseGhPrList(res.stdout)?.entries[0];
     if (
       !first ||
-      typeof first.number !== 'number' ||
-      typeof first.state !== 'string' ||
-      typeof first.title !== 'string' ||
-      typeof first.url !== 'string'
+      typeof first.number !== "number" ||
+      typeof first.state !== "string" ||
+      typeof first.title !== "string" ||
+      typeof first.url !== "string"
     ) {
       return null;
     }
@@ -190,24 +126,6 @@ async function fetchPrInfo(orgRepo: string, name: string): Promise<PrInfo | null
   } catch {
     return null;
   }
-}
-
-function summarizeChecks(
-  rollup: NonNullable<GhPrListEntry['statusCheckRollup']>,
-): string | undefined {
-  if (rollup.length === 0) return undefined;
-  let pass = 0;
-  let fail = 0;
-  let pending = 0;
-  for (const entry of rollup) {
-    const tag = (entry.conclusion ?? entry.state ?? '').toUpperCase();
-    if (tag === 'SUCCESS') pass++;
-    else if (tag === 'FAILURE' || tag === 'CANCELLED' || tag === 'TIMED_OUT') fail++;
-    else pending++;
-  }
-  if (fail > 0) return `fail (${fail}/${rollup.length})`;
-  if (pending > 0) return `pending (${pending}/${rollup.length})`;
-  return `pass (${pass}/${rollup.length})`;
 }
 
 async function statusForBranch(branch: BranchInput): Promise<BranchStatus> {
@@ -226,10 +144,10 @@ async function statusForBranch(branch: BranchInput): Promise<BranchStatus> {
 
   try {
     if (repoPath) {
-      out.present = await checkBranchPresent(repoPath, branch.name);
+      out.present = await isBranchPresent(repoPath, branch.name);
       if (out.present) {
-        out.last_commit_iso = await lastCommitIso(repoPath, branch.name);
-        const { ahead, behind } = await aheadBehind(repoPath, branch.name);
+        out.last_commit_iso = await readLastCommitIso(repoPath, branch.name);
+        const { ahead, behind } = await readAheadBehind(repoPath, branch.name);
         out.ahead = ahead;
         out.behind = behind;
       }
@@ -246,7 +164,9 @@ async function statusForBranch(branch: BranchInput): Promise<BranchStatus> {
   return out;
 }
 
-async function statusForWorktree(entry: WorktreeEntry): Promise<WorktreeStatus> {
+async function statusForWorktree(
+  entry: WorktreeEntry
+): Promise<WorktreeStatus> {
   const live = await readWorktreeState(entry.path);
   return {
     path: entry.path,
@@ -265,20 +185,32 @@ async function statusForWorktree(entry: WorktreeEntry): Promise<WorktreeStatus> 
 }
 
 const artifactStatus = defineCommand<Args, Result>({
-  name: 'artifact.status',
-  description: 'Pull live PR and branch state for the initiative via `git` + `gh`. Read-only.',
+  name: "artifact.status",
+  description:
+    "Pull live PR and branch state for the initiative via `git` + `gh`. Read-only.",
   args: ArgsSchema,
   result: ResultSchema,
   cli: {
-    positional: ['slug'],
+    positional: ["slug"],
   },
   async run(args) {
-    const artifactsPath = path.join(getInitiativeDir(args.slug), 'artifacts.yml');
-    const current = await withFileLock(getLockPath(args.slug), () =>
-      readYaml(artifactsPath, ArtifactsSchema),
+    const artifactsPath = path.join(
+      getInitiativeDir(args.slug),
+      "artifacts.yml"
     );
-    const branches = await mapConcurrent(current.branches, MAX_CONCURRENCY, statusForBranch);
-    const worktrees = await mapConcurrent(current.worktrees, MAX_CONCURRENCY, statusForWorktree);
+    const current = await withFileLock(getLockPath(args.slug), () =>
+      readYaml(artifactsPath, ArtifactsSchema)
+    );
+    const branches = await mapConcurrent(
+      current.branches,
+      MAX_CONCURRENCY,
+      statusForBranch
+    );
+    const worktrees = await mapConcurrent(
+      current.worktrees,
+      MAX_CONCURRENCY,
+      statusForWorktree
+    );
     return { slug: args.slug, branches, worktrees };
   },
 });
