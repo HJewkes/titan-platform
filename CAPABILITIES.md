@@ -1170,11 +1170,11 @@ You need to validate or type an active-work task record (id, title, priority, st
 
 Key exports:
 
-- `task`: `TaskSchema`
+- `task`: `TaskSchema`, `isoDate`
 - `visibility`: `InitiativeVisibilitySchema`, `agentAccess`, `isAgentVisible`
 - `task-key`: `resolveTaskKey`
 - `provenance`: `betProblem`, `TaskRequireSchema`
-- `planning`: `BetSchema`, `FreezeEndConditionSchema`, `FreezeSchema`, `IntentLineSchema`, `OutOfScopeSchema`
+- `planning`: `BetSchema`, `FreezeEndConditionSchema`, `FreezeSchema`, `IntentLineSchema`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
