@@ -4,7 +4,10 @@ import { z } from "zod";
 import { earlierFindingOf, type FixRound } from "./fix-first-trail.js";
 import { reviewScopeStep, type ReviewScopeResult } from "./review-scope.js";
 
-/** `shepherd.review.scopedRereview` (TP-3735): `shadow` probes a fix round's diff and records it, `on` also scopes the correctness brief. */
+/**
+ * `shepherd.review.scopedRereview` (TP-3735): `shadow` probes a fix round's diff and records it, `on` also scopes the correctness
+ * brief and gives the adversary member a focus section while it still reviews the full diff (TP-6412).
+ */
 export type ScopedRereviewMode = "off" | "shadow" | "on";
 
 const ScopeSchema = z.object({
@@ -63,8 +66,16 @@ export async function scopedRereviewOf(ctx: WorkflowContext, request: { repo: st
 export const scopedBriefFields = (rereview: ScopedRereview | undefined): { scope?: ReviewScope; earlierFindings?: EarlierFinding[] } =>
   rereview?.mode === "on" && rereview.scoped ? { scope: rereview.scope, earlierFindings: rereview.earlierFindings } : {};
 
-/** What review stats read off the sh-review result: whether the round was scoped, why not, and whether that was only the shadow's record. */
-export function scopedResultFields(rereview: ScopedRereview | undefined): { scoped?: boolean; scopeReason?: string; scopeShadow?: true } {
+/** Only an `on` round with a usable scope reaches the adversary member, so under shadow and off its brief is unchanged. */
+export const adversaryFocusOf = (rereview: ScopedRereview | undefined): { scopedRereview?: ScopedRereview } =>
+  rereview?.scoped === true && rereview.mode === "on" ? { scopedRereview: rereview } : {};
+
+/**
+ * What review stats read off the sh-review result: whether the round was scoped, why not, and whether that was only the
+ * shadow's record. An adversary round read the full diff, so it is recorded as focused, never as scoped.
+ */
+export function scopedResultFields(rereview: ScopedRereview | undefined, shape?: string): { scoped?: boolean; scopeReason?: string; scopeShadow?: true; scopeFocus?: true } {
+  if (shape === "adversary") return adversaryFocusOf(rereview).scopedRereview ? { scopeFocus: true } : {};
   if (rereview === undefined) return {};
   return { scoped: rereview.scoped, ...(!rereview.scoped && { scopeReason: rereview.reason }), ...(rereview.mode === "shadow" && { scopeShadow: true as const }) };
 }

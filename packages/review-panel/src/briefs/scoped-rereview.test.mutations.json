@@ -18,7 +18,6 @@
       "find": "reviewerBrief({ ...base, scope: undefined })",
       "replace": "reviewerBrief(base)",
       "kills": [
-        "a panel member given a scope renders the adversary brief byte for byte as without one",
         "a panel member given a scope renders the tests brief byte for byte as without one",
         "a panel member given a scope renders the perf brief byte for byte as without one",
         "a panel member given a scope renders the visual brief byte for byte as without one"
