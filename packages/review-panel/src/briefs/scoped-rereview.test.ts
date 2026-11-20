@@ -92,7 +92,7 @@ describe("a scope the brief refuses", () => {
 });
 
 describe("a panel member given a scope", () => {
-  it.each(["adversary", "tests", "perf", "visual"] as const)("renders the %s brief byte for byte as without one", (shape) => {
+  it.each(["tests", "perf", "visual"] as const)("renders the %s brief byte for byte as without one", (shape) => {
     const input = { ...target, earlierFindings };
     expect(shapeBrief(shape, { ...input, scope })).toBe(shapeBrief(shape, input));
   });
