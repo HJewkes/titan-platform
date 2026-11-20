@@ -2,6 +2,7 @@
 // The titan-console bin: serves the built app beside /rpc until SIGINT or SIGTERM, on loopback and,
 // when TITAN_CONSOLE_HOST is set, on that LAN address behind auth. Two verbs manage LAN sign-in,
 // `inbox file` lets an agent file an owner item, `inbox withdraw`/`restore`/`withdraw-matching` let a seat take back its own,
+// `inbox step` records a sitting step's outcome,
 // `decisions file` lets a seat file a questions-only decision round,
 // `rounds import` lands a review round, `rounds withdraw` marks one superseded, `rounds sweep` withdraws superseded rounds
 // and proposes ones the decisions file cites as answered, `rounds nudge` prints each round waiting over six hours once,
@@ -55,6 +56,9 @@ const USAGE = `usage: titan-console                    serve the console
        titan-console inbox withdraw-matching --as <asker> --actor <seat> --key <key>... --reason <reason> [--dry-run] [--json]
                                         withdraw every open deposit --as filed that carries a --key;
                                         --dry-run lists them and writes nothing
+       titan-console inbox step <item-id> <n> --done|--skipped --as <asker> --actor <seat> [--json]
+                                        record step <n> of a sitting --as filed; the first outcome
+                                        stands, and the last step's closes the sitting
        titan-console decisions file [<round.json>|-] [--seat <name>] [--initiative <slug>] [--json]
                                         file a questions-only round@2 into the rounds dir and print its
                                         id, asker and console URL; the round comes from stdin with - or
