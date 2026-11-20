@@ -124,4 +124,11 @@ describe("npmVersionRegistry", () => {
     await expect(answer(503)("@demo/widget", "1.2.0")).rejects.toThrow("503");
     expect(urls[0]).toBe("https://registry.npmjs.org/@demo%2fwidget/1.2.0");
   });
+
+  it("rejects when the registry never answers before its signal aborts", async () => {
+    const stalled: typeof fetch = (_url, init) =>
+      new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)));
+
+    await expect(npmVersionRegistry(stalled, 20)("@demo/widget", "1.2.0")).rejects.toThrow();
+  });
 });
