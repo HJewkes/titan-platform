@@ -35,6 +35,7 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `lintMapBeats`, `lintMapCues` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat), and
 `toDiagramMapTimeline` turns it into titan-design's `MapTimeline` keyframes.
 `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out.
+`cameraPathFromMap` and `cameraPathRows` check a sampled camera track with no render: velocity and jerk spikes, key boxes in frame and above the captions, and reveals not seen whole before their cue.
 `ScriptSchema` parses a two-track `script/v1` script (with optional layer, framing, anchor, scene, structure and signature-layer fields),
 `parseScript` also rejects a `structure` the registry lacks,
 `deriveEvalView` derives the view evals read from it, and
