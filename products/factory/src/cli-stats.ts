@@ -1,6 +1,6 @@
-import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { activeWorkRoot, type PathOptions } from "@titan-design/app-paths";
 import type { MetricsEntryRead } from "@titan-design/health/metrics";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { WorkflowRunStore, type WorkflowRun, type WorkflowStatus } from "@titan-design/workflow";
@@ -100,10 +100,9 @@ function perRunReport(db: ReturnType<typeof openDatabase>, opts: StatsOpts): str
   return `${JSON.stringify({ perRun: perRunExport(shepherdRuns(db), kinds, { from: opts.from, to: opts.to }) }, null, 2)}\n`;
 }
 
-/** The broker's seat logs, Shepherd's `logs/shepherd/` among them: AUTONOMY_ROOT, else under ACTIVE_ROOT, else active-work's default root. */
-function seatLogsDir(env: NodeJS.ProcessEnv): string {
-  const active = env.ACTIVE_ROOT || path.join(env.XDG_DATA_HOME || path.join(env.HOME || homedir(), ".local", "share"), "active-work");
-  return path.join(env.AUTONOMY_ROOT || path.join(active, "claude-channels", "sources", "autonomy"), "logs");
+/** The broker's seat logs, Shepherd's `logs/shepherd/` among them: AUTONOMY_ROOT, else under active-work's root. */
+export function seatLogsDir(env: NodeJS.ProcessEnv, where: Pick<PathOptions, "home" | "platform"> = {}): string {
+  return path.join(env.AUTONOMY_ROOT || path.join(activeWorkRoot({ env, ...where }), "claude-channels", "sources", "autonomy"), "logs");
 }
 
 /**
