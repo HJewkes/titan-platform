@@ -408,7 +408,7 @@ declare function buildParkArgs(name: string, options?: ParkOptions): string[];
  * `agent park` may read the caller back (agent-chat asks Shepherd about a fix round), and a blocked caller cannot answer.
  * The timeout has no default, so no call path can leave a park waiting on the broker without a bound it chose.
  */
-declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs: number, options?: ParkOptions): Promise<ParkResult>;
+declare function parkAgent(agentChatBinPath: string, name: string, timeoutMs: number, options?: ParkOptions, signal?: AbortSignal): Promise<ParkResult>;
 
 /**
  * Read agent-chat's roster and retire an agent, through the same CLI boundary
@@ -481,12 +481,12 @@ declare function buildRetireArgs(name: string, force?: boolean): string[];
 /** Every agent the broker's log knows, live or ended; retired generations only with `includeRetired`. */
 declare function listAgents(agentChatBinPath: string, timeoutMs: number, options?: {
     includeRetired?: boolean;
-}): Promise<AgentRow[]>;
+}, signal?: AbortSignal): Promise<AgentRow[]>;
 /**
  * The roster with retired generations, for a lineage walk. An agent-chat that predates the flag gets the plain roster,
  * marked incomplete, so a caller can refuse to prove independence instead of failing the read.
  */
-declare function listAgentLineage(agentChatBinPath: string, timeoutMs: number): Promise<AgentLineage>;
+declare function listAgentLineage(agentChatBinPath: string, timeoutMs: number, signal?: AbortSignal): Promise<AgentLineage>;
 interface RetireOptions {
     force?: boolean;
     /**
@@ -500,7 +500,7 @@ interface RetireOptions {
  * discards uncommitted or unmerged work its worktree holds. Rejects with
  * `DispatchError` when the broker refuses.
  */
-declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: RetireOptions): Promise<RetireResult>;
+declare function retire(agentChatBinPath: string, name: string, timeoutMs: number, options?: RetireOptions, signal?: AbortSignal): Promise<RetireResult>;
 /** Throws `DispatchError` on a malformed payload; skips a malformed row. */
 declare function parseAgentRows(stdout: string): AgentRow[];
 
@@ -527,7 +527,7 @@ declare function buildMessageArgs(name: string, text: string, options?: MessageO
  */
 declare function receivesMessages(row: Pick<AgentRow, "presence">): boolean;
 /** Deliver `text` to the live agent `name`; rejects with `DispatchError` when the broker has no live session by that name. */
-declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number, options?: MessageOptions): Promise<void>;
+declare function messageAgent(agentChatBinPath: string, name: string, text: string, timeoutMs: number, options?: MessageOptions, signal?: AbortSignal): Promise<void>;
 
 /**
  * Wrap untrusted text (a CI log, a review, a file list) so an agent reads it as
