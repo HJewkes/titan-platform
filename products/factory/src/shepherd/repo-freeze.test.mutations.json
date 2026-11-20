@@ -4,8 +4,8 @@
     {
       "name": "an unfreeze of a repo that is not frozen reports a change",
       "file": "products/factory/src/shepherd/repo-freeze-command.ts",
-      "find": "const changed = table.unfreeze(args.repo);",
-      "replace": "const changed = (table.unfreeze(args.repo), true);",
+      "find": "const changed = table.unfreeze(args.repo, args.actor);",
+      "replace": "const changed = (table.unfreeze(args.repo, args.actor), true);",
       "kills": [
         "shepherd.freeze answers an unfreeze of a repo that is not frozen with a message, not an error"
       ]

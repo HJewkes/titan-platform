@@ -12,7 +12,7 @@ import { OWNER } from "../test-support/resolver.js";
 import { factoryRoutesFor } from "../workflows.js";
 import { landPrWorkflow } from "../workflows/land-pr.js";
 import { sleep } from "../workflows/land.js";
-import { shepherdEventMigration } from "./events.js";
+import { eventsSince, reclassMarkMigration, repoFreezeKindsMigration, shepherdEventMigration } from "./events.js";
 import { FreezeStore, freezeCancelOnlyMigration, freezeFixPrMigration, freezeGuard, freezeMigration, type FreezeStoreRef } from "./freeze.js";
 import { formatShepherd } from "./format.js";
 import { repoFreezeCommand } from "./repo-freeze-command.js";
@@ -42,11 +42,11 @@ function landingWorld() {
 
 function freezeRig() {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16), freezeFixPrMigration(23), repoFreezeMigration(33)]);
+  runMigrations(db, [shepherdMigration(4), freezeMigration(6), freezeCancelOnlyMigration(12), shepherdEventMigration(16), freezeFixPrMigration(23), reclassMarkMigration(25), repoFreezeMigration(33), repoFreezeKindsMigration(55)]);
   const freezes = new FreezeStore(db, () => Date.parse("2026-10-18T00:00:00Z"));
   const guard = freezeGuard({ freezes: () => freezes, registrations: () => new ShepherdStore(db) });
   const reason = () => guard.reason(githubPort(fakeGitHub().wire), REPO, 1, "main");
-  return { freezes, reason };
+  return { db, freezes, reason };
 }
 
 describe("a coordinator's repo freeze", () => {
@@ -102,7 +102,7 @@ describe("a coordinator's repo freeze", () => {
     dirs.push(dir);
     const path = join(dir, "factory.db");
     const first = openDatabase(path);
-    runMigrations(first, [freezeMigration(6), repoFreezeMigration(33)]);
+    runMigrations(first, [shepherdMigration(4), shepherdEventMigration(16), freezeMigration(6), reclassMarkMigration(25), repoFreezeMigration(33), repoFreezeKindsMigration(55)]);
     new FreezeStore(first).repoFreezes.freeze(REPO, REASON, "coordinator");
     first.close();
 
@@ -120,7 +120,7 @@ describe("shepherd.freeze", () => {
   it("answers an unfreeze of a repo that is not frozen with a message, not an error", async () => {
     const ctx = ctxOf(freezeRig().freezes);
 
-    const result = await repoFreezeCommand.run({ action: "unfreeze", repo: REPO }, ctx);
+    const result = await repoFreezeCommand.run({ action: "unfreeze", repo: REPO, actor: "unknown" }, ctx);
 
     expect(result).toEqual({ changed: false, detail: `${REPO} was not frozen; nothing changed`, freezes: [], mainRed: [] });
     expect(formatShepherd("shepherd.freeze", result)).toBe(`${REPO} was not frozen; nothing changed\nno repo freezes\n`);
@@ -136,5 +136,34 @@ describe("shepherd.freeze", () => {
     const result = await repoFreezeCommand.run({ action: "freeze", repo: REPO, reason: REASON, actor: "coordinator" }, ctx);
 
     expect(formatShepherd("shepherd.freeze", result)).toContain(`${REPO}  ${REASON} (by coordinator, since 2026-10-18T00:00:00.000Z)`);
+  });
+});
+
+describe("repo freeze timeline rows", () => {
+  const rows = (db: ReturnType<typeof freezeRig>["db"]) => eventsSince(db).map((e) => [e.kind, e.runId, e.repo, e.actor, e.reason]);
+
+  it("writes one repo-freeze row for a freeze", () => {
+    const { db, freezes } = freezeRig();
+
+    freezes.repoFreezes.freeze(REPO, REASON, "coord");
+
+    expect(rows(db)).toEqual([["repo-freeze", null, REPO, "coord", REASON]]);
+  });
+
+  it("writes nothing for an unfreeze of a repo that was not frozen", () => {
+    const { db, freezes } = freezeRig();
+
+    expect(freezes.repoFreezes.unfreeze(REPO, "coord")).toBe(false);
+
+    expect(rows(db)).toEqual([]);
+  });
+
+  it("writes one repo-unfreeze row for an unfreeze that lifted a freeze", () => {
+    const { db, freezes } = freezeRig();
+    freezes.repoFreezes.freeze(REPO, REASON, "coord");
+
+    freezes.repoFreezes.unfreeze(REPO, "other");
+
+    expect(rows(db)).toEqual([["repo-freeze", null, REPO, "coord", REASON], ["repo-unfreeze", null, REPO, "other", REASON]]);
   });
 });
