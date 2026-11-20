@@ -2,7 +2,8 @@
  * `inbox.list`: the owner's one inbox, read only. It takes `approvals.flow`'s merged order, joins each factory gate to its
  * live Shepherd row by run id, and gives every item the one action a tap would take, or the terminal command and why the
  * console offers none. A write action's target comes from a system of record, never from a deposit: a hitl gate joined to a
- * live row that is not replay-diverged, or a deposit's typed `op`. A deposit with no op is a plain question, answered in
+ * live row that pins its PR and head, or a deposit's typed `op`. A replay-diverged row is no exception: the diverged sweep
+ * merges a parked run on the owner's merge answer at the gated head (TP-3918). A deposit with no op is a plain question, answered in
  * the spool beside it. A deposit is agent-written, so its op only names the target: a gate or hold op maps onto that live row's own action, and an op on `CONSOLE_OPS` becomes `owner-op`,
  * whose read-back `inbox.prepare` takes from the factory's preview. Nothing here writes.
  */
@@ -16,6 +17,7 @@ import type { AgentRosterSnapshot } from "@titan-design/chat-protocol/agents";
 import { foldCoveredGates, gateHeadOf, liveAgentNames, markAged, onePerPr, oneRowPerRound, pinOf, sectionOf, type InboxSection, type Placed } from "./inbox-blocking.js";
 import { blockedAgentRows, byDerivedOrder, failedRunRows, stalledRunRows, type DerivedRow } from "./inbox-derived.js";
 import { inboxContextCommand } from "./inbox-context.js";
+import { tapOp } from "./inbox-sitting.js";
 import { readCommand } from "./owner-guard.js";
 import { missedNoticeRows } from "./round-notice-gaps.js";
 import { roundNudges, type RoundNudge } from "./round-nudge.js";
@@ -97,13 +99,6 @@ const AFTER_STAGES_STEP = "after-stages";
 const OWNER_HOLD_CLASS = "owner-asked";
 /** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
 const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "retire-agent", "close-pr", "deploy-pause-clear", "plan-bet-select", "plan-outcome-edit", "plan-freeze-set"]);
-/**
- * A gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
- * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot
- * tell which, so every rowless gate stays on the terminal: the console shows the gate's command and offers no tap.
- */
-export const DIVERGED_HOLD = "resolve from the terminal with the command shown";
-const REPLAY_DIVERGED = /^replay diverged/;
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
 function gateParts(gateId: string): { runId: string; stepId: string } | undefined {
@@ -147,17 +142,14 @@ function gateStepDecisions(item: OwnerItem, stepId: string): ConsoleDecision[] |
   return offered.length > 0 ? offered : terminal(`this ${stepId} gate offers no ${CONSOLE_DECISIONS[stepId][0]}; answer it with its command`, command);
 }
 
-const isDiverged = (row: WatchRow | undefined): boolean => row === undefined || REPLAY_DIVERGED.test(row.stalled?.reason ?? "");
-
 function gateAction(item: OwnerItem, gateId: string, row: WatchRow | undefined): InboxAction {
   const parts = gateParts(gateId);
   if (parts === undefined) return terminal("the gate names no run, so the console cannot read its PR back", item.command);
   const decisions = gateStepDecisions(item, parts.stepId);
   if (!Array.isArray(decisions)) return decisions;
-  if (isDiverged(row)) return terminal(DIVERGED_HOLD, item.command);
-  if (row!.pr === null || row!.headSha === null) return terminal("no live Shepherd row pins this gate's PR and head", item.command);
+  if (row?.pr == null || row.headSha === null) return terminal("no live Shepherd row pins this gate's PR and head", item.command);
   const [decision, ...alternatives] = decisions;
-  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row!.repo, pr: row!.pr, headSha: row!.headSha, decision: decision!, ...(alternatives.length > 0 && { alternatives }) };
+  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row.repo, pr: row.pr, headSha: row.headSha, decision: decision!, ...(alternatives.length > 0 && { alternatives }) };
 }
 
 function holdAction(row: WatchRow, holdClass: string | undefined): InboxAction {
@@ -184,8 +176,7 @@ const openOrTerminal = (evidence: string | undefined, item: OwnerItem, reason: s
 function holdOpAction(item: OwnerItem, op: Extract<OwnerOp, { kind: "release-hold" }>, row: WatchRow | undefined): InboxAction {
   if (row?.held == null) return terminal(`no live Shepherd row holds ${op.repo}#${op.pr}`, item.command);
   const holdClass = holdClassOf(row.held.reason);
-  const matches = op.holdClass === "g10" ? isG10Class(holdClass) : holdClass === op.holdClass;
-  if (!matches) return terminal(`${op.repo}#${op.pr} is held as ${holdClass ?? "unclassed"}, not ${op.holdClass}`, item.command);
+  if (!(op.holdClass === "g10" ? isG10Class(holdClass) : holdClass === op.holdClass)) return terminal(`${op.repo}#${op.pr} is held as ${holdClass ?? "unclassed"}, not ${op.holdClass}`, item.command);
   return holdAction(row, holdClass);
 }
 
@@ -214,7 +205,7 @@ function gateOpDerived(item: OwnerItem, op: Extract<OwnerOp, { kind: "resolve-ga
 
 /** A deposit's op names a target; the action comes from the live row, or for an allowlisted kind from the factory's preview at the tap. */
 function depositDerived(item: OwnerItem, row: WatchRow | undefined): Derived {
-  const { op } = item;
+  const op = tapOp(item);
   if (op === undefined) return { action: { kind: "answer-deposit" } };
   if (op.kind === "resolve-gate") return gateOpDerived(item, op, row);
   if (op.kind === "release-hold") return { action: holdOpAction(item, op, row) };
@@ -265,9 +256,9 @@ const rowOfPr = (repo: string, pr: number, rows: ReadonlyMap<string, WatchRow>):
 function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchRow | undefined {
   const source = item.sources[0]!;
   if (source.system === "hitl") return rowOfRun(source.ref, rows);
-  if (source.system !== "deposit" || item.op === undefined) return undefined;
-  if (item.op.kind === "resolve-gate") return rowOfRun(item.op.gateId, rows);
-  return item.op.kind === "release-hold" || item.op.kind === "merge-at-head" ? rowOfPr(item.op.repo, item.op.pr, rows) : undefined;
+  const op = source.system === "deposit" ? tapOp(item) : undefined;
+  if (op?.kind === "resolve-gate") return rowOfRun(op.gateId, rows);
+  return op?.kind === "release-hold" || op?.kind === "merge-at-head" ? rowOfPr(op.repo, op.pr, rows) : undefined;
 }
 
 interface ItemFacts {

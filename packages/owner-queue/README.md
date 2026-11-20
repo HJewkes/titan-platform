@@ -53,6 +53,13 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   with given keys. Each withdraw and restore appends to `withdrawals.jsonl`, recording the asker
   (`by`) and the `actor` who ran it. A refusal throws
   `WithdrawRefusedError` (`unknown` or `refused`).
+- Sittings: a `do` deposit may carry `steps` (1 to 20, each `{ title, command, op?, verify? }`),
+  one item however many steps it holds. `@titan-design/owner-queue/sitting`:
+  `recordStep(dir, id, n, { outcome, as, actor })` writes `<id>.step-<n>` once (asker only; the
+  first outcome stands) and logs to `sittings.jsonl`; when every step is done or skipped it
+  writes the answer `sitting complete: <n> done, <n> skipped` (by class `asker`, channel
+  `inbox-step`). `withStepOutcomes(dir, item)` reads the outcomes onto the item's steps. A
+  refusal throws `StepRefusedError` (`unknown` or `refused`).
 - `collapseRepeats(items)` folds open items one asker filed with the same `alarm:<source>` key
   (`alarmKey`) into the newest, with `repeats` set to the count.
 - Code anchors: an item and each option may carry `anchors` (`head/<path>#L10-L20`,
