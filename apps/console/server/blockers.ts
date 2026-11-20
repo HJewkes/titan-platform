@@ -9,6 +9,8 @@ import path from "node:path";
 import { z } from "zod";
 import { depositItemId, ownerItemDepositSchema } from "@titan-design/owner-queue";
 import { MAX_DEPOSIT_BYTES, depositFileNames } from "@titan-design/owner-queue/spool";
+import { holdClassOf } from "./gate-strip.js";
+import { isG10Class } from "./g10-hold.js";
 import { DEFAULT_BLOCKER_HOURS } from "./blocker-hours.js";
 import { openDepositNames, spoolNames } from "./inbox.js";
 import { pinnedLive } from "./inbox-blocking.js";
@@ -24,8 +26,6 @@ const MAX_ITEMS = 5;
 const MAX_SUMMARY = 120;
 /** Shepherd's `SEAT_STEPS`, mirrored because the console cannot depend on titan-factory: a seat answers these, not the owner. */
 const SEAT_STEPS: ReadonlySet<string> = new Set(["ci-failed", "sh-dead-end", "sh-sent-back", "stuck-behind"]);
-/** Shepherd's G10 hold classes (`HOLD_CLASSES` in hold-reason.ts), mirrored for the same reason: a reviewer releases these, not the owner. */
-const REVIEWER_HOLD_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
 /** As the inbox's: short enough that a gate answered elsewhere leaves the banner soon. */
 const BANNER_CACHE_TIMES: CacheTimes = { freshMs: 15_000, staleMs: 5 * 60_000 };
 
@@ -68,8 +68,7 @@ const clip = (text: string): string => (text.length > MAX_SUMMARY ? `${text.slic
 const prOf = (row: WatchRow): string => `${row.repo}#${row.pr}`;
 const inboxLink = (id: string): string => `#/inbox/${encodeURIComponent(id)}`;
 const baseStep = (stepId: string): string => stepId.replace(/:\d+$/, "");
-/** Read as Shepherd's `holdClassOf` reads it: the text before the first colon. */
-const isReviewerHold = (reason: string): boolean => REVIEWER_HOLD_CLASSES.has(reason.includes(":") ? reason.slice(0, reason.indexOf(":")) : "");
+const isReviewerHold = (reason: string): boolean => isG10Class(holdClassOf(reason));
 
 type Unaged = Omit<BannerBlocker, "ageHours">;
 
