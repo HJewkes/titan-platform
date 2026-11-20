@@ -59,7 +59,7 @@ interface Judged {
 }
 
 /** `at` is when the round goes with its recommendations, set on an eligible round and on one waiting only on the clock. */
-export type RoundVerdict = { eligible: true; at: string; judged: Judged[]; answers: SubmittedAnswer[] } | { eligible: false; reason: string; waiting: boolean; at?: string };
+type RoundVerdict = { eligible: true; at: string; judged: Judged[]; answers: SubmittedAnswer[] } | { eligible: false; reason: string; waiting: boolean; at?: string };
 
 const clip = (text: string): string => text.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT);
 
