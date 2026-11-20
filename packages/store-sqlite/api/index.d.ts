@@ -60,6 +60,12 @@ interface Migration {
     definition?: string;
     up: (db: Db) => void;
 }
+/** A migration whose one statement text is both what runs and what is hashed, so the two cannot drift apart. */
+declare function sqlMigration(spec: {
+    version: number;
+    name?: string;
+    sql: string;
+}): Migration;
 interface RunMigrationsOptions {
     /** What an edited, already-applied migration does: throw (the default) or emit a process warning and go on. */
     onDrift?: "error" | "warn";
@@ -89,6 +95,8 @@ declare function appliedVersions(db: Db): number[];
  * Returns the versions applied this call.
  */
 declare function runMigrations(db: Db, migrations: readonly Migration[], options?: RunMigrationsOptions): number[];
+/** The hash recorded for an applied migration; null for one that declares no definition. */
+declare function definitionHash(m: Migration): string | null;
 
 /**
  * The cross-domain identity grammar: `<kind>:<id>`, where `kind` is a short
@@ -469,4 +477,4 @@ declare class WatermarkTable {
     list(): WatermarkRow[];
 }
 
-export { type CacheBlobOptions, CacheBlobTable, type CacheHit, type CacheKey, type CacheModelRows, type Db, type EdgeInput, type EdgeRow, EdgeTable, type EdgeTableOptions, type EntityInput, type EntityRow, EntityTable, type KitSelection, MIGRATION_TABLE_NAME, type Migration, MigrationDriftError, MigrationIdentityError, type OpenOptions, type ParsedRef, type RunMigrationsOptions, SQL_NOW, SchemaTooNewError, type SpanFtsOptions, SpanFtsTables, type SpanHit, type SpanInput, type SpanScope, type TableName, type WatermarkAdvance, type WatermarkOptions, type WatermarkRow, type WatermarkStatus, WatermarkTable, appliedVersions, assertSchemaVersion, cacheBlobTableDdl, contentHashOf, edgeTableDdl, entitySnapTableDdl, entityTableDdl, hasColumn, hasTable, isRef, kitDdl, kitMigration, nowIso, openDatabase, parseRef, quoteIdent, ref, refKind, runMigrations, snapshotTableDdl, spanFtsTablesDdl, watermarkTableDdl };
+export { type CacheBlobOptions, CacheBlobTable, type CacheHit, type CacheKey, type CacheModelRows, type Db, type EdgeInput, type EdgeRow, EdgeTable, type EdgeTableOptions, type EntityInput, type EntityRow, EntityTable, type KitSelection, MIGRATION_TABLE_NAME, type Migration, MigrationDriftError, MigrationIdentityError, type OpenOptions, type ParsedRef, type RunMigrationsOptions, SQL_NOW, SchemaTooNewError, type SpanFtsOptions, SpanFtsTables, type SpanHit, type SpanInput, type SpanScope, type TableName, type WatermarkAdvance, type WatermarkOptions, type WatermarkRow, type WatermarkStatus, WatermarkTable, appliedVersions, assertSchemaVersion, cacheBlobTableDdl, contentHashOf, definitionHash, edgeTableDdl, entitySnapTableDdl, entityTableDdl, hasColumn, hasTable, isRef, kitDdl, kitMigration, nowIso, openDatabase, parseRef, quoteIdent, ref, refKind, runMigrations, snapshotTableDdl, spanFtsTablesDdl, sqlMigration, watermarkTableDdl };
