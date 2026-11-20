@@ -84,6 +84,7 @@ export const PARKING_STEPS: Readonly<Record<string, string>> = {
   "sh-g10-release": `${WRITE}: releases the G10 adversary hold`,
   "sh-g10-rehold": `${WRITE}: re-places the G10 adversary hold`,
   "sh-follow-ups": `${WRITE}: files reviewer follow-ups as active-work tasks`,
+  "sh-check-candidates": `${RECORD}: a verdict's check candidates with the PR's area`,
   "sh-g10-reclass": `${WRITE}: swaps an unread-files G10 hold for the class a whole re-read finds`,
   "sh-seat-notice": `${WRITE}: sends the seat notice`,
   "sh-held-check": `${RECORD}: whether the run was held at this point`,
