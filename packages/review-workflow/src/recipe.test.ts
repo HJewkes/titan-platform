@@ -82,4 +82,13 @@ describe("reviewHead", () => {
     expect(outcome.kind).toBe("MERGE");
     expect([world.snapshotReads, steps[0]]).toEqual([0, `${DEFAULT_REVIEW_STEP_IDS.intent}:${HEAD}`]);
   });
+
+  it("sends a checkout that stays unready after the refresh to the fixer as heal-ineffective", async () => {
+    const { ports } = fakeWorld(merges);
+    const unready: ReviewBodyPorts = { ...ports, checkout: { state: async () => ({ kind: "wrong-commit", at: "c".repeat(40) }), refresh: async () => undefined } };
+
+    const { outcome } = await review(unready);
+
+    expect(outcome).toMatchObject({ kind: "needs-fixer", failure: "heal-ineffective", fingerprint: "heal-ineffective:refresh-checkout" });
+  });
 });
