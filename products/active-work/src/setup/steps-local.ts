@@ -2,6 +2,7 @@
 import nodePath from 'node:path';
 import { errorCode } from '@titan-design/rpc-protocol/narrow';
 import { errorText } from './errors.js';
+import { MIN_NODE_MAJOR, parseMajor } from '../doctor/probes.js';
 import { ensureSchemaVersion } from '../migrations/ensure-schema.js';
 import {
   ensureDir,
@@ -14,17 +15,9 @@ import {
   type StepResult,
 } from './steps-deps.js';
 
-const MIN_NODE_MAJOR = 22;
-
-function parseNodeMajor(version: string): number {
-  const cleaned = version.startsWith('v') ? version.slice(1) : version;
-  const major = Number(cleaned.split('.')[0]);
-  return Number.isFinite(major) ? major : 0;
-}
-
 export async function stepCheckNode(deps: SetupDeps = {}): Promise<StepResult> {
   void deps;
-  const major = parseNodeMajor(process.versions.node);
+  const major = parseMajor(process.versions.node);
   if (major < MIN_NODE_MAJOR) {
     return {
       ok: false,
