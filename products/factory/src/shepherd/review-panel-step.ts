@@ -281,7 +281,7 @@ function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string 
 }
 
 /** Names the seat that withheld the verdict, so a round where every dispatched member answered never reads as a silent reviewer. */
-function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Verdict {
+function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Extract<Verdict, { kind: "none" }> {
   if (verdict.outcome === "timeout") return { kind: "none", cause: "timeout", reason: "a blocking panel member gave no verdict" };
   const shortfall = "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned";
   const reason = verdict.fixProofShortfall === true ? shortfall : "a blocking panel member gave no verdict";
@@ -345,11 +345,14 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   const shortfall = proofShortfall(verdict, target.head, base.fixProof);
   if (shortfall) return shortfall;
   const retryable = ctx.iteration(`${PANEL_VERDICT_STEP}:${target.head}`) < MAX_NOT_STARTED_REVIEWS;
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results));
   const merged = panelMerge(verdict, results, memberProfiles(members));
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results)), ...adversaryMerged(merged) };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;
 }
+
+/** A withheld panel keeps its members only when the adversary said MERGE, the one verdict a g10-adversary release reads from it (TP-6767). */
+const adversaryMerged = (merged: PanelMerge): { panel?: PanelMerge } => (merged.members.some((m) => m.shape === "adversary" && m.verdict === "MERGE") ? { panel: merged } : {});
 
 /** The adversary member's MERGE as the evidence step judges its `Attests:` and `Authority:` lines, and whether the plan had an adversary at all. */
 function adversaryAttest(intent: PanelIntent, merged: PanelMerge): Omit<AttestVerdicts, "attests"> {

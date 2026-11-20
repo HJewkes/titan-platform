@@ -245,7 +245,7 @@ export const FactoryConfigSchema = z.object({
       /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */
       seatDigest: z.strictObject({ pacing: SeatDigestPacingSchema.optional() }).optional(),
       /** Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
-       * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
+       * own adversary member; `shadow` records where that member's clean MERGE would release the hold, `on` releases it (TP-6767).
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
        * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
