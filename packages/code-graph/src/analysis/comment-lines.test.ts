@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { parseFile } from "@titan-design/code-parser";
-import { computeSourceMetrics } from "../source-metrics.js";
+import { computeSourceMetrics, type SourceMetricOptions } from "../source-metrics.js";
+import { COMMENT_RATIO_MIN_BODY_LINES } from "./comment-lines.js";
 
 const lines = (...ls: string[]): string => `${ls.join("\n")}\n`;
 
-async function symbolMetric(code: string, lang: "typescript" | "python", name: string, metric: string): Promise<number | undefined> {
+async function symbolMetric(
+  code: string,
+  lang: "typescript" | "python",
+  name: string,
+  metric: string,
+  options: SourceMetricOptions = { commentRatioMinBodyLines: 0 },
+): Promise<number | undefined> {
   const fp = lang === "python" ? "f.py" : "f.ts";
   const file = await parseFile(code, fp, lang);
-  const metrics = computeSourceMetrics([file], (p) => p, new Map([[fp, new Set([name])]]));
+  const metrics = computeSourceMetrics([file], (p) => p, new Map([[fp, new Set([name])]]), options);
   return metrics.find((m) => m.nodeId === `${fp}#${name}` && m.name === metric)?.value ?? undefined;
 }
 
@@ -92,5 +99,68 @@ describe("symbol comment, docstring and body lines on Python (TP-322)", () => {
   it("gives a method its own counts under its qualified name", async () => {
     const cls = lines("class Job:", "    def run(self):", "        # go", "        return 1");
     expect(await symbolMetric(cls, "python", "Job.run", "symbol_comment_ratio")).toBe(1);
+  });
+});
+
+describe("symbol comment ratio body-line floor (TP-350)", () => {
+  const DEFAULTS: SourceMetricOptions = {};
+  const commentedBody = (bodyLines: number): string =>
+    lines(
+      "def f(x):",
+      "    # provenance: ported from the reference implementation",
+      ...Array.from({ length: bodyLines }, (_, i) => `    x = x + ${i}`),
+      "    return x",
+    );
+
+  it("defaults the floor to six body lines", () => {
+    expect(COMMENT_RATIO_MIN_BODY_LINES).toBe(6);
+  });
+
+  it("scores a one-line body with a one-line provenance comment as 0, not 1", async () => {
+    const short = lines("def f(x):", "    # see the reference docs, eq. 3", "    return x * 2");
+    expect(await symbolMetric(short, "python", "f", "symbol_comment_ratio", DEFAULTS)).toBe(0);
+    expect(await symbolMetric(short, "python", "f", "symbol_comment_lines", DEFAULTS)).toBe(1);
+  });
+
+  it("scores a body one line under the floor as 0", async () => {
+    const code = commentedBody(COMMENT_RATIO_MIN_BODY_LINES - 2);
+    expect(await symbolMetric(code, "python", "f", "symbol_body_lines", DEFAULTS)).toBe(COMMENT_RATIO_MIN_BODY_LINES - 1);
+    expect(await symbolMetric(code, "python", "f", "symbol_comment_ratio", DEFAULTS)).toBe(0);
+  });
+
+  it("scores a body exactly at the floor", async () => {
+    const code = commentedBody(COMMENT_RATIO_MIN_BODY_LINES - 1);
+    expect(await symbolMetric(code, "python", "f", "symbol_comment_ratio", DEFAULTS)).toBeCloseTo(1 / COMMENT_RATIO_MIN_BODY_LINES);
+  });
+
+  it("scores a body one line over the floor", async () => {
+    const code = commentedBody(COMMENT_RATIO_MIN_BODY_LINES);
+    expect(await symbolMetric(code, "python", "f", "symbol_comment_ratio", DEFAULTS)).toBeCloseTo(1 / (COMMENT_RATIO_MIN_BODY_LINES + 1));
+  });
+
+  it("still scores a comment-bloated body at the floor", async () => {
+    const bloated = lines(
+      "function f(x: number): number {",
+      "  // take the input",
+      "  let y = x;",
+      "  // add one to it",
+      "  y += 1;",
+      "  // double it",
+      "  y *= 2;",
+      "  // subtract three",
+      "  y -= 3;",
+      "  // halve it",
+      "  y /= 2;",
+      "  // give it back",
+      "  return y;",
+      "}",
+    );
+    expect(await symbolMetric(bloated, "typescript", "f", "symbol_comment_ratio", DEFAULTS)).toBe(1);
+  });
+
+  it("honours a configured floor", async () => {
+    const code = commentedBody(COMMENT_RATIO_MIN_BODY_LINES);
+    const floor = { commentRatioMinBodyLines: COMMENT_RATIO_MIN_BODY_LINES + 2 };
+    expect(await symbolMetric(code, "python", "f", "symbol_comment_ratio", floor)).toBe(0);
   });
 });
