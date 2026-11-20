@@ -55,7 +55,7 @@ function usage(input: number, output: number, sequence: number) {
 describe("createJudgeHarness", () => {
   it("runs a claude-print judge as one bounded, schema-bound turn on the configured model", async () => {
     const seen: AgentRunConfig<unknown>[] = [];
-    const fakeRun: typeof runAgent = async <T>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> => {
+    const fakeRun: typeof runAgent = async <T,>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> => {
       seen.push(config);
       const output = config.outputSchema!.parse({ ok: true });
       const modelUsage = { haiku: partialFake<AgentUsage["modelUsage"][string]>({ inputTokens: 40, outputTokens: 5 }) };
