@@ -101,6 +101,7 @@ export function byRecSubjectOfItem(item: OwnerItem): ByRecSubject {
     default: item.default,
     options: item.options?.map((option) => option.id),
     decisionClass: item.class,
+    ...(item.authority && { authorityRows: [item.authority.ruleId] }),
     category: item.category,
     op: item.op?.kind,
     audience: item.audience,
