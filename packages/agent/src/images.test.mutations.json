@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a claude-print image run drops the image blocks and sends only the prompt text",
+      "file": "packages/agent/src/claude-print.ts",
+      "find": "    ...images.map(image => ({ type: \"image\", source: { type: \"base64\", media_type: image.mediaType, data: image.data.toString(\"base64\") } })),\n",
+      "replace": "",
+      "kills": [
+        "claude-print image attachments a run with images sends each image as a content block before the prompt text, in order"
+      ]
+    }
+  ]
+}

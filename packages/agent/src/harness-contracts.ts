@@ -68,6 +68,8 @@ export interface CodexNativeOptions<T> {
   sandbox?: CodexSandbox;
   approvalPolicy?: CodexApprovalPolicy;
   outputSchema?: CodexOutputSchema<T>;
+  /** Absolute paths to PNG or JPEG files, passed as one `-i` each. Not yet proven against a live Codex. */
+  images?: readonly string[];
 }
 
 export interface ClaudeCodeRunRequest<T = string> extends BoundedRunBase {
