@@ -4,7 +4,7 @@ This walkthrough takes a brand-new machine to a working `active-work` install wi
 
 ## 1. Verify prerequisites
 
-`active-work` requires Node 22 or newer. `pnpm` is recommended for global installs because it manages multiple Node versions cleanly, but `npm` works too.
+`active-work` requires Node 24 or newer. `pnpm` is recommended for global installs because it manages multiple Node versions cleanly, but `npm` works too.
 
 ```bash
 node --version   # expect v22.x or newer
