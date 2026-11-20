@@ -287,7 +287,9 @@ and a pick) or policy (a D-row `class`, or category `policy`) answer also gets o
 `## Queue answers <date>` in `TITAN_CONSOLE_DECISIONS_FILE`, which must already exist. A Ship
 approval is two-way, so it reaches the ledger only. A personal item, an item of a human-only
 initiative, or any answer while active-work cannot say which initiatives are human-only writes
-nothing. A failed log write never undoes the submit: the result's `log` array says what was
+nothing. An answer whose `by.class` is not `owner` or `owner-remote` (the by-rec sweep's) never
+reaches the ledger, whose rows the decider reads as the owner's precedent; its result says `ledger:
+"excluded"`, reason `not-owner`, and its decisions bullet names it. A failed log write never undoes the submit: the result's `log` array says what was
 written per question, with a reason that names no path, and the daemon log has the error.
 
 A submit that carries `liveViewed` (the variant keys whose live story rendered on the owner's page)
@@ -758,10 +760,15 @@ A "rec" reply, or the tap, is `rounds.answer-rec`.
 ### Auto-by-rec
 
 The daemon also sweeps rounds hourly, starting five minutes after it starts (`server/by-rec-rounds.ts`, TP-6773).
-A round still unanswered and not withdrawn after the policy's wait (24 h from its `round.json` mtime by default) is
-answered with its recommendations. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
-and the asker's notice see it like any other answer. The feedback's `general` says `auto-by-rec`, not
-`answered-by-rec`, which stays the owner's own tap. The decision log credits `{class: "automation", id: "auto-by-rec"}`.
+A round still unanswered and not withdrawn after the policy's wait (24 h by default) is answered with its
+recommendations. The wait runs from the later of the `round.json` mtime and when the sweep first saw that round and
+manifest, kept in `<state dir>/auto-by-rec-seen/`, so an asker who backdates `round.json` gains nothing; a rewritten
+`round.json` starts a fresh wait. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
+and the asker's notice see it like any other answer. The pipeline writes owner-queue's `BY_REC_FEEDBACK_GENERAL`
+(`auto-by-rec: ...`) into the feedback's `general`, not `answered-by-rec`, which stays the owner's own tap. Every reader
+takes the answerer from that file through `feedbackAnswerer`: the decisions bullet credits `auto-by-rec`, the decider's
+ledger (`answers.jsonl`) gets no row, and the owner queue shows the answer as the automation's, which never settles
+another item nor lifts a change request. An agent's recommendation never returns as the owner's precedent.
 
 The sweep decides each question with owner-queue's `byRecDecision`. A round is skipped, with the reason in the
 daemon log, when any question:
@@ -1039,10 +1046,10 @@ blocks. hitl gates carry no `pr:` key yet (TP-2053), so a gate sits in a topic g
 with the one action a tap takes, or the terminal command and why the console offers none. Beside them, `nudges`
 lists the rounds waiting over six hours (see "The round age nudge"). A write action's target
 comes only from a system of record: a hitl gate joined to a live Shepherd row, or a deposit's typed `op` (see "Owner
-inbox deposits"). A deposit with no `op` never gets one. Because a gate on a replay-diverged run is
-consumed with no merge, a gate whose row's stall reason reads "replay diverged" is read-only with "resolve from the
-terminal with the command shown". So is every gate with no Shepherd row: a land run's gate and one a replaced diverged run left
-behind look the same in the item.
+inbox deposits"). A deposit with no `op` never gets one. A gate whose row's stall reason reads "replay diverged" gets
+the same tap as a healthy row's, pinned to that row's PR and head: the diverged sweep merges the parked run on the
+owner's merge answer at the gated head, and restarts it to ask again if the head moved (TP-3918). A gate with no
+Shepherd row is read-only with its command and "no live Shepherd row pins this gate's PR and head".
 
 The **Blocking** section holds only items whose answer unblocks running work, as one rule per source
 (`server/inbox-blocking.ts`, TP-4352). A hitl gate blocks when its live Shepherd row is pending on that gate at a PR head

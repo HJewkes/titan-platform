@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import type { ClustererSnapshot } from '@titan-design/cluster';
+import { parseClustererSnapshot, type ClustererSnapshot } from '@titan-design/cluster';
 import { atomicWrite } from '../utils/fs-atomic.js';
 import { getMinerRoot } from '../utils/paths.js';
 
@@ -18,9 +18,9 @@ import { getMinerRoot } from '../utils/paths.js';
  * live tree had learned; `tools/eval-drain.mjs` measured that as a real ~6%
  * template-set divergence on the operator's corpus, which is why this exists.
  *
- * The schema mirrors `ClustererSnapshot` because that is what
- * `@titan-design/cluster` restores from. It is validated on the way in and out
- * anyway: the package promises a shape, this file is a place a human or a half
+ * The current format is `@titan-design/cluster`'s own snapshot, validated by its
+ * `parseClustererSnapshot` so keys this file does not know survive a round trip.
+ * It is validated on the way in and out anyway: the package promises a shape, this file is a place a human or a half
  * -written run can corrupt, and a bad snapshot must not take the ingest down.
  */
 
@@ -36,11 +36,6 @@ const PartitionSchema = z.object({
   ),
   /** `clusterId -> templateId`, as pairs so the file has a stable order. */
   templateIds: z.array(z.tuple([z.number().int().positive(), z.string().min(1)])),
-});
-
-const TreeSnapshotFileSchema = z.object({
-  version: z.literal(1).default(1),
-  partitions: z.array(PartitionSchema).default([]),
 });
 
 /**
@@ -84,8 +79,11 @@ export async function loadTreeSnapshots(root: string = getMinerRoot()): Promise<
       })),
     };
   }
-  const parsed = TreeSnapshotFileSchema.safeParse(value);
-  return parsed.success ? parsed.data : empty();
+  try {
+    return parseClustererSnapshot(value);
+  } catch {
+    return empty();
+  }
 }
 
 export async function saveTreeSnapshots(
@@ -95,6 +93,6 @@ export async function saveTreeSnapshots(
   await fs.mkdir(root, { recursive: true });
   await atomicWrite(
     snapshotPath(root),
-    `${JSON.stringify(TreeSnapshotFileSchema.parse(snapshot))}\n`,
+    `${JSON.stringify(parseClustererSnapshot(snapshot))}\n`,
   );
 }
