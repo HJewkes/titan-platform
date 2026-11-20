@@ -21,7 +21,7 @@ const write = (name: string, value: unknown): string => {
   writeFileSync(path, JSON.stringify(value));
   return path;
 };
-// One 30-word sentence: past the plain 25-word cap, inside the vetted one.
+// One 30-word sentence: past the plain cap, inside the vetted one.
 const LONG_H1 =
   "When a courier asks for a label, the desk refuses ghost labels, so it looks for the parcel row and waits for the ledger before it prints anything at all.";
 
@@ -118,18 +118,18 @@ describe("explainer rewrite measure", () => {
     expect(readMeasure().spend.total_usd).toBeCloseTo(0.08);
   });
 
-  it("scores a kept 26-32 word sentence with the speech-vet verdict under --speech-vet, as eval l0 does", async () => {
+  it("scores a kept long sentence with the speech-vet verdict under --speech-vet, as eval l0 does", async () => {
     const long = choppy({ h1: { spoken: LONG_H1 } });
     const keepLong = async (): Promise<RewriteResult> => ({ script: long, report: { judge: "fake", before: [], after: [], rounds: [], calls: [], usd: 0.1, tokensIn: 0, tokensOut: 0 } });
-    const speechVet = async () => async () => ({ status: "accepted" });
+    const speechVet = async () => async () => ({ status: "needs-rewrite" });
     const run = async (extra: string[]) => {
       const argv = ["rewrite", "measure", write("alpha.json", choppy()), "--judge", write("judge.json", sonnet), "--out-dir", outDir(), ...extra];
       await runRewriteCli(argv, { rewriteRun: keepLong, speechVet, out: () => {}, err: () => {} });
       return readRows(join(outDir(), "alpha", "s1.l0.json")).find((row) => row.check_id === "Q-V9");
     };
 
-    expect(await run(["--samples", "1"])).toMatchObject({ pass: false });
-    expect(await run(["--samples", "1", "--speech-vet"])).toMatchObject({ pass: true });
+    expect(await run(["--samples", "1"])).toMatchObject({ pass: true });
+    expect(await run(["--samples", "1", "--speech-vet"])).toMatchObject({ pass: false });
   });
 
   it("exits 2 when a report-only cell names no input or target row", async () => {
