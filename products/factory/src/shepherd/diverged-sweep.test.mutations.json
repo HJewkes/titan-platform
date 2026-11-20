@@ -7,7 +7,8 @@
       "find": "  if (carried !== undefined) {\n    if (\"merged\" in carried) sweep.merged.push({ ...carried.merged, ...(await stackedLeft(ctx.shepherd!, known.repo, pr)) });\n    else sweep.held.push(carried.held);\n",
       "replace": "  if (carried !== undefined && \"held\" in carried) {\n    sweep.held.push(carried.held);\n",
       "kills": [
-        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A resolved merge on a kept diverged run with an unchanged head merges once"
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A resolved merge on a kept diverged run with an unchanged head merges once",
+        "restartDivergedRuns on a console inbox tap given while the run was parked (TP-6194) merges a parked diverged run whose approve-merge the console resolved merge at the gated head"
       ]
     },
     {
@@ -16,7 +17,8 @@
       "find": "  if (ci.verdict !== \"green\" || ci.headSha !== merge.headSha) return undefined;",
       "replace": "  if (ci.verdict !== \"green\") return undefined;",
       "kills": [
-        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A moved head restarts and asks again, never sending a merge for the head the owner approved"
+        "restartDivergedRuns on an owner answer given while the run was parked (TP-3918) A moved head restarts and asks again, never sending a merge for the head the owner approved",
+        "restartDivergedRuns on a console inbox tap given while the run was parked (TP-6194) merges nothing for a console merge tap once the head moved past the gated one"
       ]
     },
     {
