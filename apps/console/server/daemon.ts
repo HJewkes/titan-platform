@@ -18,6 +18,7 @@ import {
 import { PERF_REPORT, PERF_REPORT_BODY_LIMIT, perfCommands } from "./perf/commands.js";
 import { createPerfRecorder, type PerfRecorder } from "./perf/recorder.js";
 import { readBuildInfo } from "./build-info.js";
+import { startDepositByRecSweep } from "./deposit-by-rec.js";
 import { LAN_NEEDS_TLS, type ConsoleConfig } from "./config.js";
 import { announceRefreshed, relayUpstreams, startEventsRelay, type EventsRelay } from "./events-relay.js";
 import { INBOX_DEPOSIT, INBOX_DEPOSIT_BODY_LIMIT } from "./inbox.js";
@@ -76,8 +77,20 @@ export async function startConsoleDaemon(options: ConsoleDaemonOptions): Promise
   });
   Object.assign(ports, { console: handle.port, story: handle.contentPort ?? null });
   void sources.listeners?.sweep();
-  const relay = relayEvents(handle.hub, sources, config, logger);
-  return { ...handle, close: async () => closeAll([relay.close(), handle.close()], perf) };
+  const background = startBackground(handle.hub, sources, config, logger);
+  return { ...handle, close: async () => closeAll([background.close(), handle.close()], perf) };
+}
+
+/** The events relay and the hourly deposit by-rec sweep (TP-6774); closing stops the sweep and ends the relay. */
+function startBackground(hub: DaemonHandle["hub"], sources: KeptSources, config: ConsoleConfig, logger: Logger): EventsRelay {
+  const relay = relayEvents(hub, sources, config, logger);
+  const byRec = startDepositByRecSweep({ stateDir: config.stateDir, inboxDir: config.inboxDir, ...(sources.decisionLog && { decisionLog: sources.decisionLog }), logger });
+  return {
+    close: () => {
+      byRec.stop();
+      return relay.close();
+    },
+  };
 }
 
 async function closeAll(closing: Promise<unknown>[], perf: PerfRecorder): Promise<void> {
