@@ -13,8 +13,24 @@ export interface CommentLineStats {
   commentRatio: number;
 }
 
-/** `fn` is the function node, `body` its body, `lines` the file's content split on newlines. */
-export function commentLineStats(fn: Node, body: Node, lines: readonly string[]): CommentLineStats {
+/**
+ * Body lines a function needs before its comment ratio is scored (TP-350). On a shorter
+ * body a single provenance note (a cited source, a reference command) outweighs the code
+ * and reads as narration, so the ratio is 0 there. Five rows still let a three-line
+ * citation over a test that wraps one call across rows score 0.6.
+ */
+export const COMMENT_RATIO_MIN_BODY_LINES = 6;
+
+/**
+ * `fn` is the function node, `body` its body, `lines` the file's content split on newlines.
+ * `minBodyLines` is the body-line floor under which `commentRatio` is 0.
+ */
+export function commentLineStats(
+  fn: Node,
+  body: Node,
+  lines: readonly string[],
+  minBodyLines: number = COMMENT_RATIO_MIN_BODY_LINES,
+): CommentLineStats {
   const docstring = pythonDocstring(body);
   const comments = functionComments(fn, body);
   const commentLines = rowsOf(comments).size;
@@ -23,7 +39,7 @@ export function commentLineStats(fn: Node, body: Node, lines: readonly string[])
     commentLines,
     docstringLines: docstring ? rowSpan(docstring) : jsDocLines(fn),
     bodyLines,
-    commentRatio: commentLines / Math.max(bodyLines, 1),
+    commentRatio: bodyLines < minBodyLines ? 0 : commentLines / Math.max(bodyLines, 1),
   };
 }
 

@@ -11,7 +11,7 @@ export {
   ownerItemSchema,
   sourceRefSchema,
 } from "./schema.js";
-export type { Audience, ItemStatus, LocatorCite, OnSilence, OwnerAnswer, OwnerItem, SourceRef } from "./schema.js";
+export type { Audience, ItemStatus, LocatorCite, OnSilence, OwnerAnswer, OwnerItem, SittingStep, SourceRef, StepOutcome } from "./schema.js";
 export { CARD_RULES, cardLint, ownerCardSchema } from "./card.js";
 export type { CardRule } from "./card.js";
 export { audienceOf, forAudience } from "./audience.js";

@@ -77,6 +77,9 @@ export async function defaultSupervisorActive(): Promise<{
   };
 }
 
+/** Matches the `engines` floor in package.json. */
+export const MIN_NODE_MAJOR = 24;
+
 export function parseMajor(version: string): number {
   const match = /^v?(\d+)\./.exec(version);
   return match ? Number(match[1]) : 0;
