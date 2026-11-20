@@ -84,7 +84,20 @@ export function byRecDecision(subject: ByRecSubject, now: Date, policy: ByRecPol
   return { eligible: true, at, answer: recommendation.answer, rationale };
 }
 
-/** An owner-queue item (a deposit, or a round question read back) as a by-rec subject. */
+const ANCHOR_SIDE = /^(head|base|diff)\//;
+const ANCHOR_LINES = /#.*$/;
+
+/** Every path the item or its options anchor to, so the guard-path rule sees them. */
+function anchoredPaths(item: OwnerItem): string[] {
+  const anchors = [...(item.anchors ?? []), ...(item.options ?? []).flatMap((option) => option.anchors ?? [])];
+  return anchors.map((anchor) => anchor.replace(ANCHOR_SIDE, "").replace(ANCHOR_LINES, ""));
+}
+
+/**
+ * An owner-queue item (a deposit, or a round question read back) as a by-rec subject. The floor refuses only on facts
+ * that are present, so every item field a floor rule keys on is mapped here. Hold classes, owner-at-head rows, the head
+ * ref and plan approval are not item fields; a sweep that knows them sets them itself.
+ */
 export function byRecSubjectOfItem(item: OwnerItem): ByRecSubject {
   const { recommended } = item;
   const system = item.sources[0]?.system;
@@ -101,7 +114,8 @@ export function byRecSubjectOfItem(item: OwnerItem): ByRecSubject {
     default: item.default,
     options: item.options?.map((option) => option.id),
     decisionClass: item.class,
-    ...(item.authority && { authorityRows: [item.authority.ruleId] }),
+    ...(item.authority && { authorityRows: [item.authority.ruleId], authorityTable: item.authority.table }),
+    paths: anchoredPaths(item),
     category: item.category,
     op: item.op?.kind,
     audience: item.audience,

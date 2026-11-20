@@ -29,6 +29,8 @@ export interface ByRecSubject {
   /** The decision-routing D-row. */
   decisionClass?: string;
   authorityRows?: readonly string[];
+  /** The table the authority rows come from; any table but `authority` refuses. */
+  authorityTable?: string;
   ownerAtHead?: readonly string[];
   paths?: readonly string[];
   /** Set by a sweep whose own guard-path table matched a changed path. */
@@ -63,10 +65,12 @@ const DOLLAR_AMOUNT = /\$\s?\d/;
 const AUTHORITY_PACKAGE = "packages/authority/";
 const CI_AND_SETTINGS = /(^|\/)(\.github\/workflows\/|\.github\/merge-lint\.json$|codeowners$|\.claude\/settings[^/]*\.json$)/;
 /**
- * Authority-table families whose rows may auto-resolve; every other family, including one added to the table later or a
- * row from another table, refuses. Spawn, retire, untrusted ingest and question answers carry no owner-only verb.
+ * Authority-table families whose rows may auto-resolve; every other family, including one added to the table later,
+ * refuses, and so does a row from any table but `authority`. Spawn, retire, untrusted ingest and question answers carry
+ * no owner-only verb.
  */
 const AUTO_RESOLVABLE_FAMILIES = new Set(["SPN", "RET", "UNT", "ANS"]);
+const AUTHORITY_TABLE = "authority";
 
 const hasPrefix = (values: readonly string[] | undefined, prefixes: readonly string[]): boolean =>
   (values ?? []).some((value) => prefixes.some((prefix) => value.toLowerCase().startsWith(prefix.toLowerCase())));
@@ -94,6 +98,11 @@ function guardTouched(subject: ByRecSubject): boolean {
 function namesMoney(subject: ByRecSubject): boolean {
   if (MONEY_CATEGORIES.has(lower(subject.category)) || hasFamily(subject.authorityRows, ["SPD"])) return true;
   return (subject.text ?? []).some((line) => DOLLAR_AMOUNT.test(line));
+}
+
+function authorityRowRefuses(subject: ByRecSubject): boolean {
+  if (subject.authorityTable !== undefined && subject.authorityTable.trim() !== AUTHORITY_TABLE) return true;
+  return (subject.authorityRows ?? []).some((row) => !AUTO_RESOLVABLE_FAMILIES.has(familyOf(row)));
 }
 
 /**
@@ -125,7 +134,7 @@ export const BY_REC_FLOOR: readonly FloorRule[] = [
   ["secret", (s) => hasFamily(s.authorityRows, ["SEC"])],
   ["hardware", (s) => hasFamily(s.authorityRows, ["HW", "HWS"])],
   ["money", namesMoney],
-  ["authority-row", (s) => (s.authorityRows ?? []).some((row) => !AUTO_RESOLVABLE_FAMILIES.has(familyOf(row)))],
+  ["authority-row", authorityRowRefuses],
   ["one-way", (s) => s.door === "one-way"],
   ["irreversible", (s) => s.irreversible === true],
   ["on-silence-wait", (s) => s.onSilence?.action === "wait"],

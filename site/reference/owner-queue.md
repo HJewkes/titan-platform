@@ -542,7 +542,8 @@ const decision = byRecDecision(byRecSubjectOfItem(item), new Date(), policy);
   requests, personal items, `do` and sitting items, the operator audience, any `op`, Ship and
   plan-approval questions, and a recommendation with no options to check it against, that is
   not an offered option, or that the item's `default` contradicts. `byRecSubjectOfItem`
-  carries the item's `authority.ruleId` as its authority row.
+  carries the item's `authority.ruleId` as its authority row and `authority.table` as its
+  table, and the paths of every anchor on the item and its options as changed paths.
 - **Clock.** Eligible at `openedAt + afterHours`; a deposit's own `onSilence: apply-default`
   wait replaces the policy's. A skip that only waits on the clock is `too-early` with `at`.
   Shadow and live decide the same; only the sweep's action differs.
