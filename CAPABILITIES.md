@@ -574,7 +574,7 @@ Tier 1, `@titan-design/agent@0.7.0`. Headless agent triggering over the Claude A
 
 **Use this when:**
 
-You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
+You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). `images` attaches PNG or JPEG files to a claude-print run (proven on a subscription login, 2026-11-20); Codex exec takes them as `native.images` (one `-i` each), which is unverified against a live Codex. For retries, fan-out or durability, use workflow.
 
 Key exports:
 
@@ -1550,7 +1550,7 @@ Only `explainer eval l1`, `l2`, `cold`, `items` and `smoke`, `explainer eval wri
 `explainer rewrite` (`rewriteScript`) rewrites a drafted script's spoken lines toward the Q-V11 register bands, one call per chapter a round,
 keeps a beat's rewrite only when `guardBeat` accepts it,
 moves extra numbers to `visual.labels`, and
-with `--speech-vet` lets a vetted 26-32 word sentence through.
+with `--speech-vet` refuses a long sentence speech-vet finds unclean to speak.
 `explainer rewrite measure` runs it n times per input and reports each target row's mean, sd and n against the revised done-when, under a spend cap.
 Only these touch the filesystem:
 the eval store,

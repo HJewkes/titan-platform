@@ -67,6 +67,7 @@
   "packages/agent/src/env.ts",
   "packages/agent/src/failures.ts",
   "packages/agent/src/harness-contracts.ts",
+  "packages/agent/src/image-attachments.ts",
   "packages/agent/src/index.ts",
   "packages/agent/src/launch-identity.ts",
   "packages/agent/src/orphan-reap.ts",

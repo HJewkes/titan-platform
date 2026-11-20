@@ -80,7 +80,7 @@ type PlanBeat = Pick<ScriptBeat, "id" | "chapter" | "spoken" | "visual" | "fact_
 const SHORT_WORDS = 5;
 // The model overshoots a planned length, so a long sentence is planned this far under the cap.
 const LONG_HEADROOM = 4;
-// The vet refuses most 26-32 word sentences, so the vetted cap is the guard's tolerance and never a planning target.
+// The vetted cap is the guard's tolerance for a long line, never a planning target.
 const MAX_PLANNED_WORDS = 24;
 // A beat whose sorted sentence lengths each sit this close to the plan is left alone.
 const SHAPE_TOLERANCE = 3;

@@ -113,7 +113,7 @@ describe("guardBeat on triad collapses", () => {
 
   it("accepts at least 8 of the 12 keep-one rewrites, each with its triad gone", () => {
     expect(accepted("keepOne").length).toBeGreaterThanOrEqual(8);
-    expect(CASES.filter((c) => !accepted("keepOne").includes(c.name)).map((c) => c.name)).toEqual(["limits", "review"]);
+    expect(CASES.filter((c) => !accepted("keepOne").includes(c.name)).map((c) => c.name)).toEqual(["limits"]);
   });
 
   it("rejects the label-all rewrites that keep no item and nothing their sentence said", () => {
@@ -154,9 +154,9 @@ describe("guardBeat on triad collapses", () => {
     expect(rulesFor(planting.original, planting.keepOne)).toEqual([]);
   });
 
-  it("finds a list item whose capture starts with the sentence's verb, leaving only the long sentence", () => {
+  it("finds a list item whose capture starts with the sentence's verb, leaving a long sentence that waits for a hand vet", () => {
     const review = CASES.find((c) => c.name === "review")!;
-    expect(rulesFor(review.original, review.keepOne)).toEqual(["sentence-cap"]);
+    expect(rulesFor(review.original, review.keepOne)).toEqual([]);
   });
 
   describe("the count a collapse may say", () => {

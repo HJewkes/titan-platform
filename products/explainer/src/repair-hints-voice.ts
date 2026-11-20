@@ -1,6 +1,6 @@
 import type { L0Result } from "./eval-l0.js";
 import { wordsOf } from "./lint-text.js";
-import { MAX_SENTENCE_WORDS, MIN_PROJECT_SHARE, offendingSentences } from "./lint-voice.js";
+import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, MIN_PROJECT_SHARE, offendingSentences } from "./lint-voice.js";
 import { clipped, listed, namedBeats, percent, type Hint } from "./repair-hint.js";
 import type { ScriptV1 } from "./script-schema.js";
 
@@ -32,5 +32,6 @@ export const VOICE_HINTS: Readonly<Record<string, Hint>> = {
     `banned register: ${quotes(script, row)}. Drop "simply", "easy", "please note", "in this video" and "you'll learn", and never open a sentence on "there is" or "there are"`,
   "Q-V8": (_script, row) =>
     `${listed(row.detail_beats)} point at the screen (on the left, as you can see, look at, this box) with no V6 or V9 cue; add a V6 cue on the word that points, or say it without pointing`,
-  "Q-V9": (script, row) => `sentences over ${MAX_SENTENCE_WORDS} words: ${quotes(script, row, true)}. Split each into sentences of ${MAX_SENTENCE_WORDS} words or fewer`,
+  "Q-V9": (script, row) =>
+    `sentences over ${MAX_VETTED_SENTENCE_WORDS} words: ${quotes(script, row, true) || "none"}. Split each into sentences of ${MAX_VETTED_SENTENCE_WORDS} words or fewer, and split any sentence of ${MAX_SENTENCE_WORDS + 1} to ${MAX_VETTED_SENTENCE_WORDS} words in ${listed(row.detail_beats)} that speech-vet found unclean to speak`,
 };

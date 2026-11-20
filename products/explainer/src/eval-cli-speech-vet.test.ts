@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runEvalCli } from "./eval-cli.js";
-import { voiceCheck } from "./lint-voice.js";
-import type { SentenceVet } from "./speech-vet-gate.js";
+import { MAX_VETTED_SENTENCE_WORDS, voiceCheck } from "./lint-voice.js";
+import { VETTED_RANGE, type SentenceVet } from "./speech-vet-gate.js";
 import { tour, withBeat } from "./voice-flow-fixtures.test-helpers.js";
 
 const RULES = "schema: rules/v1\nrules:\n  - { id: Q-D2, rule: one job per beat, fields: [beats.visual.job], owner_support: none, l0: { severity: error, status: pending, owner: SQ5 } }\n";
@@ -52,7 +52,7 @@ describe("explainer eval l0 --speech-vet", () => {
 
     expect(vet.mock.calls).toEqual([[THIRTY]]);
     expect(q9Pass()).toBe("true");
-    expect(stderr).toContain("speech-vet: vetted 1 sentence(s) of 26-32 words: 1 accepted");
+    expect(stderr).toContain(`speech-vet: vetted 1 sentence(s) of ${VETTED_RANGE} words: 1 accepted`);
   });
 
   it("fails Q-V9 when speech-vet asks for a rewrite", async () => {
@@ -67,30 +67,30 @@ describe("explainer eval l0 --speech-vet", () => {
     await l0(THIRTY, () => Promise.resolve(vet), "--speech-vet");
 
     expect(q9Pass()).toBe("false");
-    expect(stderr).toContain("speech-vet: vetted 1 sentence(s) of 26-32 words: 1 error");
+    expect(stderr).toContain(`speech-vet: vetted 1 sentence(s) of ${VETTED_RANGE} words: 1 error`);
   });
 
-  it("keeps the twenty-five word cap when the vetter cannot be built, and says so", async () => {
+  it("passes a long sentence pending a hand vet when the vetter cannot be built, and says so", async () => {
     await l0(THIRTY, () => Promise.reject(new Error("no transformers peer")), "--speech-vet");
 
-    expect(q9Pass()).toBe("false");
-    expect(stderr).toContain("speech-vet: unavailable (no transformers peer); 1 sentence(s) of 26-32 words keep the 25-word Q-V9 cap");
+    expect(q9Pass()).toBe("true");
+    expect(stderr).toContain(`speech-vet: unavailable (no transformers peer); 1 sentence(s) of ${VETTED_RANGE} words pass Q-V9 pending a hand vet`);
   });
 
-  it("keeps the twenty-five word cap without the flag and never builds a vetter", async () => {
+  it("passes a long sentence pending a hand vet without the flag and never builds a vetter", async () => {
     const factory = vi.fn(() => Promise.resolve(vetting("accepted")));
 
     await l0(THIRTY, factory);
 
     expect(factory).not.toHaveBeenCalled();
-    expect(q9Pass()).toBe("false");
-    expect(stderr).toContain("speech-vet: off; 1 sentence(s) of 26-32 words keep the 25-word Q-V9 cap (pass --speech-vet to vet them)");
+    expect(q9Pass()).toBe("true");
+    expect(stderr).toContain(`speech-vet: off; 1 sentence(s) of ${VETTED_RANGE} words pass Q-V9 pending a hand vet (pass --speech-vet to vet them)`);
   });
 
   it("loads no speech models for a script with nothing to vet", async () => {
     const factory = vi.fn(() => Promise.resolve(vetting("accepted")));
 
-    await l0(`${words(25)} ${words(33)}`, factory, "--speech-vet");
+    await l0(`${words(25)} ${words(MAX_VETTED_SENTENCE_WORDS + 1)}`, factory, "--speech-vet");
 
     expect(factory).not.toHaveBeenCalled();
     expect(q9Pass()).toBe("false");

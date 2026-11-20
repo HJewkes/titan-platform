@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "near-miss tag spellings are no longer normalised",
+      "file": "products/explainer/src/sheet-critique.ts",
+      "find": "return TAG_ALIASES[slug] ?? slug;",
+      "replace": "return slug;",
+      "kills": [
+        "critiqueScore a finding tagged glow is normalised and caps overall at 6.5"
+      ]
+    },
+    {
+      "name": "an unknown tag falls back to the glow cap",
+      "file": "products/explainer/src/sheet-critique.ts",
+      "find": "return TAG_ALIASES[slug] ?? slug;",
+      "replace": "return TAG_ALIASES[slug] ?? \"glow-or-gradient\";",
+      "kills": [
+        "critiqueScore an unknown tag never caps"
+      ]
+    }
+  ]
+}
