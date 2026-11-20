@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { StepDeclaration } from "../definition.js";
 import type { StepRoute } from "@titan-design/workflow";
 import { codeRoute, step, type LandOutcome } from "../workflows/land.js";
+import { checkedTestFiles } from "./failing-step.js";
 import { rerun } from "../workflows/land-pr.js";
 import type { WakeEvidence, WakeRequest } from "./phases.js";
 import { awaitAfterExit, exitRed, sentBackGate } from "./gates.js";
@@ -28,13 +29,6 @@ interface FlakeCheckInput {
 }
 
 const LOG_LINES = 1_000;
-/** A vitest failure line: `FAIL  path/to/file.test.ts > suite > case`. */
-const FAIL_LINE = /\bFAIL\b.*?([\w@.\-/]+\.(?:test|spec)\.[cm]?[jt]sx?)/;
-
-/** The test files a job's log reports failing; empty when the log names none. */
-export function failingTestFiles(log: string): string[] {
-  return [...new Set(log.split("\n").flatMap((line) => FAIL_LINE.exec(line)?.[1] ?? []))];
-}
 
 /**
  * True only when every failing job reports failing test files and none of them is a file the PR changed, so the red
@@ -44,7 +38,7 @@ export async function failuresOutsideDiff(port: GitHubPort, input: FlakeCheckInp
   const runs = (await port.latestCheckRuns(input.repo, input.headSha)).filter((run) => input.failing.some((check) => check.name === run.name));
   if (runs.length === 0 || runs.length < input.failing.length) return { outside: false, detail: "a failing check is no longer listed at this head" };
   const logs = await Promise.all(runs.map((run) => port.jobLogTail(input.repo, run.id, LOG_LINES)));
-  const perJob = logs.map(failingTestFiles);
+  const perJob = logs.map((log) => checkedTestFiles(log) ?? []);
   if (perJob.some((files) => files.length === 0)) return { outside: false, detail: "a failing job names no failing test file" };
   const changed = new Set((await port.listPrFiles(input.repo, input.pr)).flatMap((file) => [file.path, ...(file.previousPath === undefined ? [] : [file.previousPath])]));
   const inDiff = perJob.flat().filter((file) => changed.has(file));
