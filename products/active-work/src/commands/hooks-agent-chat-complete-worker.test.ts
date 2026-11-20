@@ -13,6 +13,7 @@ import {
 import { stashSpawnContext } from '../utils/agent-chat-hook-state.js';
 import { setGitRunner, resetRunners } from '../utils/git-gh.js';
 import { withTempActiveRoot } from '../test-support/test-helpers.js';
+import { useTempStateRoot } from '../test-support/temp-state-root.js';
 
 const SLUG = 'sample-initiative';
 const FIXTURE = path.join(
@@ -96,6 +97,8 @@ afterEach(() => {
   resetWrapRunner();
   resetRunners();
 });
+
+useTempStateRoot();
 
 describe('hooks agent-chat-complete with worker facts', () => {
   it('records a reporting worker with its task, PR and Status line', async () => {
