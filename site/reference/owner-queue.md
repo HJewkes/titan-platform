@@ -192,6 +192,29 @@ await withdrawMatching(dir, { asker: "agent-a", actor: "agent-b", keys: ["my-ala
   malformed one. A marker written before actors were recorded has no `actor`.
 - `WithdrawnItem` carries an optional `actor`, so a read model can show who withdrew an item.
 
+### Sittings
+
+A sitting is one `do` deposit holding ordered owner steps, so a multi-step terminal session
+counts once against an asker's cap. Each step is `{ title, command, op?, verify? }`, 1 to 20 of
+them; a sitting refuses `options` and an item-level `op`.
+
+```ts
+import { recordStep, withStepOutcomes } from "@titan-design/owner-queue/sitting";
+
+await recordStep(dir, "deposit:<32 hex>", 1, { outcome: "done", as: "agent-a", actor: "agent-a" });
+// { id, step: 1, outcome: "done", result: "recorded", closed: false }
+const item = await withStepOutcomes(dir, filed); // each step carries its outcome, if recorded
+```
+
+- `recordStep` writes `<id>.step-<n>` beside the deposit once; a second record of the step keeps
+  the first outcome and returns `already-recorded`. Only the asker records, and a withdrawn or
+  answered sitting is refused with `StepRefusedError`.
+- Each record appends `{ op: "step", id, step, outcome, by, actor, at }` to `sittings.jsonl`
+  (`SITTING_LOG`).
+- The last outcome writes the answer `sitting complete: <n> done, <n> skipped`, by class `asker`
+  on channel `inbox-step` (`SITTING_CLOSE_CHANNEL`), so every reader that treats an answered
+  deposit as closed treats a finished sitting the same way.
+
 `collapseRepeats(items)` in the root export folds open items that one asker filed with the same
 `alarm:<source>` key (`alarmKey(source)`) into the newest, which carries `repeats`, the count.
 

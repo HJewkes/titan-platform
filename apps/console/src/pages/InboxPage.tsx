@@ -14,6 +14,7 @@ import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { isPlanOpKind, OP_VERB } from "./inbox-op-verbs.js";
 import { DerivedSection } from "./InboxDerived.js";
 import { RowProvenance } from "./InboxProvenance.js";
+import { SittingSteps } from "./InboxSitting.js";
 import { InboxAnswerSheet } from "./InboxAnswerSheet.js";
 import { InboxReadBack, type InboxReady } from "./InboxReadBack.js";
 import { ShipLineageLine } from "./ShipLineage.js";
@@ -47,7 +48,7 @@ export function badgeOf(item: InboxItem): { label: string; color: "info" | "warn
   if (source.system === "round") return { label: "round", color: "secondary" };
   if (source.system === "morning") return { label: "Morning", color: "default" };
   if (source.system === "active-work") return { label: "task", color: "default" };
-  return { label: "terminal", color: "default" };
+  return item.steps !== undefined ? { label: "sitting", color: "info" } : { label: "terminal", color: "default" };
 }
 
 function recommendationOf(item: InboxItem): string | undefined {
@@ -217,6 +218,7 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
           {item.evidence !== undefined ? <EvidenceLink evidence={item.evidence} /> : null}
           <MergeLineage item={item} />
           {item.gates !== undefined ? <GateStripView strip={item.gates} /> : null}
+          {item.steps !== undefined ? <SittingSteps itemId={item.id} steps={item.steps} /> : null}
           <RowAction item={item} />
         </VStack>
       </CardContent>
