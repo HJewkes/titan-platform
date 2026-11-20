@@ -2,12 +2,12 @@
   "v": 1,
   "mutations": [
     {
-      "name": "the scope is also passed to the panel members",
+      "name": "the adversary member gets no focus",
       "file": "products/factory/src/shepherd/review-round.ts",
-      "find": "const base = proofBase(ctx, start, fixFirsts);",
-      "replace": "const base = { ...proofBase(ctx, start, fixFirsts), ...(await scopedRereviewOf(ctx, request, intent)) };",
+      "find": "{ ...base, ...adversaryFocusOf(scopedRereview) }",
+      "replace": "base",
       "kills": [
-        "a fix-round re-review under shepherd.review.scopedRereview on: the correctness brief at H2 reads the fix diff since H1 and H1's finding; the adversary member's reads neither"
+        "a fix-round re-review under shepherd.review.scopedRereview on: the adversary member at H2 gets a focus on H1's open finding and the fix's ranges, recorded as focused"
       ]
     },
     {
@@ -17,6 +17,15 @@
       "replace": "rereview !== undefined && rereview.scoped",
       "kills": [
         "a fix-round re-review under shepherd.review.scopedRereview shadow: sh-review records the scope while the brief equals the unscoped one byte for byte"
+      ]
+    },
+    {
+      "name": "shadow focuses the adversary as on does",
+      "file": "products/factory/src/shepherd/review-scope-round.ts",
+      "find": "rereview?.scoped === true && rereview.mode === \"on\"",
+      "replace": "rereview?.scoped === true",
+      "kills": [
+        "a fix-round re-review under shepherd.review.scopedRereview shadow: the adversary member's brief and result carry no focus, its brief byte for byte the off one"
       ]
     }
   ]
