@@ -2,7 +2,8 @@
  * `inbox.list`: the owner's one inbox, read only. It takes `approvals.flow`'s merged order, joins each factory gate to its
  * live Shepherd row by run id, and gives every item the one action a tap would take, or the terminal command and why the
  * console offers none. A write action's target comes from a system of record, never from a deposit: a hitl gate joined to a
- * live row that is not replay-diverged, or a deposit's typed `op`. A deposit with no op is a plain question, answered in
+ * live row that pins its PR and head, or a deposit's typed `op`. A replay-diverged row is no exception: the diverged sweep
+ * merges a parked run on the owner's merge answer at the gated head (TP-3918). A deposit with no op is a plain question, answered in
  * the spool beside it. A deposit is agent-written, so its op only names the target: a gate or hold op maps onto that live row's own action, and an op on `CONSOLE_OPS` becomes `owner-op`,
  * whose read-back `inbox.prepare` takes from the factory's preview. Nothing here writes.
  */
@@ -98,13 +99,6 @@ const AFTER_STAGES_STEP = "after-stages";
 const OWNER_HOLD_CLASS = "owner-asked";
 /** The op kinds a deposit may hand the factory as an `owner-op` tap, as data: each kind joins once its factory effect lands. */
 const CONSOLE_OPS: ReadonlySet<OwnerOpKind> = new Set(["merge-at-head", "retire-agent", "close-pr", "deploy-pause-clear", "plan-bet-select", "plan-outcome-edit", "plan-freeze-set"]);
-/**
- * A gate on a replay-diverged run is consumed with no merge. A row-joined diverged run says so in its stall
- * reason. A rowless gate may be a land run's or one a diverged run left behind when it was replaced, and the item cannot
- * tell which, so every rowless gate stays on the terminal: the console shows the gate's command and offers no tap.
- */
-export const DIVERGED_HOLD = "resolve from the terminal with the command shown";
-const REPLAY_DIVERGED = /^replay diverged/;
 
 /** Gate ids are `<runId>/<stepId>` or `<runId>/<stepId>:<n>`. */
 function gateParts(gateId: string): { runId: string; stepId: string } | undefined {
@@ -148,17 +142,14 @@ function gateStepDecisions(item: OwnerItem, stepId: string): ConsoleDecision[] |
   return offered.length > 0 ? offered : terminal(`this ${stepId} gate offers no ${CONSOLE_DECISIONS[stepId][0]}; answer it with its command`, command);
 }
 
-const isDiverged = (row: WatchRow | undefined): boolean => row === undefined || REPLAY_DIVERGED.test(row.stalled?.reason ?? "");
-
 function gateAction(item: OwnerItem, gateId: string, row: WatchRow | undefined): InboxAction {
   const parts = gateParts(gateId);
   if (parts === undefined) return terminal("the gate names no run, so the console cannot read its PR back", item.command);
   const decisions = gateStepDecisions(item, parts.stepId);
   if (!Array.isArray(decisions)) return decisions;
-  if (isDiverged(row)) return terminal(DIVERGED_HOLD, item.command);
-  if (row!.pr === null || row!.headSha === null) return terminal("no live Shepherd row pins this gate's PR and head", item.command);
+  if (row?.pr == null || row.headSha === null) return terminal("no live Shepherd row pins this gate's PR and head", item.command);
   const [decision, ...alternatives] = decisions;
-  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row!.repo, pr: row!.pr, headSha: row!.headSha, decision: decision!, ...(alternatives.length > 0 && { alternatives }) };
+  return { kind: "resolve-gate", gateId, runId: parts.runId, stepId: parts.stepId, repo: row.repo, pr: row.pr, headSha: row.headSha, decision: decision!, ...(alternatives.length > 0 && { alternatives }) };
 }
 
 function holdAction(row: WatchRow, holdClass: string | undefined): InboxAction {
