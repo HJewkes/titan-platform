@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "reveal rows ignore the sample's box",
+      "file": "products/explainer/src/camera-framing.ts",
+      "find": "projectBox(reveal.box, s.box)",
+      "replace": "projectBox(reveal.box, { x: 0, y: 0, width: 1600, height: 900 })",
+      "kills": [
+        "one camera sample track one sampled track feeds both motion and framing rows"
+      ]
+    }
+  ]
+}

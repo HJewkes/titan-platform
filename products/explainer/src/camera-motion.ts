@@ -1,9 +1,4 @@
-import type { Box } from "./camera.js";
-
-export interface CameraSample {
-  t: number;
-  box: Box;
-}
+import type { CameraSample } from "./camera.js";
 
 export interface CameraMotionLimits {
   /** Frame-normalised centre or zoom speed, per second. */

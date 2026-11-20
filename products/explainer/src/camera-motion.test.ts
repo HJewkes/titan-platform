@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cameraMotionRows, type CameraSample } from "./camera-motion.js";
+import type { CameraSample } from "./camera.js";
+import { cameraMotionRows } from "./camera-motion.js";
 
 const RATE = 120;
 const LIMITS = { velocity: 1, jerk: 20 };

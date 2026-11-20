@@ -1,9 +1,4 @@
-import { type Box, CAPTION_KEEP_OUT, projectBox } from "./camera.js";
-
-export interface CameraSample {
-  t: number;
-  camera: Box;
-}
+import { type Box, type CameraSample, CAPTION_KEEP_OUT, projectBox } from "./camera.js";
 
 /** A box that must stay above the caption band for the seconds `fromS`..`toS`, inclusive. */
 interface KeyBox {
@@ -33,7 +28,7 @@ function within(box: Box, bottom: number): boolean {
 export function keyBoxRows(track: readonly CameraSample[], keys: readonly KeyBox[]): FramingRow[] {
   return keys.flatMap((key) =>
     track
-      .filter((s) => s.t >= key.fromS && s.t <= key.toS && !within(projectBox(key.box, s.camera), CAPTION_KEEP_OUT))
+      .filter((s) => s.t >= key.fromS && s.t <= key.toS && !within(projectBox(key.box, s.box), CAPTION_KEEP_OUT))
       .map((s): FramingRow => ({ rule: "camera:key-in-frame", t: s.t, id: key.id })),
   );
 }
@@ -41,7 +36,7 @@ export function keyBoxRows(track: readonly CameraSample[], keys: readonly KeyBox
 export function revealRows(track: readonly CameraSample[], reveals: readonly RevealObject[]): FramingRow[] {
   return reveals.flatMap((reveal) =>
     track
-      .filter((s) => s.t < reveal.atS && within(projectBox(reveal.box, s.camera), 1))
+      .filter((s) => s.t < reveal.atS && within(projectBox(reveal.box, s.box), 1))
       .map((s): FramingRow => ({ rule: "camera:seen-before-reveal", t: s.t, id: reveal.id })),
   );
 }

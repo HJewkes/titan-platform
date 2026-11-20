@@ -7,6 +7,12 @@ export interface Box {
   height: number;
 }
 
+/** The camera's framing box in layout space at time `t` seconds; motion and framing rows read the same track. */
+export interface CameraSample {
+  t: number;
+  box: Box;
+}
+
 export const FRAME_ASPECT = 16 / 9;
 // Captions own the frame below this line, so a focused box must project above it.
 export const CAPTION_KEEP_OUT = 0.83;
