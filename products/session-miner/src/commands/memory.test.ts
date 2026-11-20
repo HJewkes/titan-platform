@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -101,6 +101,16 @@ describe("memory report", () => {
 
     expect(envelope.ok).toBe(false);
     expect(exitCode).toBe(EXIT.DATAERR);
+  });
+
+  it("refuses --out off the CLI and creates no directory", async () => {
+    const out = path.join(temp.home, "refused-out");
+
+    const { envelope, exitCode } = await invokeCommand(memoryReport, { out }, context());
+
+    expect(envelope.ok).toBe(false);
+    expect(exitCode).toBe(EXIT.DATAERR);
+    expect(existsSync(out)).toBe(false);
   });
 
   it("accepts --skills-root and --out on the CLI", async () => {

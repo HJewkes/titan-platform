@@ -25,8 +25,8 @@
     {
       "name": "an unreadable span throws",
       "file": "products/active-work/src/search/context-tiers.ts",
-      "find": "  } catch {\n    return null;\n  } finally {",
-      "replace": "  } catch {\n    throw new Error('unreadable');\n  } finally {",
+      "find": "  } catch {\n    return null;\n  }\n}\n\n/** Renderings",
+      "replace": "  } catch {\n    throw new Error('unreadable');\n  }\n}\n\n/** Renderings",
       "kills": ["relatedContext in context mode a hit whose file is missing stays at tier 1"]
     },
     {

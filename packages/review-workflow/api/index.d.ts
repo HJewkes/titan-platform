@@ -351,7 +351,7 @@ interface HealSubject {
     /** The plan's premium-to-sonnet table; absent means review-panel's `DEFAULT_SONNET_FOR`. */
     sonnetFor?: Record<string, string>;
 }
-/** The decision shape that asks for heals; every other decision passes through `healOnce` untouched. */
+/** The decision shape that asks for heals. */
 interface HealRequest {
     kind: "heal";
     heals: readonly HealKind[];
@@ -368,27 +368,7 @@ type HealEffect = {
     kind: "ineffective";
     heal: HealKind;
 };
-/** `heals` names what was still asked for after the one pass, or the heal that could not act. */
-type HealPassResult<D> = {
-    kind: "decided";
-    decision: D;
-    subject: HealSubject;
-} | {
-    kind: "stop";
-    outcome: ReviewOutcome;
-} | {
-    kind: "fixer";
-    key: "heal-ineffective";
-    heals: readonly HealKind[];
-};
 declare function applyHeal(heal: HealKind, subject: HealSubject, ports: HealPorts): Promise<HealEffect>;
-/**
- * Runs the heals a decision asks for, each once and in order, then re-decides once. A heal that cannot act, or a
- * re-decision that still asks for a heal, goes to the fixer: a second pass would repeat a heal that already failed.
- */
-declare function healOnce<D extends {
-    kind: string;
-}>(decision: D | HealRequest, subject: HealSubject, ports: HealPorts, decide: (subject: HealSubject) => Promise<D | HealRequest>): Promise<HealPassResult<D>>;
 
 /** Everything preflight decides on, read in one pass by `preflightRead`; recorded, so a replay decides the same way. */
 interface PreflightSnapshot {
@@ -404,7 +384,7 @@ interface PreflightSnapshot {
     profiles: Readonly<Record<string, boolean>>;
     hold?: HoldMember;
 }
-/** `heal` is the shape `healOnce` consumes; `go` carries the plan the members are dispatched from. */
+/** `heal` asks the recipe for one heal pass; `go` carries the plan the members are dispatched from. */
 type PreflightDecision = {
     kind: "go";
     plan: HeadPlan;
@@ -663,4 +643,4 @@ declare function reviewRunner(options: ReviewWorkflowOptions & {
     runtime: Omit<WorkflowRuntimeOptions, "runner">;
 }): ReviewRunner;
 
-export { type AggregateStepInput, type AwaitInput, type AwaitRecord, type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, type ClassifiedFailure, type CorrectInput, type CorrectRecord, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, DEFAULT_REVIEW_TIMING, type DispatchInput, type DispatchRecord, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadPlan, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPassResult, type HealPorts, type HealRequest, type HealSubject, type HoldMember, type MemberNamer, type ParkedRun, type ParkingPort, type PlanFacts, type PreflightDecision, type PreflightPorts, type PreflightReadInput, type PreflightSnapshot, type ProfilesPort, type ProofRead, type ProofReaderPort, REVIEW_STEP_BODIES, REVIEW_WORKFLOW_NAME, REVIEW_WORKFLOW_VERSION, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewBodyPorts, type ReviewHeadInput, type ReviewHeadPolicy, type ReviewHost, type ReviewOutcome, type ReviewOutcomeKind, type ReviewPlanPolicy, type ReviewRequestInput, type ReviewRunner, type ReviewStepIds, type ReviewTiming, type ReviewWorkflow, type ReviewWorkflowOptions, type ReviewWorkflowPorts, type SnapshotPort, type StepCall, applyHeal, classifyFailure, fixerBrief, fixerFingerprint, fixerName, healOnce, planForHead, preflight, preflightRead, readFixerReport, requestFixer, resolveFingerprint, reviewHead, reviewOutcomeOf, reviewRoutes, reviewRunner, reviewWorkflow };
+export { type AggregateStepInput, type AwaitInput, type AwaitRecord, type CarryPort, type CarryProbe, type CheckoutPort, type CheckoutState, type ClassifiedFailure, type CorrectInput, type CorrectRecord, DEFAULT_RETRY_POLICY, DEFAULT_REVIEW_STEP_IDS, DEFAULT_REVIEW_TIMING, type DispatchInput, type DispatchRecord, FAILURE_CLASSES, FIXER_FIXES, FIXER_REPORT_END, FIXER_REPORT_START, type FailureClass, type FixerCase, type FixerEvidence, type FixerFix, type FixerKey, type FixerMember, type FixerMode, type FixerPort, type FixerRecord, type FixerReport, type FixerReportRead, type FixerReportRefusal, type FixerRequest, type HeadPlan, type HeadSnapshot, type HeadroomPort, type HeadroomRead, type HealEffect, type HealKind, type HealPorts, type HealRequest, type HealSubject, type HoldMember, type MemberNamer, type ParkedRun, type ParkingPort, type PlanFacts, type PreflightDecision, type PreflightPorts, type PreflightReadInput, type PreflightSnapshot, type ProfilesPort, type ProofRead, type ProofReaderPort, REVIEW_STEP_BODIES, REVIEW_WORKFLOW_NAME, REVIEW_WORKFLOW_VERSION, type Resumed, type RetryPolicy, type RetryRule, type RetryStep, type RetryTerminal, type ReviewBodyPorts, type ReviewHeadInput, type ReviewHeadPolicy, type ReviewHost, type ReviewOutcome, type ReviewOutcomeKind, type ReviewPlanPolicy, type ReviewRequestInput, type ReviewRunner, type ReviewStepIds, type ReviewTiming, type ReviewWorkflow, type ReviewWorkflowOptions, type ReviewWorkflowPorts, type SnapshotPort, type StepCall, applyHeal, classifyFailure, fixerBrief, fixerFingerprint, fixerName, planForHead, preflight, preflightRead, readFixerReport, requestFixer, resolveFingerprint, reviewHead, reviewOutcomeOf, reviewRoutes, reviewRunner, reviewWorkflow };
