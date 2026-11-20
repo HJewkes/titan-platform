@@ -1,6 +1,6 @@
 import { statSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
-import { listAgents, type AgentRow } from "@titan-design/agent-dispatch";
+import { lastFencedJson, listAgents, type AgentRow } from "@titan-design/agent-dispatch";
 import { priceRequest } from "@titan-design/session-analytics";
 import { distinctRequests, extractTranscript, type TranscriptRequest } from "@titan-design/session-read";
 
@@ -50,17 +50,6 @@ async function awaitExit(chat: AgentChat, name: string, signal: AbortSignal): Pr
   }
 }
 
-/** The last fenced JSON block of the final assistant message, or the whole message when it has none. */
-function lastJsonBlock(text: string): unknown {
-  const fenced = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)].at(-1)?.[1];
-  const body = (fenced ?? text).trim();
-  try {
-    return JSON.parse(body);
-  } catch {
-    throw new Error(`[final-message] the agent's last message is not JSON: ${body.slice(0, 120)}`);
-  }
-}
-
 interface AgentTurn {
   row: AgentRow;
   /** The final assistant message, whole: an answer longer than the index's span cap would lose its closing fence. */
@@ -78,10 +67,21 @@ export async function awaitTurn(chat: AgentChat, name: string, signal: AbortSign
   return { row, text, usage: sumUsage(delta.requests) };
 }
 
-/** The final message must exist and parse; `name` names the agent in the error. */
+/** How every brief whose answer goes through `finalOf` words the answer, since only a `json`-tagged fence is read. */
+export const ANSWER_FENCE = "one ```json fenced block";
+
+/** The final message must exist and end in a parseable ```json block; `name` names the agent in the error. */
 export function finalOf(name: string, text: string | undefined): unknown {
   if (text === undefined) throw new Error(`[final-message] ${name} exited without an assistant message`);
-  return lastJsonBlock(text);
+  const excerpt = text.trim().slice(0, 120);
+  let parsed: unknown;
+  try {
+    parsed = lastFencedJson(text);
+  } catch {
+    throw new Error(`[final-message] the agent's last message is not JSON: ${excerpt}`);
+  }
+  if (parsed === undefined) throw new Error(`[final-message] the agent's last message has no \`\`\`json fenced block: ${excerpt}`);
+  return parsed;
 }
 
 export async function awaitAgent(chat: AgentChat, name: string, signal: AbortSignal, from?: { path?: string; offset: number }): Promise<AgentResult> {
