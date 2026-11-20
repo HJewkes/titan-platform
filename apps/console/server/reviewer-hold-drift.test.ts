@@ -15,7 +15,7 @@ function stringsInInitializer(file: string, declaration: RegExp): string[] {
 it("the console reviewer-hold classes mirror Shepherd's HOLD_CLASSES", () => {
   const shepherdClasses = stringsInInitializer("products/factory/src/shepherd/hold-reason.ts", /export const HOLD_CLASSES\s*=\s*\[([^\]]*)\]/);
   const shepherdG10 = shepherdClasses.filter((holdClass) => holdClass.startsWith("g10-"));
-  const mirror = stringsInInitializer("apps/console/server/blockers.ts", /const REVIEWER_HOLD_CLASSES[^=]*=\s*new Set\(\[([^\]]*)\]\)/);
+  const mirror = stringsInInitializer("apps/console/server/g10-hold.ts", /const MERGES_NEEDED[^=]*=\s*\{([^}]*)\}/).filter((each) => each.startsWith("g10-"));
 
   expect(shepherdG10.length).toBeGreaterThan(0);
   expect([...mirror].sort()).toEqual([...shepherdG10].sort());

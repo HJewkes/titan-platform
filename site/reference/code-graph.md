@@ -268,8 +268,8 @@ two nested loops over different collections are linear.
 
 Comment, shape, and exception-handling metrics are written on every function or file, zeros
 included, for TypeScript and Python. Per symbol: `symbol_comment_lines`,
-`symbol_docstring_lines`, `symbol_body_lines`, `symbol_comment_ratio`,
-`symbol_narrating_comments` (comments that restate the identifiers of the statement they
+`symbol_docstring_lines`, `symbol_body_lines`, `symbol_comment_ratio` (0 for a body under 6
+code rows, so a short provenance note is not read as narration), `symbol_narrating_comments` (comments that restate the identifiers of the statement they
 sit beside), and `symbol_pass_through` (1 when the body is one call that forwards every
 parameter in order). Per file: `except_count`, `except_density` (per 100 non-blank lines),
 and `swallowed_except` (handlers whose body is empty, `pass`, a bare return, or one logger

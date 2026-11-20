@@ -5,6 +5,7 @@
  */
 import { answeredFromFeedback, collapseRepeats, fromRoundQuestions, type OwnerItem, type WithdrawnItem } from "@titan-design/owner-queue";
 import { readAnswer, readSpool } from "@titan-design/owner-queue/spool";
+import { withStepOutcomes } from "@titan-design/owner-queue/sitting";
 import { readWithdrawal } from "@titan-design/owner-queue/withdraw";
 import { reviewManifest, type ReviewManifest } from "./round-schema.js";
 import type { QueueRound, Withdrawal } from "./rounds.js";
@@ -81,8 +82,19 @@ async function withdrawnDeposit(dir: string, item: OwnerItem, items: QueueItems)
   }
 }
 
-async function spoolItem(dir: string, item: OwnerItem, items: QueueItems): Promise<void> {
-  if (await withdrawnDeposit(dir, item, items)) return;
+/** A sitting's steps carry the outcomes its asker recorded; a malformed step marker is a gap and leaves that step open. */
+async function withOutcomes(dir: string, item: OwnerItem, items: QueueItems): Promise<OwnerItem> {
+  try {
+    return await withStepOutcomes(dir, item);
+  } catch {
+    items.gaps.push(`${item.id}: a step outcome file is malformed`);
+    return item;
+  }
+}
+
+async function spoolItem(dir: string, filed: OwnerItem, items: QueueItems): Promise<void> {
+  if (await withdrawnDeposit(dir, filed, items)) return;
+  const item = await withOutcomes(dir, filed, items);
   try {
     const answer = await readAnswer(dir, item.id);
     if (answer === undefined) items.open.push(item);

@@ -3,6 +3,7 @@ import { deadline } from "../workflows/deadline.js";
 import { failureOf } from "./error-class.js";
 import { DEFAULT_FIX_INITIATIVE, initiativeOf } from "./fix-initiative.js";
 import type { FixTaskFields, FixTasks } from "./main-red.js";
+import { registryGet } from "./registry-get.js";
 
 export const RELEASE_FOLLOW_STEP = "sh-release-follow";
 /** The job in `.github/workflows/release.yml`; it posts a check run of this name on the main tip it publishes from. */
@@ -16,13 +17,8 @@ const FAILED_CONCLUSIONS = new Set(["failure", "timed_out", "startup_failure"]);
 /** True when the registry serves `name@version`, false when it answers 404; any other answer throws. */
 export type VersionRegistry = (name: string, version: string) => Promise<boolean>;
 
-export function npmVersionRegistry(fetchImpl: typeof fetch = fetch): VersionRegistry {
-  return async (name, version) => {
-    const response = await fetchImpl(`https://registry.npmjs.org/${name.replace("/", "%2f")}/${encodeURIComponent(version)}`);
-    if (response.status === 404) return false;
-    if (!response.ok) throw new Error(`registry.npmjs.org answered ${response.status} for ${name}@${version}`);
-    return true;
-  };
+export function npmVersionRegistry(fetchImpl: typeof fetch = fetch, timeoutMs?: number): VersionRegistry {
+  return async (name, version) => (await registryGet(name, encodeURIComponent(version), fetchImpl, timeoutMs)) !== null;
 }
 
 /** The Release workflow's job at `mergeSha`; absent until CI on main finishes, and skipped when a newer push took over the publish. */
