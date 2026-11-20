@@ -11,6 +11,7 @@ import { verdictAt } from "../verdict-at.js";
 import { withoutEditRunSkips } from "./fix-proof-jobs.js";
 import { gatedRule } from "./head-moved.js";
 import { OWNER_HOLD_CLASS } from "./owner-hold-rows.js";
+import { keptForOwner } from "./owner-kept.js";
 import { MERGE_EVIDENCE_STEP } from "./merge-facts.js";
 import { pinnedPaths } from "./pr-changed-paths.js";
 import { MergeEvidenceSchema } from "./review-schemas.js";
@@ -77,6 +78,7 @@ function knownFacts(reads: ByRecReads, runId: string, gate: GateRecord): Known |
   if (!ruleId || !decisionClass || ELIGIBLE.get(ruleId) !== decisionClass) return { skip: `rule:${ruleId ?? "unrecorded"}` };
   const registration = reads.services.store.get().byRun(runId);
   if (!registration || registration.pr !== land.pr) return { skip: "unregistered" };
+  if (keptForOwner(registration)) return { skip: "owner-held" };
   const verdict = verdictAt(run, land.head);
   const stored = storedFacts(run, land.head);
   if (!verdict || !stored) return { skip: "no-merge-review-at-head" };
@@ -125,9 +127,12 @@ function recommendedOption(gate: Pick<GateRecord, "questions">): string | undefi
  */
 const classOf = (reason: string | null): string => (reason?.includes(":") ? reason.slice(0, reason.indexOf(":")) : "unclassified");
 
-/** Every hold on the run, by class; a hold whose reason names no class reads as `unclassified`, never as no hold. */
+/**
+ * Every hold on the run, by class; a hold whose reason names no class reads as `unclassified`, never as no hold. The gating
+ * slot's reason wins `holdReason` over the owner's, so it is always read: dropping it beside an owner hold would hide a g10.
+ */
 function holdClassesOf(registration: Registration, parked: { reason: string } | null): string[] {
-  const top = registration.held && registration.ownerHold === null ? [classOf(registration.holdReason)] : [];
+  const top = registration.held && (registration.holdReason !== null || registration.ownerHold === null) ? [classOf(registration.holdReason)] : [];
   const owner = registration.ownerHold === null ? [] : [OWNER_HOLD_CLASS];
   const under = parked === null ? [] : [classOf(parked.reason)];
   return [...top, ...owner, ...under];

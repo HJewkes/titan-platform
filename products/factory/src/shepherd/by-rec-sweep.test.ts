@@ -13,6 +13,7 @@ import { approveMergeGate, askedApproval } from "../workflows/land-approval.js";
 import type { AutoByRecConfig } from "./by-rec-config.js";
 import { byRecLogPath, readByRecRows } from "./by-rec-log.js";
 import { sweepByRec, type ByRecSweepDeps } from "./by-rec-sweep.js";
+import type { OwnerHold } from "./owner-hold-rows.js";
 import { SHEPHERD_WORKFLOW } from "./services.js";
 import { BY_REC_CANCEL, supersedingGates } from "./stale-gates.js";
 import type { Registration, ShepherdStore, ShepherdStoreRef } from "./store.js";
@@ -22,6 +23,7 @@ const HEAD = fakeSha("by-rec-head");
 const TEST_MERGE = fakeSha("by-rec-test-merge");
 const DAY_MS = 24 * 3_600_000;
 const REVIEWER = { agentId: "rv-synthetic", sessionId: "rv-session" };
+const OWNER_HOLD: OwnerHold = { reason: "discuss: synthetic owner hold", at: "2026-11-01T00:00:00.000Z", askedAt: null };
 const REASON = "MRG-AU gates merge by automation; MRG-AU-RV unmet: seat-grants-merge-on-green-approve";
 
 interface Scenario {
@@ -84,7 +86,7 @@ interface World {
   gh: FakeGitHub;
   runId: string;
   logPath: string;
-  holds: { holdReason: string | null };
+  holds: { holdReason: string | null; ownerHold: OwnerHold | null };
   deps: (config: AutoByRecConfig | undefined, at?: number) => ByRecSweepDeps;
 }
 
@@ -104,9 +106,11 @@ async function paused(scenario: Scenario = {}): Promise<World> {
   const runId = host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: "1", scenario: JSON.stringify(scenario) });
   await vi.waitFor(() => expect(host.runtime.status(runId)?.status).toBe("paused"));
   const gh = greenWorld();
-  const holds = { holdReason: null as string | null };
+  const holds: World["holds"] = { holdReason: null, ownerHold: null };
   const store = () => partialFake<ShepherdStore>({
-    byRun: () => partialFake<Registration>({ repo: REPO, pr: 1, held: holds.holdReason !== null, holdReason: holds.holdReason, ownerHold: null }),
+    byRun: () => partialFake<Registration>({
+      repo: REPO, pr: 1, held: holds.holdReason !== null || holds.ownerHold !== null, holdReason: holds.holdReason ?? holds.ownerHold?.reason ?? null, ownerHold: holds.ownerHold,
+    }),
     parkedHold: () => null,
   });
   const logPath = byRecLogPath(dir);
@@ -147,6 +151,8 @@ describe("the approve-merge by-rec sweep in live mode", () => {
   it.each<[string, RegExp, (world: World) => void, Scenario?]>([
     ["the PR head moved", /^head-moved$/, (world) => world.gh.pushHead(1, fakeSha("by-rec-moved"))],
     ["a g10 hold", /^floor:g10-hold$/, (world) => void (world.holds.holdReason = "g10-adversary: synthetic")],
+    ["an owner-asked hold alone", /^owner-held$/, (world) => void (world.holds.ownerHold = OWNER_HOLD)],
+    ["a g10 hold beside an owner-asked hold", /^owner-held$/, (world) => void Object.assign(world.holds, { holdReason: "g10-adversary: synthetic", ownerHold: OWNER_HOLD })],
     ["a red required check", /^MRG-AU-RB unmet: .*required-contexts-green/, (world) => world.gh.setRuns(HEAD, [successRun("validate", 11), successRun("dag-check", 12, undefined, "failure")])],
     ["a skill path change", /^floor:guard-path$|^MRG-AU-RB unmet: no-g10-hold$/, (world) => world.gh.prFiles.set(1, [{ path: ".claude/skills/x/SKILL.md", status: "added" }]), { paths: [".claude/skills/x/SKILL.md"] }],
     ["a stale review", /^no-merge-review-at-head$/, () => undefined, { reviewedAt: fakeSha("by-rec-older") }],
