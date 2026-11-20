@@ -533,11 +533,15 @@ interface ByRecSubject {
     text?: readonly string[];
 }
 type FloorRule = readonly [reason: string, refuses: (subject: ByRecSubject) => boolean];
-/** Authority and guard files: the authority package, g10 rules, hold and policy files, and this policy itself. */
+/**
+ * Authority and guard files: the authority package, g10 rules, hold and policy files, CI workflows, merge-lint,
+ * CODEOWNERS, settings, and this policy itself.
+ */
 declare function isGuardPath(path: string): boolean;
 /**
  * The exclusion floor, in code: a policy file can add exclusions but never remove one of these. Every rule refuses on
- * presence, and the g10 and authority-row rules match by prefix, so a new class under a known prefix fails closed.
+ * presence. The g10 rule matches by prefix, so a new g10 class fails closed, and the authority-row rule refuses every
+ * family not on the auto-resolvable list, so a new table family fails closed.
  */
 declare const BY_REC_FLOOR: readonly FloorRule[];
 /** The first floor class the subject falls in, or undefined when none does. */
