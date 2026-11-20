@@ -30,12 +30,12 @@
       ]
     },
     {
-      "name": "a diverged gate's hold text names no command",
+      "name": "a gate on a replay-diverged row is held to the terminal again",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "\"resolve from the terminal with the command shown\"",
-      "replace": "\"resolve from the console\"",
+      "find": "if (row?.pr == null || row.headSha === null) return terminal(",
+      "replace": "if (row?.pr == null || row.headSha === null || /^replay diverged/.test(row.stalled?.reason ?? \"\")) return terminal(",
       "kills": [
-        "actionFor holds a gate on a replay-diverged run to the terminal, and still taps a healthy one"
+        "actionFor taps a gate on a replay-diverged run at its row's head, since the diverged sweep merges on that answer"
       ]
     },
     {
