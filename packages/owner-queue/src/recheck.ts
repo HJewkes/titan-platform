@@ -1,5 +1,5 @@
 import { parsePrKey, relationKind } from "./keys.js";
-import type { OwnerAnswer, OwnerItem } from "./schema.js";
+import { ASKER_ANSWER_CLASS, type OwnerAnswer, type OwnerItem } from "./schema.js";
 
 export type RecheckFlagKind = "conflict" | "reasked" | "related-answer";
 
@@ -108,10 +108,12 @@ function compareFlags(a: RecheckFlag, b: RecheckFlag): number {
  * other-head answer on the same `ask:` key flags `conflict` when it is not the item's
  * recommendation and `reasked` when it is or there is none. Sharing only a `component:`,
  * `token:` or `topic:` key flags `related-answer` and never drops. Answers are the items
- * carrying an `answer`; others are ignored. Output is sorted, so input order never changes it.
+ * carrying an `answer`; others are ignored. An answer the item's own asker wrote (`ASKER_ANSWER_CLASS`, a sitting's
+ * closing tally) is no one's decision, so it neither drops nor flags anything. Output is sorted, so input order never
+ * changes it.
  */
 export function recheck(open: readonly OwnerItem[], answered: readonly OwnerItem[]): Recheck {
-  const answers = answered.filter((each): each is Answered => each.answer !== undefined);
+  const answers = answered.filter((each): each is Answered => each.answer !== undefined && each.answer.by.class !== ASKER_ANSWER_CLASS);
   const result: Recheck = { open: [], dropped: [], flags: [] };
   for (const item of [...open].sort(byIdThenOpened)) {
     const matches = answers.map((answer) => sharedKeys(item, answer));
