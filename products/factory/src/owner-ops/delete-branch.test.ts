@@ -1,5 +1,5 @@
 import type { AgentRow } from "@titan-design/agent-dispatch";
-import { fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
+import { FakeHttpError, fakeGitHub, fakeSha, githubPort, type FakeGitHub } from "@titan-design/github";
 import type { OwnerOp } from "@titan-design/owner-queue";
 import { describe, expect, it } from "vitest";
 import type { Outcome } from "../console-action/outcome.js";
@@ -26,13 +26,22 @@ interface World {
   tap(over?: Partial<DeleteOp>): Promise<Outcome>;
 }
 
+/** The fake answers a protection read on any name; gh-cli's Rest.get throws on GitHub's 404 for a branch that is not there. */
+function liveWire(fake: FakeGitHub): FakeGitHub["wire"] {
+  const getBranchProtected: FakeGitHub["wire"]["getBranchProtected"] = async (repo, branch) => {
+    if (!fake.refs.has(branch)) throw new FakeHttpError(404, "Branch not found");
+    return fake.wire.getBranchProtected(repo, branch);
+  };
+  return { ...fake.wire, getBranchProtected };
+}
+
 function world(base = "main"): World {
   const fake = fakeGitHub({ base, repo: REPO });
   fake.rules = { contexts: [], strict: false };
   fake.refs.set(BRANCH, TIP);
   const state: Pick<World, "runs" | "roster" | "doneBefore"> = { runs: [], roster: [], doneBefore: [] };
   const deps: DeleteBranchDeps = {
-    port: githubPort(fake.wire),
+    port: githubPort(liveWire(fake)),
     host: { runtime: { status: (runId) => ({ status: state.runs.find((run) => run.runId === runId)?.status ?? "completed" }) } },
     services: { store: { get: () => ({ all: () => state.runs }) } },
     agentChat: { list: async () => (state.roster instanceof Error ? Promise.reject(state.roster) : state.roster) },

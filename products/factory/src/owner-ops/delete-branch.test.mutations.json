@@ -29,6 +29,16 @@
       ]
     },
     {
+      "name": "protection is read before the tip, so an absent branch reads unreadable",
+      "file": "products/factory/src/owner-ops/delete-branch.ts",
+      "find": "if (tip === null) return await absent(actionId, op, deps);\n    const live = await liveStop(op, deps);\n    if (live !== undefined) return live;",
+      "replace": "const live = await liveStop(op, deps);\n    if (live !== undefined) return live;\n    if (tip === null) return await absent(actionId, op, deps);",
+      "kills": [
+        "delete-branch op answers gone for an absent branch this record did not delete",
+        "delete-branch op answers already for an absent branch this very record deleted"
+      ]
+    },
+    {
       "name": "a prefix match ignores case, so Scratch/ passes as scratch/",
       "file": "products/factory/src/owner-ops/delete-branch.ts",
       "find": "branch.startsWith(prefix)",

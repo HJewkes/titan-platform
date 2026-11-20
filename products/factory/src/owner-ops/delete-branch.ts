@@ -30,9 +30,11 @@ export async function deleteBranch(actionId: string, { op }: OpRead, deps: Delet
   const stop = staticStop(op, deps.branches);
   if (stop !== undefined) return refused("class", stop);
   try {
+    const tip = await deps.port.getHeadSha(op.repo, op.branch);
+    if (tip === null) return await absent(actionId, op, deps);
     const live = await liveStop(op, deps);
     if (live !== undefined) return live;
-    return await deleteAtTip(actionId, op, deps);
+    return await deleteAtTip(actionId, op, tip, deps);
   } catch (error) {
     return refused("github-unreadable", `${op.repo} could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -55,7 +57,10 @@ export function branchNameProblem(branch: string): boolean {
 
 const isControl = (char: string): boolean => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f;
 
-/** Checks 4 to 9, each a fixed refusal naming the rule; the roster is read last, so a GitHub refusal needs no agent-chat. */
+/**
+ * Checks 4 to 9, each a fixed refusal naming the rule; the roster is read last, so a GitHub refusal needs no agent-chat. Runs only
+ * on a branch that exists: GitHub answers 404 to a protection read on an absent one.
+ */
 async function liveStop({ repo, branch }: DeleteBranch, deps: DeleteBranchDeps): Promise<Outcome | undefined> {
   const { port } = deps;
   if (branch === (await port.defaultBranch(repo))) return refused("class", "the default branch is never deleted");
@@ -88,9 +93,7 @@ async function agentStop(branch: string, agentChat: DeleteBranchDeps["agentChat"
   return holder === undefined ? undefined : refused("class", `${holder.name} is working on this branch`);
 }
 
-async function deleteAtTip(actionId: string, op: DeleteBranch, deps: DeleteBranchDeps): Promise<Outcome> {
-  const tip = await deps.port.getHeadSha(op.repo, op.branch);
-  if (tip === null) return absent(actionId, op, deps);
+async function deleteAtTip(actionId: string, op: DeleteBranch, tip: string, deps: DeleteBranchDeps): Promise<Outcome> {
   if (tip !== op.tipSha) return { outcome: "moved", currentHead: tip };
   const result = await deps.port.deleteRef(op.repo, { repo: op.repo, branch: op.branch });
   if (result.done) return { outcome: "deleted", branch: op.branch, tipSha: tip };
