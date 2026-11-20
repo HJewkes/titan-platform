@@ -18,6 +18,24 @@
       "kills": [
         "cameraMotionRows fails jerk for an abrupt start and stop that stays under the velocity limit"
       ]
+    },
+    {
+      "name": "the excuse only checks the sample itself, not its difference window",
+      "file": "products/explainer/src/camera-motion.ts",
+      "find": "const windowStart = track[i - order]!.t;",
+      "replace": "const windowStart = track[i]!.t;",
+      "kills": [
+        "cameraMotionRows excuses the jerk a jump on a shake's last sample leaves in the samples after it"
+      ]
+    },
+    {
+      "name": "the excuse window reaches one sample too far back",
+      "file": "products/explainer/src/camera-motion.ts",
+      "find": "const windowStart = track[i - order]!.t;",
+      "replace": "const windowStart = track[i - order - 1]?.t ?? 0;",
+      "kills": [
+        "cameraMotionRows still fires for a jump whose window starts after the shake ends"
+      ]
     }
   ]
 }
