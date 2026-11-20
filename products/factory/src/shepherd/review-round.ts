@@ -12,7 +12,7 @@ import type { ReviewRequest, Verdict } from "./phases.js";
 import { withoutPlan } from "./review-panel-plan.js";
 import { panelOn, panelReview, type MemberBase } from "./review-panel-step.js";
 import { Dispatched, type Intended } from "./review-schemas.js";
-import { scopedRereviewOf } from "./review-scope-round.js";
+import { adversaryFocusOf, scopedRereviewOf } from "./review-scope-round.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { scopeRoundOf } from "./scope-check-round.js";
 import { asksOwnerBrief, takeVerdict, type ProofStanding } from "./take-verdict.js";
@@ -65,7 +65,7 @@ export async function dispatchedRound(ctx: WorkflowContext, request: ReviewReque
   const account = typeof intent.account === "string" ? intent.account : DEFAULT_ACCOUNT;
   const scope = scopeRoundOf(intent, scopedRereview);
   const reviewed = panelOn(intent)
-    ? await panelReview(ctx, intent, base, awaiting, dispatchedReviewer, account, standing, scope)
+    ? await panelReview(ctx, intent, { ...base, ...adversaryFocusOf(scopedRereview) }, awaiting, dispatchedReviewer, account, standing, scope)
     : await takeVerdict(ctx, target, awaiting, dispatchedReviewer, account, standing, scope);
   return { dispatched, verdict: withReviewerProfile(reviewed, dispatched.profile) };
 }
