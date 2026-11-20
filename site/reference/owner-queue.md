@@ -533,13 +533,16 @@ const decision = byRecDecision(byRecSubjectOfItem(item), new Date(), policy);
   `path`, `authority` (prefix). The file can only add exclusions.
 - **Floor** (`BY_REC_FLOOR`, in code, checked before the file): closed items, no
   recommendation, any `g10*` hold, D1, D21, owner-at-head rows, guard paths (`isGuardPath`:
-  the authority package, `g10-*`, hold, policy and `by-rec*` files), release (the
-  version-packages branch, a release or publish category, `REL-*`), `PUB-*` and `EXT-*`,
-  `SEC-*`, `HW-*`, money (a spend, money or account category, or a dollar amount in the
-  text), one-way doors, `irreversible`, `onSilence` wait or expire, blind picks, change
+  the authority package, CI workflows, `merge-lint.json`, `CODEOWNERS`, `.claude/settings*`,
+  `g10-*`, hold, policy and `by-rec*` files), release (the version-packages branch, bare or
+  under `refs/heads/`, a release or publish category, `REL-*`), `PUB-*` and `EXT-*`,
+  `SEC-*`, `HW-*` and `HWS-*`, money (a spend, money or account category, `SPD-*`, or a
+  dollar amount in the text), any authority row whose family is not `SPN`, `RET`, `UNT` or
+  `ANS` (so a new family, or a row from another table, refuses), one-way doors, `irreversible`, `onSilence` wait or expire, blind picks, change
   requests, personal items, `do` and sitting items, the operator audience, any `op`, Ship and
-  plan-approval questions, and a recommendation that is not an offered option or that the
-  item's `default` contradicts.
+  plan-approval questions, and a recommendation with no options to check it against, that is
+  not an offered option, or that the item's `default` contradicts. `byRecSubjectOfItem`
+  carries the item's `authority.ruleId` as its authority row.
 - **Clock.** Eligible at `openedAt + afterHours`; a deposit's own `onSilence: apply-default`
   wait replaces the policy's. A skip that only waits on the clock is `too-early` with `at`.
   Shadow and live decide the same; only the sweep's action differs.

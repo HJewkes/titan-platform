@@ -1,9 +1,16 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { byRecDecision, byRecSubjectOfItem } from "./by-rec.js";
 import { BY_REC_FLOOR, isGuardPath, type ByRecSubject } from "./by-rec-floor.js";
 import { BY_REC_RESOLVER, byRecPolicySchema, byRecRowSchema, type ByRecPolicy } from "./by-rec-schema.js";
 import type { OwnerItem } from "./schema.js";
 import { item } from "./test-fixtures.js";
+
+const AUTHORITY_TABLE = new URL("../../authority/src/table.json", import.meta.url);
+const AUTO_RESOLVABLE = new Set(["SPN", "RET", "UNT", "ANS"]);
+const tableSchema = z.object({ rules: z.array(z.object({ id: z.string() })) });
+const tableRowIds = (): string[] => tableSchema.parse(JSON.parse(readFileSync(AUTHORITY_TABLE, "utf8"))).rules.map((rule) => rule.id);
 
 const OPENED = "2026-03-01T00:00:00.000Z";
 const HOUR = 3_600_000;
@@ -38,13 +45,21 @@ const FLOOR_CASES: [string, Partial<ByRecSubject>][] = [
   ["guard-path", { paths: ["packages/authority/src/table.json"] }],
   ["guard-path", { guardPath: true }],
   ["release", { headRef: "changeset-release/main" }],
+  ["release", { headRef: "refs/heads/changeset-release/main" }],
   ["release", { category: "Release" }],
   ["release", { authorityRows: ["REL-1"] }],
   ["publish", { authorityRows: ["PUB-PRIV"] }],
   ["publish", { authorityRows: ["EXT-POST"] }],
   ["secret", { authorityRows: ["SEC-READ"] }],
-  ["hardware", { authorityRows: ["HW-ACT"] }],
+  ["hardware", { authorityRows: ["HW-AU"] }],
+  ["hardware", { authorityRows: ["HWS-OT"] }],
   ["money", { category: "spend" }],
+  ["money", { authorityRows: ["SPD-OT"] }],
+  ["authority-row", { authorityRows: ["MRG-AU"] }],
+  ["authority-row", { authorityRows: ["CFG-OT"] }],
+  ["authority-row", { authorityRows: ["DSX-OT"] }],
+  ["authority-row", { authorityRows: ["SPN-AU", "ZZZ-FUTURE"] }],
+  ["authority-row", { authorityRows: ["dead-end/stuck"] }],
   ["money", { text: ["Upgrade the plan for $ 40 a month"] }],
   ["one-way", { door: "one-way" }],
   ["irreversible", { irreversible: true }],
@@ -61,6 +76,8 @@ const FLOOR_CASES: [string, Partial<ByRecSubject>][] = [
   ["plan-approval", { planApproval: true }],
   ["answer-unsound", { options: ["b", "c"] }],
   ["answer-unsound", { default: "b" }],
+  ["answer-unsound", { options: undefined }],
+  ["answer-unsound", { options: [] }],
 ];
 
 describe("byRecDecision floor", () => {
@@ -70,6 +87,12 @@ describe("byRecDecision floor", () => {
     const decision = byRecDecision(subject(overrides), after(720 * HOUR), permissive);
 
     expect(decision).toEqual({ eligible: false, reason: `floor:${reason}` });
+  });
+
+  it.each(tableRowIds())("refuses authority row %s unless its family may auto-resolve", (row) => {
+    const decision = byRecDecision(subject({ authorityRows: [row] }), after(720 * HOUR), policy());
+
+    expect(decision.eligible).toBe(AUTO_RESOLVABLE.has(row.split("-")[0] ?? ""));
   });
 
   it("has a case for every floor class", () => {
@@ -181,6 +204,12 @@ describe("isGuardPath", () => {
     ["products/factory/src/shepherd/hold-reason.ts", true],
     ["packages/owner-queue/src/by-rec-floor.ts", true],
     [".codewatch/merge-policy.json", true],
+    [".github/workflows/release.yml", true],
+    [".github/merge-lint.json", true],
+    ["CODEOWNERS", true],
+    [".github/CODEOWNERS", true],
+    [".claude/settings.json", true],
+    [".claude/settings.local.json", true],
     ["packages/metrics/src/threshold.ts", false],
     ["apps/console/web/inbox.tsx", false],
   ])("reads %s as guard: %s", (path, guard) => {
@@ -212,6 +241,9 @@ describe("byRecSubjectOfItem", () => {
     ["money", { context: "This costs $120 a year" }],
     ["ship", { kind: "approve", sources: [{ system: "round", ref: "r1#q1" }] }],
     ["irreversible", { irreversible: "Deletes the archive" }],
+    ["secret", { authority: { table: "authority", ruleId: "SEC-AU", resolvers: ["owner-terminal"] } }],
+    ["authority-row", { authority: { table: "authority", ruleId: "MRG-AU", resolvers: ["owner-terminal"] } }],
+    ["answer-unsound", { options: undefined }],
   ])("carries the %s floor over from the item", (reason, overrides) => {
     const decision = byRecDecision(byRecSubjectOfItem({ ...deposit, ...overrides }), after(48 * HOUR), policy());
 
