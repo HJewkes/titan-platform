@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeSha } from "@titan-design/github";
 import type { GateResolver } from "@titan-design/hitl";
-import type { StepRoute } from "@titan-design/workflow";
+import type { StepRoute, WorkflowEvent } from "@titan-design/workflow";
 import { expect, vi } from "vitest";
 import { z } from "zod";
 import { defineWorkflow, type WorkflowDefinition } from "../definition.js";
@@ -26,52 +26,57 @@ export async function closeDeploys(): Promise<void> {
 
 export const HEAD_B = H1;
 export const HEAD_A = fakeSha("head-a");
-const STEPS = [
-  { id: "ci-wait", kind: "dispatch" },
-  { id: "park-here", kind: "dispatch" },
-  { id: "extra-ask", kind: "assisted" },
-] as const;
+/** The step a recorded run waits in: a bare id, or one call of a family as land's post-merge tail makes them. */
+interface Tail {
+  id: string;
+  call: string;
+}
+const PARK_HERE: Tail = { id: "park-here", call: "park-here" };
+/** Land's post-merge tail, listing the parent's stacked children. */
+export const STACK_CHILDREN_TAIL: Tail = { id: "sh-stack-children", call: "sh-stack-children:1" };
 
-/** Build N reads CI then waits; build N+1 asks a question before the recorded ci-wait. */
-export function build(asksFirst: boolean): WorkflowDefinition {
+/** Build N reads CI then waits in `tail`; build N+1 asks a question before the recorded ci-wait. */
+export function build(asksFirst: boolean, tail: Tail = PARK_HERE): WorkflowDefinition {
   return defineWorkflow({
     name: SHEPHERD_WORKFLOW,
-    steps: STEPS,
+    steps: [{ id: "ci-wait", kind: "dispatch" }, { id: tail.id, kind: "dispatch" }, { id: "extra-ask", kind: "assisted" }],
     run: async (ctx) => {
       if (asksFirst) {
         const brief = { summary: "A question the old build never asked.", evidenceRef: "$ gh pr view 1" };
         await ctx.assisted("extra-ask", "Ask?", { schema: z.object({ ok: z.literal(true) }), brief });
       }
       await ctx.dispatch("ci-wait", "ci-wait");
-      await ctx.dispatch("park-here", "park-here");
+      await ctx.dispatch(tail.call, tail.call);
     },
   });
 }
 
 const stubRoutes: StepRoute[] = [
   { match: "ci-wait", onRestart: "repeat", runner: { run: () => Promise.resolve({ ok: true, output: JSON.stringify({ result: { headSha: HEAD_A } }) }) } },
-  { match: "park-here", onRestart: "repeat", runner: { run: () => new Promise(() => undefined) } },
+  ...[PARK_HERE, STACK_CHILDREN_TAIL].map((tail): StepRoute => ({ match: tail.id, onRestart: "repeat", runner: { run: () => new Promise(() => undefined) } })),
 ];
 
 interface Deploy extends ShepherdFixture {
   host: FactoryHost;
   routes: FactoryRoutes;
+  events: WorkflowEvent[];
 }
 
 export function deploy(dbPath: string, definition: WorkflowDefinition): Deploy {
   const fixture = shepherdFixture();
   const routes = Object.assign([...stubRoutes], { shepherd: fixture.routes.shepherd, database: fixture.routes.database, bindHost: fixture.routes.bindHost }) as FactoryRoutes;
-  const host = openFactoryHost({ dbPath, workflows: [definition], routes, gatePollMs: 5 });
+  const events: WorkflowEvent[] = [];
+  const host = openFactoryHost({ dbPath, workflows: [definition], routes, gatePollMs: 5, onEvent: (event) => events.push(event) });
   hosts.push(host);
-  return { ...fixture, routes, host };
+  return { ...fixture, routes, host, events };
 }
 
-const branchOf = (pr: number): string => `${BRANCH}-${pr}`;
+export const branchOf = (pr: number): string => `${BRANCH}-${pr}`;
 export const ctxOf = (next: Deploy) => factoryContext(next.host, next.routes, "agent");
 
 /** Registered runs recorded on build N, one per pull request number; nothing adopts them yet. */
-export async function recorded(dbPath: string, prs: number[], base?: string): Promise<string[]> {
-  const first = deploy(dbPath, build(false));
+export async function recorded(dbPath: string, prs: number[], base?: string, tail?: Tail): Promise<string[]> {
+  const first = deploy(dbPath, build(false, tail));
   const ids = prs.map((pr) => first.host.runtime.start(SHEPHERD_WORKFLOW, { repo: REPO, pr: String(pr), branch: branchOf(pr), policy: JSON.stringify(OWNER_GATE_POLICY), task: "demo/T-1" }));
   for (const id of ids) await vi.waitFor(() => expect(first.host.runtime.status(id)?.stepResults).toHaveProperty(["ci-wait:0"]));
   const store = first.routes.shepherd!.store.get();
