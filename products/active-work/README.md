@@ -21,7 +21,7 @@ active-work setup
 
 `active-work setup` is an interactive wizard that walks through eight steps:
 
-1. **Verify Node version** — Node 22+ required.
+1. **Verify Node version** — Node 24+ required.
 2. **Create the active root** — `$XDG_DATA_HOME/active-work/`.
 3. **Write the schema version** — `.schema-version` file at version 1.
 4. **Write a config stub** — `$XDG_CONFIG_HOME/active-work/config.json` with sensible discovery defaults.
