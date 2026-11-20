@@ -239,6 +239,30 @@ describe("restartDivergedRuns on an owner answer given while the run was parked 
   });
 });
 
+/** The resolver the console's inbox tap records on a gate it answers. */
+const CONSOLE: GateResolver = { class: "owner-remote", id: "titan-console", channel: "console:inbox", confirmEvent: "packet:fixture" };
+
+describe("restartDivergedRuns on a console inbox tap given while the run was parked (TP-6194)", () => {
+  it("merges a parked diverged run whose approve-merge the console resolved merge at the gated head", async () => {
+    const { next, runId, gateId } = await answeredWhileParked({ decision: "merge", headSha: HEAD_B }, landPrompt(HEAD_B), CONSOLE);
+
+    const sweep = await restartDivergedRuns(ctxOf(next));
+
+    expect(sweep.merged).toEqual([{ runId, gateId, headSha: HEAD_B, mergeSha: next.fake.pr(1).mergeSha }]);
+    expect(next.fake.merges).toHaveLength(1);
+    expect(next.host.runtime.status(runId)).toMatchObject({ status: "cancelled", stepResults: { [CARRIED_MERGE_STEP]: { data: { gateId, headSha: HEAD_B, resolvedBy: CONSOLE } } } });
+  });
+
+  it("merges nothing for a console merge tap once the head moved past the gated one", async () => {
+    const answered = await answeredWhileParked({ decision: "merge", headSha: HEAD_B }, landPrompt(HEAD_B), CONSOLE);
+    answered.next.fake.pushHead(1, fakeSha("head-c"));
+    const merge = vi.spyOn(answered.next.routes.shepherd!.port, "merge");
+
+    await restartedAndAsking(answered, await restartDivergedRuns(ctxOf(answered.next)));
+    expect(merge).not.toHaveBeenCalled();
+  });
+});
+
 describe("restartDivergedRuns reclassification", () => {
   it("holds a restarted run on a policy path g10-adversary, as a live register would", async () => {
     const { next, oldRunIds } = await parkedRuns();
