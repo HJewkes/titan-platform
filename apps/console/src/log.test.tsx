@@ -10,9 +10,9 @@ const NOW = Date.parse("2031-03-05T12:00:00.000Z");
 
 function inboxRow(id: string, byRec?: { at: string; mode: "shadow" | "live" }): Record<string, unknown> {
   return {
-    id, sources: [{ system: "deposit", ref: `builder/${id}` }], kind: "decide", door: "two-way", summary: `Ask ${id}`, context: "", keys: [], personal: false,
+    id, sources: [{ system: "round", ref: `${id}#ramp` }], kind: "decide", door: "two-way", summary: `Ask ${id}`, context: "", keys: [], personal: false,
     lens: "blocking-agent", unblocks: [], openedAt: new Date(NOW - 3_600_000).toISOString(), status: "open", section: "blocking", evidence: undefined,
-    action: { kind: "answer-deposit" }, ...(byRec && { byRec }),
+    action: { kind: "open-round", roundId: id }, ...(byRec && { byRec }),
   };
 }
 
@@ -60,11 +60,11 @@ describe("the decisions and ships page", () => {
 
 describe("the inbox by-rec countdown", () => {
   it("inbox countdown shows only on eligible items", async () => {
-    const items = [inboxRow("dep-eligible", { at: "2031-03-06T02:00:00.000Z", mode: "live" }), inboxRow("dep-waits")];
+    const items = [inboxRow("kiln-r1", { at: "2031-03-06T02:00:00.000Z", mode: "live" }), inboxRow("lantern-r1")];
     const answer = successEnvelope({ items, planningCount: 0, gaps: [], fyiCount: 0, readAt: new Date(NOW).toISOString(), derived: [], nudges: [] });
     renderPage({ format: SNAPSHOT_FORMAT, createdAt: new Date(NOW).toISOString(), calls: { [snapshotKey("inbox.list", {})]: answer } }, "#/inbox");
 
-    expect((await screen.findByTestId("inbox-by-rec-dep-eligible")).textContent).toMatch(/^Goes with rec at /);
-    expect(within(screen.getByTestId("inbox-row-dep-waits")).queryByText(/with rec at/)).toBeNull();
+    expect((await screen.findByTestId("inbox-by-rec-kiln-r1")).textContent).toMatch(/^Goes with rec at /);
+    expect(within(screen.getByTestId("inbox-row-lantern-r1")).queryByText(/with rec at/)).toBeNull();
   });
 });

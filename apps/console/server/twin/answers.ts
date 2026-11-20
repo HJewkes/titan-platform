@@ -124,7 +124,12 @@ const INBOX_ITEMS = [
   inboxItem("dep-retry", {
     sources: [{ system: "deposit", ref: "relay-builder/dep-retry" }], kind: "decide", door: "two-way", lens: "blocking-agent", summary: "Keep the retry ceiling at 30 s?", openedAt: at(20 * HOUR),
     options: [{ id: "keep", label: "keep 30 s" }, { id: "raise", label: "raise to 60 s" }], recommended: { optionId: "keep", by: "relay-builder" },
-    action: { kind: "answer-deposit" }, byRec: { at: new Date(TWIN_NOW + 4 * HOUR).toISOString(), mode: "shadow" },
+    action: { kind: "answer-deposit" },
+  }),
+  inboxItem("round-ramp", {
+    sources: [{ system: "round", ref: "kiln-ramp-r1#ramp" }], kind: "decide", door: "two-way", lens: "planning", summary: "Which ramp by default?", openedAt: at(20 * HOUR), evidence: "#/rounds/kiln-ramp-r1",
+    options: [{ id: "Staged", label: "Staged" }, { id: "Single", label: "Single" }], recommended: { optionId: "Staged", by: "kiln-builder" },
+    action: { kind: "open-round", roundId: "kiln-ramp-r1" }, byRec: { at: new Date(TWIN_NOW + 4 * HOUR).toISOString(), mode: "shadow" },
   }),
   inboxItem("task-or-9", { sources: [{ system: "active-work", ref: "orbit-relay/OR-9" }], kind: "decide", lens: "planning", section: "planning", summary: "Plan OR-9", evidence: "#/tasks/OR-9", action: { kind: "open", route: "#/tasks/OR-9" } }),
   ...PLAN_ITEMS,
