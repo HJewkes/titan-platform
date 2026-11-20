@@ -185,8 +185,7 @@ const openOrTerminal = (evidence: string | undefined, item: OwnerItem, reason: s
 function holdOpAction(item: OwnerItem, op: Extract<OwnerOp, { kind: "release-hold" }>, row: WatchRow | undefined): InboxAction {
   if (row?.held == null) return terminal(`no live Shepherd row holds ${op.repo}#${op.pr}`, item.command);
   const holdClass = holdClassOf(row.held.reason);
-  const matches = op.holdClass === "g10" ? isG10Class(holdClass) : holdClass === op.holdClass;
-  if (!matches) return terminal(`${op.repo}#${op.pr} is held as ${holdClass ?? "unclassed"}, not ${op.holdClass}`, item.command);
+  if (!(op.holdClass === "g10" ? isG10Class(holdClass) : holdClass === op.holdClass)) return terminal(`${op.repo}#${op.pr} is held as ${holdClass ?? "unclassed"}, not ${op.holdClass}`, item.command);
   return holdAction(row, holdClass);
 }
 
@@ -267,9 +266,8 @@ function rowOfItem(item: OwnerItem, rows: ReadonlyMap<string, WatchRow>): WatchR
   const source = item.sources[0]!;
   if (source.system === "hitl") return rowOfRun(source.ref, rows);
   const op = source.system === "deposit" ? tapOp(item) : undefined;
-  if (op === undefined) return undefined;
-  if (op.kind === "resolve-gate") return rowOfRun(op.gateId, rows);
-  return op.kind === "release-hold" || op.kind === "merge-at-head" ? rowOfPr(op.repo, op.pr, rows) : undefined;
+  if (op?.kind === "resolve-gate") return rowOfRun(op.gateId, rows);
+  return op?.kind === "release-hold" || op?.kind === "merge-at-head" ? rowOfPr(op.repo, op.pr, rows) : undefined;
 }
 
 interface ItemFacts {
