@@ -634,7 +634,6 @@ declare function canonicalEdgeKind(name: string): string;
 interface RenamePair {
     oldPath: string;
     newPath: string;
-    similarity: number;
 }
 interface DetectRenamesOptions {
     repoRoot: string;

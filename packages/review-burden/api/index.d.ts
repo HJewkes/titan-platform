@@ -33,6 +33,16 @@ declare const DEFAULT_BURDEN_CONFIG: Readonly<BurdenConfig>;
 /** The defaults with each given key replacing, not extending, its default list. */
 declare function resolveConfig(config?: Partial<BurdenConfig>): BurdenConfig;
 
+interface NamedStatus {
+    status: FileStatus;
+    previousPath?: string;
+}
+/**
+ * Parses `git diff --name-status -z`: `X<NUL>path<NUL>`, and for a rename or copy `R100<NUL>old<NUL>new<NUL>`.
+ * Keyed by the head-side path. Letters other than A, D, R and C (M, T, U, X) read as `modified`.
+ */
+declare function parseNameStatus(text: string): Map<string, NamedStatus>;
+
 type PathClass = "test" | "ignored" | "production";
 /** A classifier compiled once for a whole diff; test globs win over ignored ones, so a fixture `.md` is test material. */
 declare function pathClassifier(config?: Partial<BurdenConfig>): (path: string) => PathClass;
@@ -130,4 +140,4 @@ declare function scoreParts(facts: BurdenFacts): BurdenParts;
  */
 declare function unitOf(file: ChangedFile): string[];
 
-export { type BurdenConfig, type BurdenFacts, type BurdenInput, type BurdenParts, type BurdenScore, type ChangedFile, type ChangesetBump, DEFAULT_BURDEN_CONFIG, type Door, type DoorFacts, type DoorInput, FOOTER_MARKER, type FileStatus, type Footer, MAX_BURDEN, type OneWayFact, type OneWayFactKind, type PackageJsonChange, type PathClass, burdenFacts, burdenScore, classifyPath, doorFacts, effectiveDoor, hasContract, parseFooter, pathClassifier, resolveConfig, scoreParts, underDeclared, unitOf };
+export { type BurdenConfig, type BurdenFacts, type BurdenInput, type BurdenParts, type BurdenScore, type ChangedFile, type ChangesetBump, DEFAULT_BURDEN_CONFIG, type Door, type DoorFacts, type DoorInput, FOOTER_MARKER, type FileStatus, type Footer, MAX_BURDEN, type OneWayFact, type OneWayFactKind, type PackageJsonChange, type PathClass, burdenFacts, burdenScore, classifyPath, doorFacts, effectiveDoor, hasContract, parseFooter, parseNameStatus, pathClassifier, resolveConfig, scoreParts, underDeclared, unitOf };
