@@ -85,6 +85,26 @@ describe('preflight', () => {
     });
   });
 
+  it('lists unreferenced sources only when given --since, and the checklist asks for reports', async () => {
+    await withTempActiveRoot(async (root) => {
+      setLiveGit();
+      const dir = path.join(root, SLUG, 'sources');
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, 'zz-unnamed-report.md'), '# r\n');
+      const without = await preflightCmd.run({ slug: SLUG, cwd: SAMPLE_REPO }, context(root));
+      expect(without.unreferenced_sources).toEqual([]);
+      const since = new Date(Date.now() - 60_000).toISOString();
+      const withSince = await preflightCmd.run(
+        { slug: SLUG, cwd: SAMPLE_REPO, since },
+        context(root),
+      );
+      expect(withSince.unreferenced_sources.map((s) => s.filename)).toContain(
+        'zz-unnamed-report.md',
+      );
+      expect(withSince.checklist.join(' ')).toMatch(/reports: .*task id, a seat name or none/);
+    });
+  });
+
   it('writes nothing', async () => {
     await withTempActiveRoot(async (root) => {
       setLiveGit();

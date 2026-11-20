@@ -44,6 +44,11 @@ export const SOURCE_METRIC_NAMES: ReadonlySet<string> = new Set([
 
 const EMPTY_NAMES: ReadonlySet<string> = new Set();
 
+export interface SourceMetricOptions {
+  /** Body lines under which `symbol_comment_ratio` is 0 (TP-350); defaults to `COMMENT_RATIO_MIN_BODY_LINES`. */
+  commentRatioMinBodyLines?: number;
+}
+
 /**
  * Per-file source metrics. `symbolNamesByFile` maps a file id to the names of
  * the `symbol` nodes it declares; when supplied, per-function complexity is
@@ -55,11 +60,12 @@ export function computeSourceMetrics(
   files: readonly ParsedFile[],
   fileIdOf: (filePath: string) => string,
   symbolNamesByFile: ReadonlyMap<string, ReadonlySet<string>> = new Map(),
+  options: SourceMetricOptions = {},
 ): GraphMetric[] {
   const out: GraphMetric[] = [];
   for (const file of files) {
     const id = fileIdOf(file.filePath);
-    out.push(...metricsForFile(id, file, symbolNamesByFile.get(id) ?? EMPTY_NAMES));
+    out.push(...metricsForFile(id, file, symbolNamesByFile.get(id) ?? EMPTY_NAMES, options));
   }
   return out;
 }
@@ -68,12 +74,13 @@ function metricsForFile(
   nodeId: string,
   file: ParsedFile,
   symbolNames: ReadonlySet<string>,
+  options: SourceMetricOptions,
 ): GraphMetric[] {
   const out: GraphMetric[] = [];
   const loc = countLoc(file.content);
   out.push({ nodeId, name: "loc", value: loc, unit: "lines" });
 
-  const stats = analyzeFunctions(file);
+  const stats = analyzeFunctions(file, options.commentRatioMinBodyLines);
   out.push({
     nodeId,
     name: "function_count",
@@ -136,7 +143,7 @@ function countLoc(content: string): number {
   return content.split("\n").filter((l) => l.trim() !== "").length;
 }
 
-function analyzeFunctions(file: ParsedFile): FunctionStats[] {
+function analyzeFunctions(file: ParsedFile, commentRatioMinBodyLines?: number): FunctionStats[] {
   const stats: FunctionStats[] = [];
   const fnTypes =
     file.language === "python" ? PY_FUNCTION_TYPES : TS_FUNCTION_DECL_TYPES;
@@ -157,7 +164,7 @@ function analyzeFunctions(file: ParsedFile): FunctionStats[] {
       jsxDepth,
       loc: fn.node.endPosition.row - fn.node.startPosition.row + 1,
       props: isComponent(fn.name, jsxDepth) ? propStatsOf(fn.node, types) : null,
-      ...functionShapeStats(fn.node, fn.body, lines),
+      ...functionShapeStats(fn.node, fn.body, lines, commentRatioMinBodyLines),
     });
   });
   return stats;
