@@ -19,6 +19,7 @@ import { MAX_NOT_STARTED_REVIEWS, REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
 import type { ScopeRound } from "./scope-check-round.js";
+import { adversaryFocusOf, type ScopedRereview } from "./review-scope-round.js";
 
 /** Records the aggregate once, so a replay reads the verdict the panel gave rather than one recomputed over source that has since moved. */
 const PANEL_VERDICT_STEP = "sh-review-panel";
@@ -133,6 +134,8 @@ export interface MemberBase extends ReviewTarget {
   fixProofUnverified?: FixProofUnverified;
   fixProofWaivedAt?: string;
   workflowCiProof?: WorkflowCiProof;
+  /** A fix round's scope under `on`; only the adversary member's dispatch carries it, as a focus section (TP-6412). */
+  scopedRereview?: ScopedRereview;
 }
 
 interface DispatchedMember {
@@ -147,12 +150,12 @@ function memberIntent(intent: PanelIntent, reviewer: string): Record<string, unk
 }
 
 /** One `sh-review:<head>:<shape>` per member but correctness, in plan order, each at its planned profile and with its shape's brief. */
-async function dispatchMembers(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase): Promise<DispatchedMember[]> {
+async function dispatchMembers(ctx: WorkflowContext, intent: PanelIntent, { scopedRereview, ...base }: MemberBase): Promise<DispatchedMember[]> {
   const members: DispatchedMember[] = [];
   for (const { shape, profile } of intent.plan.members) {
     const reviewer = intent.panelReviewers[shape];
     if (!isOverlay(shape) || reviewer === undefined) continue;
-    const input = { ...base, intent: memberIntent(intent, reviewer), shape, profile };
+    const input = { ...base, intent: memberIntent(intent, reviewer), shape, profile, ...(shape === "adversary" && adversaryFocusOf(scopedRereview)) };
     members.push({ shape, dispatched: await step(ctx, `${REVIEW_STEP}:${base.head}:${shape}`, input, Dispatched) });
   }
   return members;

@@ -117,7 +117,7 @@ async function fixRoundRun(mode: ScopedRereviewMode | undefined, rebased = false
 const SCOPED_DIFF = `diff ${H1} ${H2} -- "${FIX_PATH}"`;
 
 describe("a fix-round re-review under shepherd.review.scopedRereview", () => {
-  it("on: the correctness brief at H2 reads the fix diff since H1 and H1's finding; the adversary member's reads neither", async () => {
+  it("on: the correctness brief at H2 reads the fix diff since H1 and H1's finding; the adversary member's keeps the full diff", async () => {
     const w = await fixRoundRun("on");
 
     const [correctness] = w.briefAt(H2, false);
@@ -128,9 +128,20 @@ describe("a fix-round re-review under shepherd.review.scopedRereview", () => {
     const [adversary] = w.briefAt(H2, true);
     expect(adversary).toContain("gh pr diff");
     expect(adversary).not.toContain(SCOPED_DIFF);
-    expect(adversary).not.toContain(FINDING);
     expect(w.resultOf(`sh-review:${H2}`)).toMatchObject({ scoped: true });
     expect(w.resultOf(`sh-review:${H2}:adversary`)).not.toHaveProperty("scoped");
+  });
+
+  it("on: the adversary member at H2 gets a focus on H1's open finding and the fix's ranges, recorded as focused", async () => {
+    const w = await fixRoundRun("on");
+
+    const [adversary] = w.briefAt(H2, true);
+    expect(adversary).toContain(`Look first at the change since head ${H1.slice(0, 12)}`);
+    expect(adversary).toContain(`- ${FIX_PATH}: 10-11`);
+    expect(adversary).toContain(FINDING);
+    expect(adversary).not.toContain("Important:");
+    expect(w.resultOf(`sh-review:${H2}:adversary`)).toMatchObject({ scopeFocus: true });
+    expect(w.resultOf(`sh-review:${H1}:adversary`)).not.toHaveProperty("scopeFocus");
   });
 
   it("on: the first review at H1 is not probed and reads the whole PR", async () => {
@@ -157,6 +168,15 @@ describe("a fix-round re-review under shepherd.review.scopedRereview", () => {
     expect(shadow.resultOf(`sh-review:${H2}`)).toMatchObject({ scoped: true, scopeShadow: true });
     expect(shadow.briefAt(H2, false)).toEqual(off.briefAt(H2, false));
     expect(shadow.briefAt(H2, false)[0]).not.toContain(SCOPED_DIFF);
+  });
+
+  it("shadow: the adversary member's brief and result carry no focus, its brief byte for byte the off one", async () => {
+    const off = await fixRoundRun("off");
+    const shadow = await fixRoundRun("shadow");
+
+    expect(shadow.briefAt(H2, true)).toEqual(off.briefAt(H2, true));
+    expect(shadow.briefAt(H2, true)[0]).not.toContain("Look first at");
+    expect(shadow.resultOf(`sh-review:${H2}:adversary`)).not.toHaveProperty("scopeFocus");
   });
 
   it("on: a probe refusal reviews the whole PR and records scoped false with the reason", async () => {

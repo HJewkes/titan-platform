@@ -298,7 +298,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
     return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent.reviewer, rosterError);
   }
   const spawnedAs = profile ?? (roles && reviewerRoleFor(facts, roles));
-  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }), ...scopedResultFields(scopedRereview) };
+  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }), ...scopedResultFields(scopedRereview, shape) };
 };
 
 /** The body of the sh-correct-verdict step, with the same session-start and busy budgets as sh-review; an adversary is resumed under its own account. */

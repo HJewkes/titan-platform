@@ -757,7 +757,8 @@ interface ShapeBriefInput extends ReviewerBriefInput {
 }
 /**
  * The overlay comes first so the base brief's verdict template stays the end of the prompt. A member always reads the full
- * diff, since the adversary's second sign-off must not narrow to a fix round's diff (TP-3735), so `scope` is dropped.
+ * diff, since the adversary's second sign-off must not narrow to a fix round's diff (TP-3735), so `scope` never reaches the
+ * base brief; the adversary reads it only as a focus section.
  */
 declare function shapeBrief(shape: OverlayShape, input: ShapeBriefInput): string;
 
