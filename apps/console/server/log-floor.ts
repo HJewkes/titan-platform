@@ -34,12 +34,13 @@ const LABELS: Record<string, readonly [label: string, removeBy: string]> = {
   "security-class": ["Security decisions (D1: g10-security, proof-fixture)", MERGE_PR],
   "guard-class": ["Guard decisions (D21: skill paths, CI policy weakened, over budget or malformed)", MERGE_PR],
   "owner-at-head": ["Owner-at-head rows (skill-path, files-unread, attest-unmet)", MERGE_PR],
-  "guard-path": ["Authority and guard paths (authority table, g10 rules, hold and policy files, this policy)", MERGE_PR],
+  "guard-path": ["Authority and guard paths (authority table, g10 rules, hold and policy files, CI workflows, merge-lint, CODEOWNERS, settings, this policy)", MERGE_PR],
   release: ["Release PRs and release deposits (REL-*)", MERGE_PR],
   publish: ["Publish and external (PUB-*, EXT-*)", MERGE_PR],
   secret: ["Secret reads (SEC-*)", FLOOR_PR],
-  hardware: ["Hardware actuation (HW-*)", FLOOR_PR],
-  money: ["Spend, money or accounts, or any $ amount", FLOOR_PR],
+  hardware: ["Hardware actuation (HW-*, HWS-*)", FLOOR_PR],
+  money: ["Spend, money or accounts (SPD-*), or any $ amount", FLOOR_PR],
+  "authority-row": ["Any authority row outside spawn, retire, untrusted ingest and answers (SPN, RET, UNT, ANS)", FLOOR_PR],
   "one-way": ["One-way doors", FLOOR_PR],
   irreversible: ["Items marked irreversible", FLOOR_PR],
   "on-silence-wait": ["The asker said wait on silence", FLOOR_PR],
@@ -52,7 +53,7 @@ const LABELS: Record<string, readonly [label: string, removeBy: string]> = {
   "owner-op": ["Deposits carrying an owner op (merge-at-head, close-pr)", FLOOR_PR],
   ship: ["Ship questions in rounds (their PR goes through its own merge gate)", NEVER],
   "plan-approval": ["Plan approvals in rounds", FLOOR_PR],
-  "answer-unsound": ["A recommendation that is not an offered option, or that the asker's default contradicts", NEVER],
+  "answer-unsound": ["A recommendation with no offered options to check, not one of them, or that the asker's default contradicts", NEVER],
 };
 
 /** A floor class this table does not word still shows, by its code name, so a new class is never hidden. */
