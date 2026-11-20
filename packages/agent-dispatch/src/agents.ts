@@ -98,11 +98,14 @@ export async function listAgents(
   agentChatBinPath: string,
   timeoutMs: number,
   options: { includeRetired?: boolean } = {},
+  signal?: AbortSignal,
 ): Promise<AgentRow[]> {
   const result = await runAgentChatAsync(
     agentChatBinPath,
     buildListAgentsArgs(options),
     timeoutMs,
+    undefined,
+    signal,
   );
   if (result.status !== 0) throw refusal("agent ls", result);
   return parseAgentRows(result.stdout);
@@ -118,12 +121,13 @@ const UNKNOWN_INCLUDE_RETIRED = /unknown option '--include-retired'/;
 export async function listAgentLineage(
   agentChatBinPath: string,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<AgentLineage> {
   const args = buildListAgentsArgs({ includeRetired: true });
-  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs, undefined, signal);
   if (result.status === 0) return { rows: parseAgentRows(result.stdout), complete: true };
   if (!UNKNOWN_INCLUDE_RETIRED.test(result.stderr)) throw refusal("agent ls", result);
-  return { rows: await listAgents(agentChatBinPath, timeoutMs), complete: false };
+  return { rows: await listAgents(agentChatBinPath, timeoutMs, {}, signal), complete: false };
 }
 
 export interface RetireOptions {
@@ -145,6 +149,7 @@ export async function retire(
   name: string,
   timeoutMs: number,
   options: RetireOptions = {},
+  signal?: AbortSignal,
 ): Promise<RetireResult> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
@@ -155,7 +160,7 @@ export async function retire(
   }
   const args = buildRetireArgs(name, options.force === true);
   const env = caller === undefined ? undefined : { AGENT_CHAT_NAME: caller };
-  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs, undefined, undefined, env);
+  const result = await runAgentChatAsync(agentChatBinPath, args, timeoutMs, undefined, signal, env);
   if (result.status !== 0) throw refusal("agent retire", result);
   const lines = result.stdout.split("\n").map((line) => line.trim());
   return { name, caveats: lines.slice(1).filter((line) => line !== "") };
