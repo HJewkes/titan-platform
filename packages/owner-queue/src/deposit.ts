@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { addAnchorIssues } from "./deposit-anchors.js";
 import { opKeys } from "./op.js";
-import { ownerItemSchema, type ITEM_KINDS, type LENSES, type OwnerItem } from "./schema.js";
+import { MAX_SITTING_STEPS, ownerItemSchema, sittingStepSchema, type ITEM_KINDS, type LENSES, type OwnerItem } from "./schema.js";
 
 const item = ownerItemSchema.shape;
 const option = item.options.unwrap().element;
@@ -29,6 +29,7 @@ export const ownerItemDepositSchema = z.strictObject({
   recommended: z.strictObject(recommendation.omit({ hidden: true }).shape).optional(),
   command: item.command,
   op: item.op,
+  steps: z.array(sittingStepSchema).min(1).max(MAX_SITTING_STEPS).optional(),
   evidenceRef: item.evidenceRef,
   anchors: item.anchors,
   pins: item.pins,
@@ -41,12 +42,20 @@ export const ownerItemDepositSchema = z.strictObject({
   blocker: item.blocker,
   audience: item.audience,
   expiresAt: item.expiresAt,
-}).superRefine(addAnchorIssues).superRefine(addBlockerIssues);
+}).superRefine(addAnchorIssues).superRefine(addBlockerIssues).superRefine(addSittingIssues);
 
 function addBlockerIssues(deposit: { kind: (typeof ITEM_KINDS)[number]; blocker?: unknown }, ctx: z.RefinementCtx): void {
   if (deposit.blocker !== undefined && DEPOSIT_LENS[deposit.kind] !== "blocking-agent") {
     ctx.addIssue({ code: "custom", path: ["blocker"], message: "a blocker must be a decide, approve or do deposit" });
   }
+}
+
+/** A sitting is owner work, so it is a do deposit; each step carries its own op, and there is nothing to pick. */
+function addSittingIssues(deposit: { kind: string; steps?: unknown; options?: unknown; op?: unknown }, ctx: z.RefinementCtx): void {
+  if (deposit.steps === undefined) return;
+  if (deposit.kind !== "do") ctx.addIssue({ code: "custom", path: ["kind"], message: "a sitting (steps) must be a do deposit" });
+  if (deposit.options !== undefined) ctx.addIssue({ code: "custom", path: ["options"], message: "a sitting (steps) offers no options" });
+  if (deposit.op !== undefined) ctx.addIssue({ code: "custom", path: ["op"], message: "a sitting carries its ops on its steps, not on the item" });
 }
 
 const BLOCKER_SKEW_MS = 5 * 60_000;
