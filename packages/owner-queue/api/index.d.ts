@@ -216,6 +216,11 @@ declare const ownerCardSchema: zod.ZodObject<{
             pr: zod.ZodNumber;
             headSha: zod.ZodString;
         }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"delete-branch">;
+            repo: zod.ZodString;
+            branch: zod.ZodString;
+            tipSha: zod.ZodString;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
             kind: zod.ZodLiteral<"factory-config-set">;
             path: zod.ZodString;
             value: zod.ZodJSONSchema;
@@ -1153,6 +1158,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
             pr: z.ZodNumber;
             headSha: z.ZodString;
         }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"delete-branch">;
+            repo: z.ZodString;
+            branch: z.ZodString;
+            tipSha: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
             kind: z.ZodLiteral<"factory-config-set">;
             path: z.ZodString;
             value: z.ZodJSONSchema;
@@ -1364,6 +1374,11 @@ declare const itemStepSchema: z.ZodObject<{
         repo: z.ZodString;
         pr: z.ZodNumber;
         headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"delete-branch">;
+        repo: z.ZodString;
+        branch: z.ZodString;
+        tipSha: z.ZodString;
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"factory-config-set">;
         path: z.ZodString;
@@ -1649,6 +1664,11 @@ declare const ownerItemSchema: z.ZodObject<{
             repo: z.ZodString;
             pr: z.ZodNumber;
             headSha: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"delete-branch">;
+            repo: z.ZodString;
+            branch: z.ZodString;
+            tipSha: z.ZodString;
         }, z.core.$strict>, z.ZodObject<{
             kind: z.ZodLiteral<"factory-config-set">;
             path: z.ZodString;
