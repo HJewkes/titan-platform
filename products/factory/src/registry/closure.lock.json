@@ -1,6 +1,6 @@
 {
   "ci-wait": {
-    "closure": "acf8b7548791d7339e1386ce5d8d8c0b777116591963ef661813d56fca52dd7b",
+    "closure": "aa5fd998800c6c85b3e97f472ac503e90b8db5f5ba346828773d4d8471c5985c",
     "schemaHash": "26cea498a3de6ee618690121d1b57f68d71faffbfb84d4a16a4f669aee9e1756",
     "bump": 25
   },
@@ -10,7 +10,7 @@
     "bump": 8
   },
   "sh-await-verdict": {
-    "closure": "b56d71708c8fc72c7b1c562d29845cac6a22d391a4de3e860a4fe07b6a34cb3e",
+    "closure": "3de52397150937858ad8903d784a4397c5a8ed1417a3def234b60e45c9dd766b",
     "schemaHash": "6f4d75d5cca4f78c055944d7c010146786701b94b787f8cdc950e3117fcb7dac",
     "bump": 14
   }
