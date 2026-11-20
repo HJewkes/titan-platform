@@ -3,13 +3,13 @@ import { Command, CommanderError, Option } from "commander";
 import { z } from "zod";
 import { createJudgeHarness, JudgeConfigSchema, type JudgeCall, type JudgeConfig, type JudgeHarness, type JudgeReply } from "./eval-harness.js";
 import { sentencesOf } from "./lint-text.js";
-import { MAX_SENTENCE_WORDS, needsSpeechVet, type SpeechVerdict } from "./lint-voice.js";
+import { needsSpeechVet, type SpeechVerdict } from "./lint-voice.js";
 import { migrateSpike } from "./migrate.js";
 import { l0Scorer, measureRewrite } from "./rewrite-measure-run.js";
 import { rewriteScript, type ChapterVerdict, type RewriteReport, type RewriteResult } from "./rewrite-pass.js";
 import { MAX_REWRITE_ROUNDS } from "./rewrite-plan.js";
 import { ScriptSchema, type ScriptV1 } from "./script-schema.js";
-import { verdictSummary, type SentenceVerdict, type SentenceVet } from "./speech-vet-gate.js";
+import { verdictSummary, VETTED_RANGE, type SentenceVerdict, type SentenceVet } from "./speech-vet-gate.js";
 import { localSentenceVet } from "./speech-vet-local.js";
 
 const EXIT = { OK: 0, RED: 1, USAGE: 2 } as const;
@@ -49,7 +49,7 @@ interface VerdictCache {
 }
 
 /**
- * The guard asks for a verdict synchronously, so each sentence of 26 to 32 words is vetted before the guard sees it
+ * The guard asks for a verdict synchronously, so each sentence between the Q-V9 caps is vetted before the guard sees it
  * and its verdict kept. Vets run one at a time since each loads speech models; a vet that throws is not clean.
  */
 function verdictCache(vetSentence: SentenceVet): VerdictCache {
@@ -88,7 +88,7 @@ async function speechCache(script: ScriptV1, speechVet: boolean, deps: RewriteCl
   try {
     vetSentence = await (deps.speechVet ?? localSentenceVet)();
   } catch (error) {
-    io.err(`speech-vet: unavailable (${errorText(error)}); sentences keep the ${MAX_SENTENCE_WORDS}-word cap\n`);
+    io.err(`speech-vet: unavailable (${errorText(error)}); sentences of ${VETTED_RANGE} words pass Q-V9 pending a hand vet\n`);
     return undefined;
   }
   const cache = verdictCache(vetSentence);
@@ -191,7 +191,7 @@ function measureCommand(deps: RewriteCliDeps, io: Io, onResult: (code: number) =
     .option("--samples <n>", "rewrites per input", "3")
     .addOption(new Option("--format <format>", "input format, as for rewrite").choices(SCRIPT_FORMATS).default("v1"))
     .option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`, String(MAX_REWRITE_ROUNDS))
-    .option("--speech-vet", "vet 26-32 word sentences with speech-vet, as for rewrite")
+    .option("--speech-vet", `vet ${VETTED_RANGE} word sentences with speech-vet, as for rewrite`)
     .option("--max-usd <usd>", "spend cap: stop before a run whose cost, estimated as the dearest run so far, would pass it")
     .option("--report-only <input:row>", "a cell that counts toward its row's mean but need not move closer, e.g. some-input:register:numbers; repeatable", collect, [])
     .exitOverride()
@@ -213,7 +213,7 @@ function rewriteCommand(deps: RewriteCliDeps, io: Io, onResult: (code: number) =
     .requiredOption("--out <file>", "where the rewritten script/v1 JSON is written")
     .addOption(new Option("--format <format>", "input format: script/v1, or a motion-spike script.json migrated to script/v1 first").choices(SCRIPT_FORMATS).default("v1"))
     .option("--rounds <n>", `rewrite rounds, 1 to ${MAX_REWRITE_ROUNDS}`, String(MAX_REWRITE_ROUNDS))
-    .option("--speech-vet", "vet each 26-32 word sentence with speech-vet (local Kokoro and Whisper) so the pass may keep it; off by default, which keeps the 25-word cap")
+    .option("--speech-vet", `vet each ${VETTED_RANGE} word sentence with speech-vet (local Kokoro and Whisper) so the guard refuses one that is unclean to speak; off by default, which passes them pending a hand vet`)
     .option("--report <file>", "where the full rewrite report JSON is written: rows, rounds, rejections, reverts and each call's spend")
     .exitOverride()
     .action(async (file: string, flags: RewriteFlags) => {

@@ -1,6 +1,7 @@
 import type { L0Check, L0Input, L0Result } from "./eval-l0.js";
 import { countRow, maskEntities, repoEntities, ruleRow, sentencesOf, wordsOf } from "./lint-text.js";
 import type { ScriptBeat, ScriptV1 } from "./script-schema.js";
+import { writingGatePolicy } from "./writing-gate-policy.js";
 
 // Lexicons are heuristics a judge backs up (L1 J1). Paraphrases evade them on purpose: the held-out
 // synonym list lives with the judge, never here, so a writer cannot be tuned against it.
@@ -22,9 +23,10 @@ const NARRATOR_WE = /\b(let us|let['’]s|we (can|could|will)|we['’]ll)\b/gi;
 const BANNED = [/\bsimply\b/i, /\beas(y|ily)\b/i, /\bplease note\b/i, /\bin this video\b/i, /\byou('ll| will) learn\b/i, /^there (is|are)\b/i];
 const POINTING = /\b(on|at) the (left|right|top|bottom)\b|\bas you can see\b|\blook at\b|\bnotice the\b|\bthis (box|arrow|line|node|panel)\b|\b(up|down|over) (here|there)\b/i;
 const POINTING_CUES = new Set(["V6", "V9"]);
-export const MAX_SENTENCE_WORDS = 25;
-/** Owner decision 517: a sentence of 26 to this many words passes Q-V9 only when speech-vet says it speaks clean. */
-export const MAX_VETTED_SENTENCE_WORDS = 32;
+const SENTENCE_CAP = writingGatePolicy()["sentence-cap"];
+export const MAX_SENTENCE_WORDS = SENTENCE_CAP.plainMax;
+/** Round tp5721-qv9-sentence-length-r1: a sentence of 26 to this many words passes Q-V9 unless speech-vet finds it unclean. */
+export const MAX_VETTED_SENTENCE_WORDS = SENTENCE_CAP.vettedMax;
 export const MIN_PROJECT_SHARE = 0.8;
 
 const isProcess = (sentence: string, entities: readonly string[]): boolean => {
@@ -94,13 +96,18 @@ export function needsSpeechVet(text: string, vettedCeiling: number = MAX_VETTED_
 export const vettableSentences = (beats: readonly ScriptBeat[]): string[] =>
   [...new Set(sentences(beats).map(({ text }) => text).filter((text) => needsSpeechVet(text)))];
 
+/**
+ * Q-V9: over the vetted ceiling always fails. Between the caps a sentence fails only on speech-vet's unclean verdict;
+ * with no vet it passes pending a hand vet, so the repair loop does not split the long lines the prompt asks for.
+ */
 export function overlongSentence(
   text: string,
   speechClean: SpeechVerdict | undefined,
   vettedCeiling: number = MAX_VETTED_SENTENCE_WORDS,
 ): boolean {
   if (wordsOf(text).length <= MAX_SENTENCE_WORDS) return false;
-  return !needsSpeechVet(text, vettedCeiling) || !speechClean?.(text);
+  if (!needsSpeechVet(text, vettedCeiling)) return true;
+  return speechClean !== undefined && !speechClean(text);
 }
 
 /**
@@ -132,7 +139,7 @@ const SENTENCE_RULES: Readonly<Record<string, (text: string, entities: readonly 
   "Q-V3": (text) => VERDICT.test(text),
   "Q-V5": (text, entities) => SIGNPOST.test(text) || VERDICT.test(text) || MAKERS_WE.test(text) || isProcess(text, entities),
   "Q-V7": (text) => BANNED.some((pattern) => pattern.test(text)),
-  "Q-V9": (text) => wordsOf(text).length > MAX_SENTENCE_WORDS,
+  "Q-V9": (text) => wordsOf(text).length > MAX_VETTED_SENTENCE_WORDS,
 };
 
 /** The spoken sentences of `beats` that a sentence-level voice rule matches, so a repair hint can quote them. */

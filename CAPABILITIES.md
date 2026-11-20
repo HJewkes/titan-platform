@@ -1550,7 +1550,7 @@ Only `explainer eval l1`, `l2`, `cold`, `items` and `smoke`, `explainer eval wri
 `explainer rewrite` (`rewriteScript`) rewrites a drafted script's spoken lines toward the Q-V11 register bands, one call per chapter a round,
 keeps a beat's rewrite only when `guardBeat` accepts it,
 moves extra numbers to `visual.labels`, and
-with `--speech-vet` lets a vetted 26-32 word sentence through.
+with `--speech-vet` refuses a long sentence speech-vet finds unclean to speak.
 `explainer rewrite measure` runs it n times per input and reports each target row's mean, sd and n against the revised done-when, under a spend cap.
 Only these touch the filesystem:
 the eval store,

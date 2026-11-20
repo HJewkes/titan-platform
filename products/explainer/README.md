@@ -177,11 +177,12 @@ or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trus
 skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
 durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
-`--fail-on-ghosts` turns them into exit 1. `--speech-vet` runs speech-vet's `vet` on each sentence of 26 to 32
-words before the checks, over local Kokoro and Whisper (no cost, but the first run downloads both models). Q-V9
-passes such a sentence only when the verdict is `accepted`; a vet error counts as not clean. It is off by
-default, and then, or when the models cannot load, those sentences keep the 25-word cap and one stderr line
-says so. `doctrine/rules.yaml` holds which rules are
+`--fail-on-ghosts` turns them into exit 1. Q-V9 fails a sentence over the vetted cap, the human 99th percentile
+(`sentence-cap` in `doctrine/writing-gate.json`, owner round tp5721-qv9-sentence-length-r1). `--speech-vet` runs
+speech-vet's `vet` on each sentence between the plain cap and the vetted one before the checks, over local Kokoro
+and Whisper (no cost, but the first run downloads both models). Q-V9 then fails such a sentence unless the verdict
+is `accepted`; a vet error counts as not clean. It is off by default, and then, or when the models cannot load,
+those sentences pass pending a hand vet and one stderr line counts them. `doctrine/rules.yaml` holds which rules are
 implemented or pending. `--rules` defaults to the shipped registry and must parse as
 `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
 and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
@@ -209,8 +210,9 @@ noun ("5000 rows"), whose words then no longer count as dropped terms. Numbers c
 and a round that does not bring the rows closer to band is discarded. Remaining digits are spelled for the voice. It
 writes the script/v1 result to `--out` (a spike input is migrated first) and the full report to `--report`, and
 prints one JSON line: each target row before and after, what each round kept, rejected and reverted, the call count
-and the spend. `--speech-vet` vets each 26-32 word sentence of the input and of every reply with local Kokoro and
-Whisper, so the pass may keep it under Q-V9's vetted cap; it is off by default, which keeps the 25-word cap. Exit 0
+and the spend. `--speech-vet` vets each sentence between Q-V9's caps in the input and in every reply with local Kokoro
+and Whisper, so the guard refuses one that is unclean to speak; it is off by default, and then such a sentence
+passes pending a hand vet. Exit 0
 when the result is written and every target row passes, 1 when it is written but a target row is still red, 2 on
 usage or an input or judge config that does not parse. Run `explainer eval smoke --judge <judge.json>` first.
 

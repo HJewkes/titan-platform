@@ -56,8 +56,8 @@ const inputName = (file: string): string => basename(file).replace(/(\.spike)?\.
 const money = (usd: number): number => Number(usd.toFixed(4));
 
 /**
- * Scores a script with L0 as `eval l0` does. With a vetter, Q-V9 reads its verdicts on 26-32 word sentences, so a
- * sentence the pass kept under `--speech-vet` is not counted as over the cap; a vetter that cannot be built falls back to the cap.
+ * Scores a script with L0 as `eval l0` does. With a vetter, Q-V9 reads its verdicts on sentences between its caps, so
+ * one speech-vet finds unclean counts as over; a vetter that cannot be built leaves them passing pending a hand vet.
  */
 export function l0Scorer(vetter: (() => Promise<SentenceVet>) | undefined, err: (text: string) => void): MeasureEnv["score"] {
   return async (script) => {
