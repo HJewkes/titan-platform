@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fakeGitHub, githubPort, successRun, type CheckRun } from "@titan-design/github";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -10,8 +13,10 @@ import { OWNER_GATE_POLICY } from "./policy.js";
 import type { EffectivePolicy } from "./policy-schema.js";
 import { shepherdPrWorkflow } from "./pr.js";
 import type { ExitNoticePorts } from "./ports.js";
-import type { PrVisualFrames } from "./spawn-ports.js";
+import type { PrVisualFrames, VisualPacketPorts } from "./spawn-ports.js";
 import { shepherdStoreRef } from "./store.js";
+import { visualPacket } from "./visual-packet-trigger.js";
+import { makePacketDir } from "./visual-packet-trigger-adapter.js";
 
 const VISUAL: EffectivePolicy = { ...OWNER_GATE_POLICY, ownerGateReason: "gate-2-visual", seat: "design-seat" };
 const hosts: FactoryHost[] = [];
@@ -118,5 +123,27 @@ describe("a visual gate with frames to look at", () => {
     expect(frameReads).toEqual([H1]);
     expect(sends).toEqual([]);
     expect(stepsNamed(host, runId, "sh-visual-packet:")).toEqual([{ event: "visual-packet-off" }]);
+  });
+});
+
+describe("the packet step at a failed pr-visual run, by the gate it precedes", () => {
+  const shadow: VisualPacketPorts = { mode: "shadow", profile: "review-packager", stateDir: mkdtempSync(join(tmpdir(), "visual-empty-")), cwdFor: () => tmpdir(), titanReviewBin: "/opt/synthetic/bin/titan-review", makeDir: makePacketDir };
+  const failedRun = () => {
+    const fake = fakeGitHub();
+    fake.setRuns(H1, [prVisualRun("failure")]);
+    return githubPort(fake.wire);
+  };
+  const packetBefore = (gateStep: string) => visualPacket(failedRun(), shadow, { runId: "run-synthetic-1", repo: REPO, pr: 1, headSha: H1, gateId: `run-synthetic-1/${gateStep}` });
+
+  it("the owner's ask to accept regenerated baselines still gets a packager for that run", async () => {
+    const results = [await packetBefore("sh-visual-accept"), await packetBefore("sh-visual-accept:1")];
+
+    expect(results).toEqual([0, 1].map(() => expect.objectContaining({ event: "visual-packet-would-spawn", ciRunId: 1007, prVisualConclusion: "failure" })));
+  });
+
+  it("an approve-merge gate finds the run empty and gets no packager", async () => {
+    const results = [await packetBefore("approve-merge"), await packetBefore("approve-merge:2")];
+
+    expect(results).toEqual([0, 1].map(() => expect.objectContaining({ event: "visual-run-empty", reason: "the pr-visual run concluded failure" })));
   });
 });

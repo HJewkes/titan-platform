@@ -173,12 +173,21 @@ async function spawnPackager(ports: VisualPacketPorts, brief: string, paths: Pac
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /**
+ * Only an approve-merge gate can find its run empty: the regenerated-baselines ask stands at a red head by design, and
+ * its packager reads that same failed pr-visual run.
+ */
+function emptyBeforeApproval(input: PacketInput, facts: VisualRunFacts): string | undefined {
+  const gateStep = input.gateId.slice(input.runId.length + 1);
+  return stepIdMatches("approve-merge", gateStep) ? nothingToSee(facts) : undefined;
+}
+
+/**
  * Never throws: a refused spawn or a missing profile is recorded as failed, and the gate it precedes opens as usual. An
- * empty pr-visual run is recorded whatever the mode, with no packager, as there is nothing to package.
+ * empty pr-visual run before approve-merge is recorded whatever the mode, with no packager, as there is nothing to package.
  */
 export async function visualPacket(port: GitHubPort, ports: VisualPacketPorts | undefined, input: PacketInput, frames?: PrVisualFrames): Promise<PacketResult> {
   const facts = await packetFacts(port, input, frames);
-  const empty = nothingToSee(facts);
+  const empty = emptyBeforeApproval(input, facts);
   if (empty !== undefined) return { event: "visual-run-empty", reason: empty, ...facts };
   if (ports === undefined || ports.mode === "off") return { event: "visual-packet-off" };
   const packetDir = packetDirFor(ports.stateDir, input.runId, input.headSha);
