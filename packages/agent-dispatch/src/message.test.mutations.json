@@ -22,8 +22,8 @@
     {
       "name": "messageAgent ignores its options",
       "file": "packages/agent-dispatch/src/message.ts",
-      "find": "buildMessageArgs(name, text, options), timeoutMs)",
-      "replace": "buildMessageArgs(name, text), timeoutMs)",
+      "find": "buildMessageArgs(name, text, options), timeoutMs, undefined, signal)",
+      "replace": "buildMessageArgs(name, text), timeoutMs, undefined, signal)",
       "kills": [
         "messageAgent passes --source console ahead of --, so the text stays one operand"
       ]
