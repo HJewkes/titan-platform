@@ -176,10 +176,11 @@ For zod schemas of agent-chat's spawn, resume, retire, agents and surface frames
 Key exports:
 
 - `lifecycle`: `EXECUTION_PHASES`, `TERMINAL_EXECUTION_PHASES`
-- `lifecycle-correlations`: `CORRELATION_KEY_PATTERN`, `MAX_CORRELATION_VALUE_LENGTH`, `correlationKey`, `validateCorrelations`
+- `lifecycle-correlations`: `CORRELATION_KEY_PATTERN`, `correlationKey`, `validateCorrelations`
 - `lifecycle-validation`: `ExecutionTransitionError`
 - `lifecycle-reducer`: `isTerminalExecutionPhase`, `reduceExecutionTransition`
 - `usage-fold`: `foldUsage`
+- `canonical-json`: `canonicalJson`
 - `index`: `conversationRef`, `conversationItemRef`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-protocol)
 
@@ -1525,7 +1526,7 @@ You need a stable content hash for a unit of work, a workflow variant, an eval c
 Key exports:
 
 - `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `TrialRecordSchema`, `VariantSpecSchema`, `parseSpec`, `parseTrialRecord`
-- `hash`: `canonicalJson`, `caseHash`, `hashCanonical`
+- `hash`: `caseHash`, `hashCanonical`, `judgesHash`
 - More in `products/evals/src/index.ts`
 
 <a id="cap-explainer"></a>

@@ -1,7 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { MainCommit } from "../corpus/git.js";
-import { canonicalJson, sha256Hex } from "../hash.js";
+import { canonicalJson } from "@titan-design/agent-protocol";
+import { sha256Hex } from "../hash.js";
 import { assertNoPrivate, filterPrivate, type ExclusionPolicy } from "../private/exclusion.js";
 import { assertFreshOut, assertOutsideWorkTree } from "../private/out-dir.js";
 import { commitFacts, landedPrNumber, mergeCommitFor, type CommitFacts, type MirrorGit, type MissingReason } from "./git-facts.js";
