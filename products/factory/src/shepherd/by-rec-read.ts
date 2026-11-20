@@ -20,7 +20,19 @@ import type { Registration } from "./store.js";
 
 export const BY_REC_RULE = "MRG-AU-RB";
 const MERGE_OPTION = "merge";
-const DOOR = /^Door: (one-way|two-way)$/m;
+const DOOR = /^Door: (.*)$/gm;
+type Door = NonNullable<ByRecSubject["door"]>;
+
+/**
+ * The reviewer's door rating, from the one `Door:` line its owner brief puts in the gate prompt. A brief that did not
+ * parse leaves no line, and a second line could be smuggled through a brief field, so anything but exactly one valid
+ * line is unread: the floor refuses one-way doors, so an unread door must never read as two-way.
+ */
+function doorOf(prompt: string): Door | undefined {
+  const lines = [...prompt.matchAll(DOOR)].map((match) => match[1]);
+  const [door] = lines;
+  return lines.length === 1 && (door === "one-way" || door === "two-way") ? door : undefined;
+}
 
 /**
  * The gates a by-rec merge may stand in for: authority's own MRG-AU gate (D4) and a visual approve-merge gate (D2), which
@@ -49,6 +61,7 @@ interface Known {
   land: LandGate;
   registration: Registration;
   decisionClass: string;
+  door: Door;
   reviewer: string;
   stored: MergeFacts;
 }
@@ -76,13 +89,15 @@ function knownFacts(reads: ByRecReads, runId: string, gate: GateRecord): Known |
   const ruleId = rule && `${rule.table}/${rule.rowId}`;
   const decisionClass = rule && decisionClassOf({ table: rule.table, rowId: rule.rowId, step: "approve-merge", prompt: gate.prompt });
   if (!ruleId || !decisionClass || ELIGIBLE.get(ruleId) !== decisionClass) return { skip: `rule:${ruleId ?? "unrecorded"}` };
+  const door = doorOf(gate.prompt);
+  if (!door) return { skip: "door-unread" };
   const registration = reads.services.store.get().byRun(runId);
   if (!registration || registration.pr !== land.pr) return { skip: "unregistered" };
   if (keptForOwner(registration)) return { skip: "owner-held" };
   const verdict = verdictAt(run, land.head);
   const stored = storedFacts(run, land.head);
   if (!verdict || !stored) return { skip: "no-merge-review-at-head" };
-  return { gate, run, land, registration, decisionClass, reviewer: verdict.reviewer, stored };
+  return { gate, run, land, registration, decisionClass, door, reviewer: verdict.reviewer, stored };
 }
 
 /** The merge facts of the last evidence step at the head: who reviewed and which contexts and apps count. */
@@ -144,14 +159,14 @@ function unmetByRec(merge: MergeFacts): string[] {
   return row?.when ? unmetConditions(row.when, { merge }) : [`no ${BY_REC_RULE} allow row`];
 }
 
-function subjectOf({ gate, land, decisionClass, reviewer }: Known, merge: MergeFacts, holdClasses: string[]): ByRecSubject {
+function subjectOf({ gate, land, decisionClass, door, reviewer }: Known, merge: MergeFacts, holdClasses: string[]): ByRecSubject {
   const recommended = recommendedOption(gate);
   const rationale = `reviewer ${reviewer} said MERGE at ${land.head} and the required checks are green`;
   const ownerAtHead = ownerAtHeadRow(gate);
   return {
     ...{ source: "gate", id: gate.id, openedAt: gate.createdAt, summary: `Merge ${land.repo}#${land.pr} at ${land.head.slice(0, 12)}` },
     ...(recommended === MERGE_OPTION && { recommendation: { answer: MERGE_OPTION, by: reviewer, rationale } }),
-    ...{ kind: "approve", door: DOOR.exec(gate.prompt)?.[1] === "one-way" ? "one-way" : "two-way", decisionClass, holdClasses },
+    ...{ kind: "approve", door, decisionClass, holdClasses },
     ...{ authorityRows: [BY_REC_RULE], ownerAtHead: ownerAtHead === undefined ? [] : [ownerAtHead], paths: merge.changedPaths, headRef: merge.headRef },
     ...{ options: gate.questions?.flatMap((question) => question.options.map((option) => option.id)), closed: gate.status !== "pending" },
   };
