@@ -1,6 +1,7 @@
 // Migration drift check (TP-6140): a migration that declares `definition` is pinned by the hash in
 // migration-drift.json, so editing one that has shipped fails CI instead of silently diverging
-// databases that already applied it. A migration with no definition is skipped.
+// databases that already applied it. A migration with no definition is skipped unless it is
+// pinned: a pinned migration that loses its definition, is deleted, or whose list leaves config fails.
 // `node scripts/migration-drift.mjs` checks; `--update` records hashes of migrations not yet pinned and never rewrites a pinned one.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -18,11 +19,33 @@ export function findDrift(hashes, listsById, definitionHash) {
       const hash = definitionHash(m);
       if (hash === null) continue;
       const pinned = hashes[id]?.[String(m.version)];
-      if (pinned === undefined) unpinned.push({ id, version: m.version, hash });
+      if (!Number.isInteger(m.version)) edited.push(`${id} version ${JSON.stringify(m.version)}: version is not an integer`);
+      else if (pinned === undefined) unpinned.push({ id, version: m.version, hash });
       else if (pinned !== hash) edited.push(`${id} version ${m.version}: pinned ${pinned}, now ${hash}`);
     }
   }
-  return { edited, unpinned };
+  return { edited: [...edited, ...findVanishedPins(hashes, listsById, definitionHash)], unpinned };
+}
+
+// Walks the pins rather than the lists, so a pinned migration that was deleted, renumbered, lost its
+// definition or had its whole list dropped from config still fails instead of going uncompared.
+function findVanishedPins(hashes, listsById, definitionHash) {
+  const vanished = [];
+  for (const [id, pins] of Object.entries(hashes)) {
+    const migrations = listsById[id];
+    for (const [version, pinned] of Object.entries(pins)) {
+      const m = migrations?.find((candidate) => Number.isInteger(candidate.version) && String(candidate.version) === version);
+      const reason = vanishReason(migrations, m, definitionHash);
+      if (reason !== null) vanished.push(`${id} version ${version}: pinned ${pinned}, ${reason}`);
+    }
+  }
+  return vanished;
+}
+
+function vanishReason(migrations, m, definitionHash) {
+  if (migrations === undefined) return "its list is no longer configured";
+  if (m === undefined) return "the migration is gone";
+  return definitionHash(m) === null ? "its definition was removed" : null;
 }
 
 export function pinUnpinned(hashes, unpinned) {

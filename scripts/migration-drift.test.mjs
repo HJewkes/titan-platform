@@ -19,6 +19,28 @@ describe("migration drift check", () => {
     expect(findDrift({}, { main: [{ version: 1, name: "bare" }] }, hashOf)).toEqual({ edited: [], unpinned: [] });
   });
 
+  it("fails when a pinned migration's definition was removed", () => {
+    const { edited } = findDrift({ main: { 1: "h:CREATE TABLE t (a)" } }, { main: [{ version: 1, name: "create t" }] }, hashOf);
+
+    expect(edited).toEqual(["main version 1: pinned h:CREATE TABLE t (a), its definition was removed"]);
+  });
+
+  it("fails when a pinned migration was deleted or renumbered to a non-integer version", () => {
+    const pins = { main: { 1: "h:CREATE TABLE t (a)", 2: "h:x" } };
+
+    expect(findDrift(pins, { main: [shipped] }, hashOf).edited).toEqual(["main version 2: pinned h:x, the migration is gone"]);
+    expect(findDrift({ main: { 1: "h:CREATE TABLE t (a)" } }, { main: [{ ...shipped, version: "1" }] }, hashOf).edited).toEqual([
+      'main version "1": version is not an integer',
+      "main version 1: pinned h:CREATE TABLE t (a), the migration is gone",
+    ]);
+  });
+
+  it("fails when a pinned list is dropped from config", () => {
+    const { edited } = findDrift({ main: { 1: "h:x" } }, {}, hashOf);
+
+    expect(edited).toEqual(["main version 1: pinned h:x, its list is no longer configured"]);
+  });
+
   it("reports a defined migration nobody pinned, and pinning never rewrites a pinned hash", () => {
     const { unpinned } = findDrift({ main: { 1: "old" } }, { main: [shipped, { version: 2, definition: "x" }] }, hashOf);
 
