@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Alert, HStack, Link, Section, SectionContent, SectionHeader, Typography, VStack } from "@titan-design/react-ui";
 import { Skeleton } from "../shell/Loading.js";
 import { useQuery, type ServedCommands } from "../data/rpc.js";
+import { open } from "../router.js";
 import { PHONE_TAP_LINK } from "./phone.js";
 
 type ShippedResult = ServedCommands["coord.shipped"]["result"];
@@ -29,6 +30,7 @@ export function CoordinatorShipped({ day }: { day: DayArgs }): ReactNode {
         ) : (
           <ShippedBody result={shipped.data} />
         )}
+        {day.date === undefined ? <LogDigestLine /> : null}
       </SectionContent>
     </Section>
   );
@@ -105,5 +107,21 @@ function PrList({ prs }: { prs: readonly PrRef[] }): ReactNode {
         </HStack>
       ))}
     </VStack>
+  );
+}
+
+/** Today's one-line count of ships and by-rec decisions, linking the full log; absent when `log.list` is not served. */
+function LogDigestLine(): ReactNode {
+  const log = useQuery("log.list", { days: 1 });
+  if (log.data === undefined) return null;
+  return (
+    <HStack gap={2} align="center" className="mt-3 min-w-0 flex-wrap" testID="coord-shipped-log-line">
+      <Typography variant="caption" color="secondary" className="break-words">
+        {log.data.digest}
+      </Typography>
+      <Link color="primary" onPress={() => open({ view: "log" })} className={PHONE_TAP_LINK}>
+        Open the log
+      </Link>
+    </HStack>
   );
 }

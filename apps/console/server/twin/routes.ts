@@ -25,6 +25,7 @@ export const TWIN_ROUTES: readonly TwinRoute[] = [
   { name: "agent-detail", hash: "#/agents/relay-builder" },
   { name: "agent-detail-messages", hash: "#/agents/relay-builder?tab=messages" },
   { name: "coordinator", hash: "#/coordinator" },
+  { name: "log", hash: "#/log" },
   { name: "knowledge", hash: "#/knowledge" },
   { name: "knowledge-search", hash: "#/knowledge?tab=search&q=backoff" },
   { name: "knowledge-record", hash: `#/knowledge/${encodeURIComponent("note:orbit-relay/2031-03-03-backoff-ceiling.md")}` },

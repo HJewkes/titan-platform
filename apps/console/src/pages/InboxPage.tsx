@@ -12,6 +12,7 @@ import { FocusBadge, FocusNotice, FocusTarget, holdsFocus, InboxFocusProvider, u
 import { NudgeSection } from "./InboxNudges.js";
 import { PLANNING_READ, PlanningSection } from "./InboxPlanning.js";
 import { isPlanOpKind, OP_VERB } from "./inbox-op-verbs.js";
+import { byRecLine } from "./log-format.js";
 import { DerivedSection } from "./InboxDerived.js";
 import { RowProvenance } from "./InboxProvenance.js";
 import { SittingSteps } from "./InboxSitting.js";
@@ -212,6 +213,7 @@ function InboxRow({ item }: { item: InboxItem }): ReactNode {
             <Typography variant="caption" color="secondary">{ageOf(item.openedAt)}</Typography>
             {item.questionCount !== undefined ? <Pill variant="subtle" size="xs">{`${item.questionCount} questions`}</Pill> : null}
             {recommendation !== undefined ? <Pill variant="subtle" size="xs">{`Recommend: ${recommendation}`}</Pill> : null}
+            {item.byRec !== undefined ? <Pill variant="outline" size="xs" testID={`inbox-by-rec-${item.id}`}>{byRecLine(item.byRec)}</Pill> : null}
             {item.hold !== undefined ? <Typography variant="caption" color="secondary">{item.hold.reason}</Typography> : null}
           </HStack>
           <RowProvenance item={item} />

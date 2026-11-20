@@ -1,6 +1,6 @@
 import { RevisionSource } from '@titan-design/evidence';
 import { O as OwnerItemDeposit } from './deposit.js';
-import { O as OwnerItem, a as OwnerAnswer, A as Audience } from './schema.js';
+import { O as OwnerItem, b as OwnerAnswer, A as Audience } from './schema.js';
 import 'zod';
 
 /** One anchor that held at its pinned commit, with its first and last lines quoted back. */
@@ -953,4 +953,4 @@ type OnSilence = z.infer<typeof onSilenceSchema>;
 type SittingStep = z.infer<typeof itemStepSchema>;
 type StepOutcome = (typeof STEP_OUTCOMES)[number];
 
-export { type Audience as A, DOORS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, ITEM_KINDS as c, ITEM_STATUSES as d, type LocatorCite as e, ON_SILENCE_ACTIONS as f, type OnSilence as g, SOURCE_SYSTEMS as h, type SittingStep as i, type StepOutcome as j, locatorCiteSchema as l, ownerItemSchema as o, sourceRefSchema as s };
+export { type Audience as A, DOORS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OnSilence as a, type OwnerAnswer as b, AUDIENCES as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, SOURCE_SYSTEMS as h, type SittingStep as i, type StepOutcome as j, locatorCiteSchema as l, ownerItemSchema as o, sourceRefSchema as s };

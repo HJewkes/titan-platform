@@ -162,6 +162,16 @@ describe("consolidate: shipBlockedBy", () => {
     expect(flow.groups[0]!.shipBlockedBy).toEqual([]);
   });
 
+  it("keeps the owner's change request when the by-rec sweep answers the same ask later", () => {
+    const requested = answered(question("q"), { changeRequested: true }, 2);
+    const automated = answered(question("q"), { optionId: "keep", by: { class: "automation", id: "auto-by-rec", channel: "round" } }, 3);
+    const ship = item({ id: "ship", kind: "approve", keys: [pr], openedAt: at(4) });
+
+    const flow = consolidate([ship], { answered: [requested, { ...automated, id: "q-auto" }] });
+
+    expect(flow.groups[0]!.shipBlockedBy).toEqual([{ itemId: "q", reason: "change-requested", at: at(2) }]);
+  });
+
   it("gives topic groups no ship gate", () => {
     const flow = consolidate([item({ id: "loose", keys: ["topic:copy"] })]);
 

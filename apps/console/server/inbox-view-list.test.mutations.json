@@ -12,7 +12,7 @@
     },
     {
       "name": "the inbox lists the oldest blocking item first",
-      "file": "apps/console/server/inbox-view.ts",
+      "file": "apps/console/server/inbox-rows.ts",
       "find": "const opened = Date.parse(b.openedAt) - Date.parse(a.openedAt);",
       "replace": "const opened = Date.parse(a.openedAt) - Date.parse(b.openedAt);",
       "kills": [

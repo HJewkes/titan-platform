@@ -1,3 +1,4 @@
+import { isOwnerAnswer } from "./by-rec-answerer.js";
 import { byText, dedupeClass, dependentCounts, influenceEdges, influenceOrder, prsOf, type InfluenceEdge } from "./influence.js";
 import { relationKind } from "./keys.js";
 import { mergeByKeys } from "./merge.js";
@@ -210,10 +211,11 @@ function reasonsOf(item: OwnerItem): ShipBlockReason[] {
 
 /**
  * Owner items 166 and 167: only an open change request blocks a ship, never an unanswered
- * question. `answered` is already at the live head, so a request against an old head is gone.
+ * question. `answered` is already at the live head, so a request against an old head is gone. Only the owner's own
+ * answers count, so an automation's answer can neither block a ship nor replace the owner's change request.
  */
 function shipBlocks(pr: string, answered: readonly OwnerItem[]): ShipBlock[] {
-  const onPr = answered.filter((item) => item.answer !== undefined && ANSWERED.has(item.status) && prsOf(item).includes(pr));
+  const onPr = answered.filter((item) => item.answer !== undefined && isOwnerAnswer(item.answer) && ANSWERED.has(item.status) && prsOf(item).includes(pr));
   return currentAnswers(onPr)
     .flatMap((item) => reasonsOf(item).map((reason) => ({ itemId: item.id, reason, at: item.answer!.at })))
     .sort((a, b) => byText(a.itemId, b.itemId) || byText(a.reason, b.reason));

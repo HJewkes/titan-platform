@@ -42,12 +42,12 @@
       ]
     },
     {
-      "name": "the decisions line keeps a picked label's terminator",
+      "name": "a non-owner answer reaches the ledger as the owner's",
       "file": "apps/console/server/decision-log.ts",
-      "find": "pickedLabels(item, answer).map((label) => promptLine(label));",
-      "replace": "pickedLabels(item, answer);",
+      "find": "  if (!OWNER_CLASSES.has(answer.by.class)) return { ledger: \"excluded\", failure: null, note: \"not-owner\" };",
+      "replace": "",
       "kills": [
-        "decisions class and line keeps the owner's pick and note when an escape opened in the summary closes in a label"
+        "decision log keeps an answer from outside the owner out of the ledger but still names it in the decisions bullet"
       ]
     }
   ]

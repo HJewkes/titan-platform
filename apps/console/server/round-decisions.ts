@@ -4,7 +4,7 @@
  * which refuses the feedback@1 fields `rounds.submit` writes. A merge-bound question approves a
  * head, so a Ship stays out of the decisions file; any other question with options is a decide.
  */
-import { ROUND_ANSWERER, roundItemId } from "@titan-design/owner-queue";
+import { roundItemId } from "@titan-design/owner-queue";
 import type { DecisionAnswer, DecisionItem } from "./decision-log.js";
 import type { Manifest, Question } from "./round-schema.js";
 import type { SubmittedAnswer } from "./round2-adapter.js";
@@ -15,6 +15,8 @@ interface RoundDecision {
   answer: DecisionAnswer;
 }
 
+type RoundAnswerer = DecisionAnswer["by"];
+
 export interface SubmittedRound {
   roundId: string;
   manifest: Manifest;
@@ -22,6 +24,8 @@ export interface SubmittedRound {
   /** When round.json was last written; round@2 carries no time of its own. */
   openedAt: string;
   submittedAt: string;
+  /** Who the feedback says answered, through owner-queue's `feedbackAnswerer`: the owner, or the by-rec sweep. */
+  answerer: RoundAnswerer;
 }
 
 const MIN_OPTIONS = 2;
@@ -59,20 +63,20 @@ function itemOf(question: Question, { roundId, openedAt }: SubmittedRound): Deci
 }
 
 /** Null for an answer that only comments, which records no choice. */
-function answerOf(answer: SubmittedAnswer, at: string): DecisionAnswer | null {
+function answerOf(answer: SubmittedAnswer, at: string, by: RoundAnswerer): DecisionAnswer | null {
   const given = answer.text ?? (answer.value === undefined ? undefined : String(answer.value));
   const text = [given, answer.comment].filter((part): part is string => !!part?.trim()).join("\n") || undefined;
   const choice = answer.picks !== undefined ? { optionIds: answer.picks } : answer.pick !== undefined ? { optionId: answer.pick } : {};
   const changeRequested = answer.revisionRequested === true;
   if (Object.keys(choice).length === 0 && given === undefined && !changeRequested) return null;
-  return { ...choice, ...(text === undefined ? {} : { text }), ...(changeRequested ? { changeRequested } : {}), by: ROUND_ANSWERER, at };
+  return { ...choice, ...(text === undefined ? {} : { text }), ...(changeRequested ? { changeRequested } : {}), by, at };
 }
 
 /** One decision per answered question, in answer order. */
 export function roundDecisions(submitted: SubmittedRound): RoundDecision[] {
   return submitted.answers.flatMap((submittedAnswer) => {
     const question = submitted.manifest.questions.find((each) => each.id === submittedAnswer.questionId);
-    const answer = answerOf(submittedAnswer, submitted.submittedAt);
+    const answer = answerOf(submittedAnswer, submitted.submittedAt, submitted.answerer);
     if (question === undefined || answer === null) return [];
     return [{ questionId: question.id, item: itemOf(question, submitted), answer }];
   });
