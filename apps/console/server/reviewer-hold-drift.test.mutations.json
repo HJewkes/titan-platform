@@ -3,9 +3,9 @@
   "mutations": [
     {
       "name": "the console mirror gains a hold class Shepherd's G10 list does not have",
-      "file": "apps/console/server/blockers.ts",
-      "find": "new Set([\"g10-review\", \"g10-adversary\"])",
-      "replace": "new Set([\"g10-review\", \"g10-adversary\", \"owner-review\"])",
+      "file": "apps/console/server/g10-hold.ts",
+      "find": "{ \"g10-review\": 1, \"g10-adversary\": 2 }",
+      "replace": "{ \"g10-review\": 1, \"g10-adversary\": 2, \"g10-extra\": 1 }",
       "kills": [
         "the console reviewer-hold classes mirror Shepherd's HOLD_CLASSES"
       ]

@@ -10,8 +10,11 @@ import type { InboxItem } from "./inbox-view.js";
 import type { ActionOutcome, Unreachable } from "./owner-action.js";
 import type { ShepherdSource } from "./shepherd.js";
 
-/** MERGEs at the head each g10 class releases on: an opus reviewer's for `g10-review`, a correctness and an adversary reviewer's for `g10-adversary`. */
+/** The console's one g10 class list, pinned to Shepherd's by reviewer-hold-drift.test.ts. MERGEs at the head each class releases on: an opus reviewer's for `g10-review`, a correctness and an adversary reviewer's for `g10-adversary`. */
 const MERGES_NEEDED: Readonly<Record<string, number>> = { "g10-review": 1, "g10-adversary": 2 };
+
+/** True for a hold class a reviewer's verdict releases. */
+export const isG10Class = (holdClass: string | undefined): boolean => holdClass !== undefined && Object.hasOwn(MERGES_NEEDED, holdClass);
 
 export type G10Action = Extract<InboxItem["action"], { kind: "hold-release" }>;
 
