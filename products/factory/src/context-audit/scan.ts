@@ -76,7 +76,8 @@ class Scanner {
     carried: new Map(),
     wakes: [],
   };
-  private readonly seen = new Set<string>();
+  // Later lines of a split response carry the final counts, so the last line per id wins.
+  private readonly usage = new Map<string, { u: Rec; model: string; at: string }>();
   private readonly toolKinds = new Map<string, string>();
   private readonly events: [call: number, kind: string, chars: number][] = [];
 
@@ -92,7 +93,7 @@ class Scanner {
     if (kind === "prompt_snapshot") this.scan.snapshot = snapshotOf(a, str(j.timestamp)) ?? this.scan.snapshot;
     if (kind === "instructions") this.scan.instructions = list(a.files).map((f) => ({ path: str(rec(f).path), type: str(rec(f).type), chars: str(rec(f).content).length }));
     if (kind === "queued_command") this.scan.wakes.push({ at: str(a.timestamp) || str(j.timestamp), trigger: queuedWake(a) });
-    if (CARRIED_ATTACHMENTS.has(kind)) this.events.push([this.scan.spend.calls, `att:${kind}`, JSON.stringify(j.rendered ?? a).length]);
+    if (CARRIED_ATTACHMENTS.has(kind)) this.events.push([this.usage.size, `att:${kind}`, JSON.stringify(j.rendered ?? a).length]);
   }
 
   private assistant(m: Rec, at: string): void {
@@ -102,9 +103,8 @@ class Scanner {
       this.toolKinds.set(str(block.id), name === "Bash" ? bashKind(str(rec(block.input).command)) : name);
     }
     const id = str(m.id);
-    if (!m.usage || this.seen.has(id)) return;
-    this.seen.add(id);
-    this.count(rec(m.usage), str(m.model), at);
+    if (!m.usage) return;
+    this.usage.set(id, { u: rec(m.usage), model: str(m.model), at });
   }
 
   private count(u: Rec, model: string, at: string): void {
@@ -127,14 +127,15 @@ class Scanner {
     const content = rec(j.message).content;
     const trigger = userWake(j);
     if (trigger) this.scan.wakes.push({ at: str(j.timestamp), trigger });
-    if (typeof content === "string" && content.includes("<channel")) this.events.push([this.scan.spend.calls, "channel-msg", content.length]);
+    if (typeof content === "string" && content.includes("<channel")) this.events.push([this.usage.size, "channel-msg", content.length]);
     for (const block of list(content).map(rec)) {
-      if (block.type === "tool_result") this.events.push([this.scan.spend.calls, this.toolKinds.get(str(block.tool_use_id)) ?? "?", textLength(block.content)]);
-      else if (block.type === "text" && str(block.text).includes("<channel")) this.events.push([this.scan.spend.calls, "channel-msg", str(block.text).length]);
+      if (block.type === "tool_result") this.events.push([this.usage.size, this.toolKinds.get(str(block.tool_use_id)) ?? "?", textLength(block.content)]);
+      else if (block.type === "text" && str(block.text).includes("<channel")) this.events.push([this.usage.size, "channel-msg", str(block.text).length]);
     }
   }
 
   finish(): SessionScan {
+    for (const { u, model, at } of this.usage.values()) this.count(u, model, at);
     for (const [call, kind, chars] of this.events) {
       const row = this.scan.carried.get(kind) ?? { raw: 0, carried: 0 };
       row.raw += chars;
