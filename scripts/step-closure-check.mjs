@@ -116,6 +116,24 @@ export function judgeAddedRows(baseRows, rows, prNumber, isParent = () => false)
   return { failures, notices: [...notices, ...[...parents].map((pr) => `rows of #${pr} accepted: this branch is stacked on it`)] };
 }
 
+/**
+ * A row claims its step's behaviour is unchanged at the row's closure. An added row whose closure is not the step's
+ * closure in the committed lock attests a closure the step does not have, so it would land vouching for nothing; one for
+ * a step whose version or schema hash this branch changes contradicts the change it ships beside (TP-6480). Only this
+ * PR's own added rows are judged: a stacked parent's rows are judged on the parent's own pull request.
+ */
+function judgeAttestedClosures(baseLock = {}, committed, addedRows) {
+  return addedRows.flatMap((row) => {
+    const label = `${row.step}@${String(row.closure).slice(0, 12)}`;
+    const head = committed[row.step];
+    if (!head) return [`${label}: attests ${row.step}, which is not a fact step of ${LOCK_PATH}`];
+    if (head.closure !== row.closure) return [`${label}: attests ${row.step} unchanged at a closure it does not have; its closure is ${head.closure}, so attest that or drop the row`];
+    const before = baseLock[row.step];
+    if (before && (before.schemaHash !== head.schemaHash || before.bump !== head.bump)) return [`${label}: attests ${row.step} unchanged, but this branch changes its version; drop the row`];
+    return [];
+  });
+}
+
 const sameBump = (a, b) => a.step === b.step && a.pr === b.pr;
 
 /**
@@ -134,12 +152,16 @@ function judgeBumps({ baseRows, rows, steps, prNumber, isParent = () => false })
 export function runCheck({ git, readFile, listDir, check, base, prNumber }) {
   const tree = readTreeAttestations(listDir, readFile);
   const committed = JSON.parse(readFile(LOCK_PATH));
-  const result = check({ base: readBaseLock(git, base), committed, attestations: tree.rows });
-  const added = judgeAddedRows(readBaseAttestations(git, base), tree.rows, prNumber, (pr) => isStackedParent(git, base, pr));
+  const baseLock = readBaseLock(git, base);
+  const result = check({ base: baseLock, committed, attestations: tree.rows });
+  const baseAttestations = readBaseAttestations(git, base);
+  const added = judgeAddedRows(baseAttestations, tree.rows, prNumber, (pr) => isStackedParent(git, base, pr));
+  const ownRows = tree.rows.filter((row) => (prNumber === undefined || row.pr === prNumber) && !baseAttestations.some((old) => sameRow(old, row)));
+  const attested = judgeAttestedClosures(baseLock, committed, ownRows);
   const bumps = rowsOfFiles(listDir(BUMPS_DIR), readFile, BUMPS_DIR);
   const isBumpParent = (pr) => isStackedParent(git, base, pr, BUMPS_DIR);
   const bumpFailures = judgeBumps({ baseRows: readBaseBumps(git, base), rows: bumps.rows, steps: Object.keys(committed), prNumber, isParent: isBumpParent });
-  const failures = [...result.failures, ...tree.failures, ...added.failures, ...bumps.failures, ...bumpFailures];
+  const failures = [...result.failures, ...tree.failures, ...added.failures, ...attested, ...bumps.failures, ...bumpFailures];
   return { ...result, failures, notices: [...result.notices, ...added.notices] };
 }
 
