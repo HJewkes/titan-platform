@@ -9,6 +9,33 @@
       "kills": [
         "shape briefs asks the tests member of a head proceeding as no-repro-non-source the question for what it changes"
       ]
+    },
+    {
+      "name": "the adversary gets no fix-round focus",
+      "file": "packages/review-panel/src/briefs/shape-brief.ts",
+      "find": "usableScope(scope, openFindings) ? [\"\", ...focusLines(scope, openFindings)] : []",
+      "replace": "[]",
+      "kills": [
+        "the adversary brief on a fix round adds a focus on the open findings and the changed ranges since the reviewed head"
+      ]
+    },
+    {
+      "name": "the focus skips the scope checks",
+      "file": "packages/review-panel/src/briefs/shape-brief.ts",
+      "find": "usableScope(scope, openFindings) ? [\"\", ...focusLines",
+      "replace": "scope !== undefined ? [\"\", ...focusLines",
+      "kills": [
+        "the adversary brief on a fix round adds no focus for a scope the brief's checks refuse"
+      ]
+    },
+    {
+      "name": "the adversary's base brief takes the scope",
+      "file": "packages/review-panel/src/briefs/shape-brief.ts",
+      "find": "reviewerBrief({ ...base, scope: undefined })",
+      "replace": "reviewerBrief(base)",
+      "kills": [
+        "the adversary brief on a fix round keeps the full-diff instruction and carries no unchanged-line rule"
+      ]
     }
   ]
 }
