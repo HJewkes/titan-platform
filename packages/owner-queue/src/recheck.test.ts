@@ -30,6 +30,15 @@ describe("recheck", () => {
     expect(result.flags).toEqual([]);
   });
 
+  it("neither drops nor flags an item on an answer its own asker wrote, such as a sitting's closing tally", () => {
+    const asked = open("round:r2/q1");
+    const tally = answer("deposit:sitting", AFTER, [ASK], { text: "sitting complete: 1 done, 0 skipped", by: { class: "asker", id: "seat-a", channel: "inbox-step" } });
+
+    const result = recheck([asked], [tally]);
+
+    expect(result).toEqual({ open: [asked], dropped: [], flags: [] });
+  });
+
   it("cites the newest of several settling answers", () => {
     const given = [answer("a-early", "2026-01-03T00:00:00Z", [ASK]), answer("a-late", "2026-01-04T00:00:00Z", [ASK])];
 
