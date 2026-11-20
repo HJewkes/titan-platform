@@ -4,6 +4,7 @@ import type { GitHubPort, RepoFile, RepoSlug } from "@titan-design/github";
 import { parse as parseYaml, parseAllDocuments } from "yaml";
 import { z } from "zod";
 import { manifestPins, pinReaches, record, workspacePins, type OverridePin } from "./consumer-bump-pins.js";
+import { registryGet } from "./registry-get.js";
 import type { Registration } from "./store.js";
 
 export const BUMP_BRANCH_PREFIX = "shepherd/bump-consumers-";
@@ -37,7 +38,6 @@ const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "
 const TITAN_NAME = /^@titan-design\/[a-z0-9][a-z0-9._-]*$/;
 const PLAIN_VERSION = /^\d+\.\d+\.\d+$/;
 const BUMPABLE = /^([\^~]?)(\d+\.\d+\.\d+)$/;
-const REGISTRY_TIMEOUT_MS = 10_000;
 
 /** npm's `latest` version for a name, null when npm answers 404; any other answer throws. */
 export type LatestRegistry = (name: string) => Promise<string | null>;
@@ -46,10 +46,8 @@ const LatestManifest = z.looseObject({ version: z.string() });
 
 export function npmLatest(fetchImpl: typeof fetch = fetch): LatestRegistry {
   return async (name) => {
-    const response = await fetchImpl(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`, { signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS) });
-    if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`registry.npmjs.org answered ${response.status} for ${name}`);
-    return LatestManifest.parse(await response.json()).version;
+    const response = await registryGet(name, "latest", fetchImpl);
+    return response ? LatestManifest.parse(await response.json()).version : null;
   };
 }
 
