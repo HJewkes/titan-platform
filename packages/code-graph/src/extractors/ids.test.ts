@@ -15,10 +15,17 @@ describe("node ids", () => {
     expect(fileId("/repo", "/repo/packages/a/src/index.ts")).toBe("packages/a/src/index.ts");
   });
 
-  it("strips the module extension for a module id, TypeScript and Python alike", () => {
+  it("strips a TypeScript extension for a module id and tags a Python one", () => {
     expect(moduleId("/repo", "/repo/src/a.ts")).toBe("src/a");
     expect(moduleId("/repo", "/repo/src/a.tsx")).toBe("src/a");
-    expect(moduleId("/repo", "/repo/src/a.py")).toBe("src/a");
+    expect(moduleId("/repo", "/repo/src/a.py")).toBe("src/a@py");
+  });
+
+  it("keeps a Python module id apart from its TypeScript twin and from its own file id", () => {
+    const py = moduleId("/repo", "/repo/src/complexity-sample.py");
+    expect(py).not.toBe(moduleId("/repo", "/repo/src/complexity-sample.ts"));
+    expect(py).not.toBe(fileId("/repo", "/repo/src/complexity-sample.py"));
+    expect(parentModuleId(py)).toBe("src");
   });
 
   it("walks module ids up one directory at a time and stops at the root", () => {
