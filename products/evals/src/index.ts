@@ -17,7 +17,6 @@ export { CHECK_ROLES, DETERMINISTIC_CHECK_TYPES, EFFICIENCY_METRICS } from "./sp
 export { CASE_SPLITS } from "./spec/case-suite.js";
 export { EFFORT_LEVELS } from "./spec/variant.js";
 export {
-  canonicalJson,
   caseHash,
   hashCanonical,
   HASH_EXCLUDED_FIELDS,

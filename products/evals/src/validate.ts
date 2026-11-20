@@ -1,4 +1,5 @@
-import { canonicalJson, caseHash, pinSuitePrompts, pinVariantPrompts, scorecardKeyHash, suiteHash, unitHash, variantHash } from "./hash.js";
+import { canonicalJson } from "@titan-design/agent-protocol";
+import { caseHash, pinSuitePrompts, pinVariantPrompts, scorecardKeyHash, suiteHash, unitHash, variantHash } from "./hash.js";
 import type { ReadPrompt } from "./hash.js";
 import { parseSpec } from "./spec/index.js";
 import type { Spec } from "./spec/index.js";
