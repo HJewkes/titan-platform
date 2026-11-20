@@ -11,14 +11,14 @@ export {
   ownerItemSchema,
   sourceRefSchema,
 } from "./schema.js";
-export type { Audience, ItemStatus, LocatorCite, OnSilence, OwnerAnswer, OwnerItem, SourceRef } from "./schema.js";
+export type { Audience, ItemStatus, LocatorCite, OnSilence, OwnerAnswer, OwnerItem, SittingStep, SourceRef, StepOutcome } from "./schema.js";
 export { CARD_RULES, cardLint, ownerCardSchema } from "./card.js";
 export type { CardRule } from "./card.js";
 export { audienceOf, forAudience } from "./audience.js";
 export { DEPOSIT_LENS, depositItemId, fromDeposit, ownerItemDepositSchema } from "./deposit.js";
 export type { OwnerItemDeposit } from "./deposit.js";
 export { HOLD_CLASSES, MERGE_WAITS, opKeys, ownerOpSchema } from "./op.js";
-export type { OwnerOp, OwnerOpKind } from "./op.js";
+export type { HostCommand, OwnerOp, OwnerOpKind } from "./op.js";
 export { consolidate } from "./consolidate.js";
 export type { ConsolidateInput, Flow, FlowGroup, HeldItem, ShipBlock, ShipBlockReason } from "./consolidate.js";
 export { INFLUENCE_RULES, influenceEdges } from "./influence.js";

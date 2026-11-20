@@ -1,14 +1,13 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { classifyDecoded, execSide, spawnExec, type Classification, type Exec, type FixProofPlan } from "@titan-design/fix-proof";
 import { localCloneGit } from "../review-pr/bundle.js";
+import { ensureScratchClone } from "./scratch-clone.js";
 import { planHiddenTests, type ImplementTaskSource } from "./write-case.js";
 
 /** One head side is an install, a build and three runs, which fix-proof's 18-minute default does not cover. */
 export const SCREEN_BUDGET_MS = 30 * 60_000;
 const HEAD_REPORTS = ["head", "head-2", "head-3"] as const;
-const CLONE_TIMEOUT_MS = 10 * 60_000;
-const REPO_NAME = /^[\w-][\w.-]*\/[\w-][\w.-]*$/;
 
 type ScreenVerdict = "keep" | "no-hidden-tests" | `screen-error:${string}` | "flaky" | "fails-on-accepted" | "vacuous" | "not-collected";
 export type HeadRuns = readonly [Classification, Classification, Classification];
@@ -60,16 +59,6 @@ export function screenVerdict(runs: HeadRuns): ScreenVerdict {
   return stableVerdict(runs[0]);
 }
 
-async function scratchClone(source: string, repo: string, outDir: string, exec: Exec): Promise<string> {
-  if (!REPO_NAME.test(repo)) throw new Error(`repo is not owner/name: ${JSON.stringify(repo)}`);
-  const clone = join(outDir, ".scratch", repo);
-  if (existsSync(clone)) return clone;
-  mkdirSync(dirname(clone), { recursive: true });
-  const result = await exec("git", ["clone", "--quiet", "--shared", "--no-checkout", "--", source, clone], { cwd: dirname(clone), timeoutMs: CLONE_TIMEOUT_MS });
-  if (result.status !== 0) throw new Error(`scratch clone of ${repo} failed (exit ${result.status ?? "signal"}): ${result.stderr.trim()}`);
-  return clone;
-}
-
 function classifyRuns(plan: FixProofPlan, out: string): HeadRuns {
   const read = (name: string): string | undefined => {
     const file = join(out, `${name}.report`);
@@ -85,7 +74,7 @@ async function screen(source: ImplementTaskSource, options: ScreenOptions, exec:
   const local = options.cloneFor(source.repo);
   if (local === undefined) throw new Error(`no local clone for ${source.repo}`);
   const plan = await planHiddenTests(localCloneGit(local), source.baseSha, source.mergeSha);
-  const repo = await scratchClone(local, source.repo, options.outDir, exec);
+  const repo = await ensureScratchClone({ repo: source.repo, outDir: options.outDir, exec, sourceOf: () => local });
   const out = `${repo}.reports/${source.pr}`;
   const side = { repo, base: source.baseSha, head: source.mergeSha, out, budgetMs: SCREEN_BUDGET_MS, exec };
   // No sandboxUser: these are accepted merges, so the base side runs nothing the head side would not.

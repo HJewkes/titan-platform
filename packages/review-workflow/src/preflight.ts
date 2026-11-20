@@ -22,7 +22,7 @@ export interface PreflightSnapshot {
   hold?: HoldMember;
 }
 
-/** `heal` is the shape `healOnce` consumes; `go` carries the plan the members are dispatched from. */
+/** `heal` asks the recipe for one heal pass; `go` carries the plan the members are dispatched from. */
 export type PreflightDecision =
   | { kind: "go"; plan: HeadPlan }
   | HealRequest

@@ -11,15 +11,6 @@
       ]
     },
     {
-      "name": "a gate finds its live row by scanning every row instead of the run-id map",
-      "file": "apps/console/server/inbox-view.ts",
-      "find": "return runId === undefined ? undefined : rows.get(runId.toLowerCase());",
-      "replace": "return runId === undefined ? undefined : [...rows.values()].find((row) => row.runId.toLowerCase() === runId.toLowerCase());",
-      "kills": [
-        "inbox ordering orders live-sized items in work linear in their count"
-      ]
-    },
-    {
       "name": "an inbox item never carries its live row's gate strip",
       "file": "apps/console/server/inbox-view.ts",
       "find": "...(gates !== undefined && { gates })",
@@ -39,12 +30,21 @@
       ]
     },
     {
-      "name": "a diverged gate's hold text names no command",
+      "name": "a gate on a replay-diverged row is held to the terminal again",
       "file": "apps/console/server/inbox-view.ts",
-      "find": "\"resolve from the terminal with the command shown\"",
-      "replace": "\"resolve from the console\"",
+      "find": "if (row?.pr == null || row.headSha === null) return terminal(",
+      "replace": "if (row?.pr == null || row.headSha === null || /^replay diverged/.test(row.stalled?.reason ?? \"\")) return terminal(",
       "kills": [
-        "actionFor holds a gate on a replay-diverged run to the terminal, and still taps a healthy one"
+        "actionFor taps a gate on a replay-diverged run at its row's head, since the diverged sweep merges on that answer"
+      ]
+    },
+    {
+      "name": "a g10 release-hold op needs the row's exact class again",
+      "file": "apps/console/server/inbox-view.ts",
+      "find": "op.holdClass === \"g10\" ? isG10Class(holdClass) : holdClass === op.holdClass",
+      "replace": "holdClass === op.holdClass",
+      "kills": [
+        "a deposit's typed op maps a g10 hold op onto a hold-release for whichever g10 class the row is held in"
       ]
     }
   ]

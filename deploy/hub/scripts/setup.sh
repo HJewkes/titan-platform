@@ -17,9 +17,15 @@ set -a; . ./.env; set +a
 
 # The server name is baked into every id in data/db; refuse to render a different one over it.
 mkdir -p data/run/appservices data/db data/core
-if [ -n "$(ls -A data/db)" ] && [ -f data/server_name ] && [ "$(cat data/server_name)" != "$SERVER_NAME" ]; then
-  echo "data/db was created for $(cat data/server_name), not $SERVER_NAME; wipe data/db or restore SERVER_NAME" >&2
-  exit 1
+if [ -n "$(ls -A data/db)" ]; then
+  if [ ! -f data/server_name ]; then
+    echo "data/db is not empty but data/server_name is missing; write the server name it was created for into data/server_name, then rerun" >&2
+    exit 1
+  fi
+  if [ "$(cat data/server_name)" != "$SERVER_NAME" ]; then
+    echo "data/db was created for $(cat data/server_name), not $SERVER_NAME; wipe data/db or restore SERVER_NAME" >&2
+    exit 1
+  fi
 fi
 printf '%s' "$SERVER_NAME" > data/server_name
 
