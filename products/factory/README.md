@@ -400,7 +400,7 @@ what each review costs and how long it takes, and what each PR's reviews cost in
   A repeat call prices nothing again, so it costs a SQL read.
 - A round's cost is the agent-chat retire row of its reviewer's session, read from every `logs/*/dispatch.jsonl` under
   `AUTONOMY_ROOT` (default `$ACTIVE_ROOT/claude-channels/sources/autonomy`, and `ACTIVE_ROOT` defaults to
-  active-work's XDG data directory). A round with no retire row is priced once from its transcript, else it stays unpriced.
+  active-work's data directory: the platform data directory (Application Support on macOS, the XDG data directory on Linux)). A round with no retire row is priced once from its transcript, else it stays unpriced.
 
 `--from` and `--to` filter by verdict day in UTC, both inclusive. `--json` prints the v1 shape:
 `{ v: 1, at, range, perReview, perPr, rows?, refresh }`.
