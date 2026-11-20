@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { readLocatorText } from '@titan-design/locator';
 import path from 'node:path';
 import { toAbsolute } from '../workspace-index/refs.js';
 import type { RelatedHit } from './related.js';
@@ -17,17 +17,12 @@ async function readSpan(
   byteOffset: number,
   byteLength: number,
 ): Promise<string | null> {
-  let handle: fs.FileHandle | undefined;
   try {
-    handle = await fs.open(file, 'r');
-    const buffer = Buffer.alloc(Math.min(byteLength, SPAN_READ_MAX_BYTES));
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, byteOffset);
-    const text = buffer.subarray(0, bytesRead).toString('utf8').slice(0, SPAN_TEXT_MAX_CHARS);
+    const locator = [0, byteOffset, Math.min(byteLength, SPAN_READ_MAX_BYTES)] as const;
+    const text = (await readLocatorText(file, locator)).slice(0, SPAN_TEXT_MAX_CHARS);
     return text.trim().length > 0 ? text : null;
   } catch {
     return null;
-  } finally {
-    await handle?.close();
   }
 }
 
