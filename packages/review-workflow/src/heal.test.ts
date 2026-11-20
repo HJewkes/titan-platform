@@ -1,19 +1,17 @@
 import type { PullRequest } from "@titan-design/github";
 import type { PanelMember, ReviewTarget } from "@titan-design/review-panel";
 import { describe, expect, it } from "vitest";
-import { healOnce, type HealPorts, type HealRequest, type HealSubject } from "./heal.js";
+import { applyHeal, type HealPorts } from "./heal.js";
 import type { CheckoutState, HeadroomRead, HeadSnapshot } from "./ports.js";
 
 const HEAD = "a".repeat(40);
 const NEXT_HEAD = "b".repeat(40);
 const target: ReviewTarget = { repo: "acme/widgets", pr: 7, head: HEAD };
 
-type Go = { kind: "go" };
-const GO: Go = { kind: "go" };
-
 interface Fakes {
   ports: HealPorts;
   refreshes: () => number;
+  checkoutState: () => CheckoutState;
 }
 
 function snapshotAt(headSha: string): HeadSnapshot {
@@ -35,7 +33,7 @@ function snapshotAt(headSha: string): HeadSnapshot {
   return { pr, ci: "green", facts: { ...target, head: headSha, base: "c".repeat(40), changedFiles: [] } };
 }
 
-function fakePorts(opts: { refreshFixes?: boolean; liveHead?: string; headroom?: HeadroomRead } = {}): Fakes {
+function fakePorts(opts: { liveHead?: string; headroom?: HeadroomRead } = {}): Fakes {
   let state: CheckoutState = { kind: "wrong-commit", at: NEXT_HEAD };
   let refreshes = 0;
   const snapshot = snapshotAt(opts.liveHead ?? HEAD);
@@ -44,112 +42,90 @@ function fakePorts(opts: { refreshFixes?: boolean; liveHead?: string; headroom?:
       state: async () => state,
       refresh: async () => {
         refreshes += 1;
-        if (opts.refreshFixes ?? true) state = { kind: "ready" };
+        state = { kind: "ready" };
       },
     },
     snapshot: { read: async () => snapshot },
     headroom: { read: async () => opts.headroom ?? { opus: true, account: "available" } },
   };
-  return { ports, refreshes: () => refreshes };
+  return { ports, refreshes: () => refreshes, checkoutState: () => state };
 }
 
-const checkoutDecider =
-  (ports: HealPorts) =>
-  async (subject: HealSubject): Promise<Go | HealRequest> =>
-    (await ports.checkout.state(subject.target)).kind === "ready" ? GO : { kind: "heal", heals: ["refresh-checkout"] };
+describe("applyHeal refresh-checkout", () => {
+  it("refreshes the checkout once and hands back the same subject", async () => {
+    const { ports, refreshes, checkoutState } = fakePorts();
 
-const healRequest = (...heals: HealRequest["heals"]): HealRequest => ({ kind: "heal", heals });
+    const effect = await applyHeal("refresh-checkout", { target }, ports);
 
-describe("healOnce", () => {
-  it("refreshes a checkout at the wrong commit once, and the re-decision passes", async () => {
-    const { ports, refreshes } = fakePorts();
-
-    const result = await healOnce<Go>(healRequest("refresh-checkout"), { target }, ports, checkoutDecider(ports));
-
-    expect(result).toEqual({ kind: "decided", decision: GO, subject: { target } });
+    expect(effect).toEqual({ kind: "healed", subject: { target } });
     expect(refreshes()).toBe(1);
+    expect(checkoutState()).toEqual({ kind: "ready" });
   });
+});
 
-  it("sends a refresh that leaves the checkout wrong to the fixer instead of refreshing again", async () => {
-    const { ports, refreshes } = fakePorts({ refreshFixes: false });
-
-    const result = await healOnce<Go>(healRequest("refresh-checkout"), { target }, ports, checkoutDecider(ports));
-
-    expect(result).toEqual({ kind: "fixer", key: "heal-ineffective", heals: ["refresh-checkout"] });
-    expect(refreshes()).toBe(1);
-  });
-
-  it("passes a decision that asks for no heal through without touching a port", async () => {
-    const { ports, refreshes } = fakePorts();
-
-    const result = await healOnce<Go>(GO, { target }, ports, checkoutDecider(ports));
-
-    expect(result).toEqual({ kind: "decided", decision: GO, subject: { target } });
-    expect(refreshes()).toBe(0);
-  });
-
+describe("applyHeal retarget", () => {
   it("retargets a standalone run to the live head", async () => {
     const { ports } = fakePorts({ liveHead: NEXT_HEAD });
 
-    const result = await healOnce<Go>(healRequest("retarget"), { target }, ports, async () => GO);
+    const effect = await applyHeal("retarget", { target }, ports);
 
-    expect(result).toMatchObject({ kind: "decided", subject: { target: { ...target, head: NEXT_HEAD } } });
+    expect(effect).toEqual({ kind: "healed", subject: { target: { ...target, head: NEXT_HEAD } } });
   });
 
   it("calls a retarget to the head already under review ineffective", async () => {
     const { ports } = fakePorts();
 
-    const result = await healOnce<Go>(healRequest("retarget"), { target }, ports, async () => GO);
+    const effect = await applyHeal("retarget", { target }, ports);
 
-    expect(result).toEqual({ kind: "fixer", key: "heal-ineffective", heals: ["retarget"] });
+    expect(effect).toEqual({ kind: "ineffective", heal: "retarget" });
   });
 });
 
-describe("healOnce degrade-headroom", () => {
+describe("applyHeal degrade-headroom", () => {
   const premium: PanelMember = { shape: "correctness", profile: "bd-reviewer", briefId: "correctness", blocking: true, degraded: false };
 
   it("re-plans a refused premium member at its sonnet profile, marked degraded", async () => {
     const { ports } = fakePorts();
 
-    const result = await healOnce<Go>(healRequest("degrade-headroom"), { target, member: premium }, ports, async () => GO);
+    const effect = await applyHeal("degrade-headroom", { target, member: premium }, ports);
 
-    expect(result).toMatchObject({ kind: "decided", subject: { member: { ...premium, profile: "reviewer", degraded: true } } });
+    expect(effect).toEqual({ kind: "healed", subject: { target, member: { ...premium, profile: "reviewer", degraded: true } } });
   });
 
-  it("sends a member with no sonnet fallback to the fixer", async () => {
+  it("calls a member with no sonnet fallback ineffective", async () => {
     const { ports } = fakePorts();
     const member = { ...premium, profile: "reviewer" };
 
-    const result = await healOnce<Go>(healRequest("degrade-headroom"), { target, member }, ports, async () => GO);
+    const effect = await applyHeal("degrade-headroom", { target, member }, ports);
 
-    expect(result).toEqual({ kind: "fixer", key: "heal-ineffective", heals: ["degrade-headroom"] });
+    expect(effect).toEqual({ kind: "ineffective", heal: "degrade-headroom" });
   });
 
   it("does not degrade a member twice", async () => {
     const { ports } = fakePorts();
     const member = { ...premium, profile: "reviewer", degraded: true };
 
-    const result = await healOnce<Go>(healRequest("degrade-headroom"), { target, member, sonnetFor: { reviewer: "cheap" } }, ports, async () => GO);
+    const effect = await applyHeal("degrade-headroom", { target, member, sonnetFor: { reviewer: "cheap" } }, ports);
 
-    expect(result).toMatchObject({ kind: "fixer", heals: ["degrade-headroom"] });
+    expect(effect).toEqual({ kind: "ineffective", heal: "degrade-headroom" });
   });
 });
 
-describe("healOnce await-account", () => {
-  it("stops a held account as an account hold, with no fixer and no further heal", async () => {
+describe("applyHeal await-account", () => {
+  it("stops a held account as an account hold carrying its reset time", async () => {
     const { ports, refreshes } = fakePorts({ headroom: { opus: false, account: "held", resetsAt: 1_700_000_000_000 } });
 
-    const result = await healOnce<Go>(healRequest("await-account", "refresh-checkout"), { target }, ports, async () => GO);
+    const effect = await applyHeal("await-account", { target }, ports);
 
-    expect(result).toEqual({ kind: "stop", outcome: { kind: "account-hold", head: HEAD, resetsAt: 1_700_000_000_000 } });
+    expect(effect).toEqual({ kind: "stop", outcome: { kind: "account-hold", head: HEAD, resetsAt: 1_700_000_000_000 } });
     expect(refreshes()).toBe(0);
   });
 
-  it("goes on to the re-decision when an account is available", async () => {
+  it("passes the subject through when the account is available", async () => {
     const { ports } = fakePorts();
 
-    const result = await healOnce<Go>(healRequest("await-account"), { target }, ports, async () => GO);
+    const effect = await applyHeal("await-account", { target }, ports);
 
-    expect(result).toEqual({ kind: "decided", decision: GO, subject: { target } });
+    expect(effect).toEqual({ kind: "healed", subject: { target } });
   });
 });
