@@ -53,7 +53,9 @@ async function startOnSocketBoundTo(host: string): Promise<{ outcome: string; st
   const child = spawn("sh", args, { env: { ...process.env, DAEMON_DIST, REGISTRY_DIST }, stdio: ["ignore", "pipe", "inherit", fdOf(socket)] });
   let out = "";
   child.stdout?.on("data", (chunk) => void (out += String(chunk)));
-  await once(child, "exit");
+  // Not "exit": a SIGCHLD from any other child of this process can get the fixture reaped before its stdout is read,
+  // so "exit" fires with the outcome still in the pipe (TP-5610). "close" waits for stdout to end.
+  await once(child, "close");
   socket.close();
   return { outcome: out.trim(), stateDir };
 }
