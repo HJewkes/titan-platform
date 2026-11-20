@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { canonicalJson } from "@titan-design/agent-protocol";
 import type { CheckSpec, EvalCase, Scorecard, StepSpec, SuiteSpec, UnitSpec, VariantSpec } from "./spec/index.js";
 
 /** Reads a prompt file by its spec-relative path. */
@@ -7,29 +8,6 @@ export type ReadPrompt = (path: string) => Promise<string | Uint8Array>;
 interface PromptRef {
   path: string;
   sha256: string;
-}
-
-/** Sorted keys, no whitespace, undefined members dropped; anything that would not survive JSON is refused. */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(normalize(value));
-}
-
-function normalize(value: unknown): unknown {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (Array.isArray(value)) return value.map(normalize);
-  if (typeof value !== "object" || !isPlainObject(value)) throw new TypeError(`canonical JSON accepts only JSON-safe values, got ${String(value)}`);
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-      .map(([key, item]) => [key, normalize(item)]),
-  );
-}
-
-function isPlainObject(value: object): boolean {
-  const prototype: unknown = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 export function sha256Hex(content: string | Uint8Array): string {
