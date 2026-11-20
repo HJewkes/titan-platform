@@ -47,9 +47,9 @@ function requestFor(ruleId: string): AuthorityRequest {
 }
 
 describe("the approved table", () => {
-  it("holds 51 allow, 6 gate and 67 deny rows", () => {
+  it("holds 52 allow, 6 gate and 67 deny rows", () => {
     const count = (verdict: string) => DEFAULT_TABLE.rules.filter((rule) => rule.verdict === verdict).length;
-    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 51, gate: 6, deny: 67 });
+    expect({ allow: count("allow"), gate: count("gate"), deny: count("deny") }).toEqual({ allow: 52, gate: 6, deny: 67 });
   });
 
   // Kills: retire-agent riding destructive-local's DSL-OR deny, or RET-OR flipped to gate or deny.

@@ -2,6 +2,7 @@ export { ACTION_CLASSES, ACTOR_CLASSES, CONDITION_KINDS, DELEGATE_RESOLVER_CLASS
 export type { ActionClass, ActorClass, ConditionKind, DelegateResolverClass, EvidenceKind, MergeConditionKind, QuestionConditionKind, ResolverClass, TaintKind, Verdict } from "./vocabulary.js";
 export { CARRYING_KINDS, isCarryFencedPath, unmetConditions } from "./conditions.js";
 export type { AgentIdentity, CarryFact, CheckRunFact, ConditionFacts, MergeFacts, QuestionFacts } from "./conditions.js";
+export type { OwnerGateFact } from "./by-rec.js";
 export { policyTableSchema } from "./schema.js";
 export type { PolicyTable, Rule } from "./schema.js";
 export { TAINT_REF_MAX_LENGTH, taintSourceSchema } from "./taint.js";

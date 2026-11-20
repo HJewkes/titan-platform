@@ -1,4 +1,10 @@
+import type { OwnerGateFact } from "./by-rec.js";
+import { BY_REC_CHECKS } from "./by-rec.js";
+import { isCarryFencedPath, isNonCanonical, isProtectedPath } from "./paths.js";
+import { FULL_SHA, isRecord, isStringList } from "./shape.js";
 import type { ConditionKind, MergeConditionKind, QuestionConditionKind } from "./vocabulary.js";
+
+export { isCarryFencedPath } from "./paths.js";
 
 export interface AgentIdentity {
   agentId: string;
@@ -54,6 +60,14 @@ export interface MergeFacts {
   carry?: CarryFact;
   /** The kind the pull request was registered with; absent when unregistered. */
   kind?: string;
+  /** The approve-merge gate the owner left unanswered; only MRG-AU-RB reads it. */
+  ownerGate?: OwnerGateFact;
+  /** Every Shepherd hold class on the pull request when the facts were read; `[]` when none. Only MRG-AU-RB reads it. */
+  holdClasses?: string[];
+  /** The changed paths Shepherd's owner tier holds for the owner (its settings, publish and owner-lever lists); `[]` when none. Only MRG-AU-RB reads it. */
+  ownerTierPaths?: string[];
+  /** The pull request's head branch name; only MRG-AU-RB reads it. */
+  headRef?: string;
 }
 
 /** What the caller observed about the question gate a decider wants to answer. */
@@ -72,20 +86,6 @@ export interface ConditionFacts {
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 /** PR kinds whose reviewed MERGE may carry to a new head (`pr-kind-not-security`); the factory gates its carry on this same set. */
 export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feature", "refactor"]);
-const FULL_SHA = /^[0-9a-f]{40}$/;
-const PRINTABLE_ASCII = /^[\x20-\x7e]+$/;
-const PROTECTED_FILES = new Set(["codeowners", "docs/codeowners", ".github/codeowners", ".gitmodules"]);
-// Owner decision of 2026-10-12 (TP-2440): main-side changes to the code that decides authority, guards tools or runs CI always earn a fresh review.
-// TP-2951 fences config that decides which checks run or what they accept. Code the checks execute (scripts/, package.json,
-// pnpm-lock.yaml) stays unfenced: it was reviewed on main and runs on the merged head before required contexts pass, and
-// fencing it would end the carry for almost every merge-up.
-const CARRY_FENCED_PREFIXES = ["packages/authority/", "packages/tool-guard/", ".github/", ".codewatch/"];
-// A symlink, submodule or file at a prefix's bare name stands in for that whole tree, which the prefix test never sees.
-const CARRY_FENCED_ENTRIES = new Set(CARRY_FENCED_PREFIXES.map((prefix) => prefix.slice(0, -1)));
-// Exact files, so a sibling such as .egress-allow.md stays unfenced.
-const CARRY_FENCED_FILES = new Set([".egress-allow"]);
-const NON_CANONICAL_SEGMENTS = new Set(["", ".", ".."]);
-const TRAILING_SPACE_OR_DOT = /[ .]$/;
 
 function isId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -105,10 +105,6 @@ function verdictMergeCarriedTreeEqual(facts: MergeFacts): boolean {
   if (verdict.value !== "MERGE" || typeof head !== "string" || !FULL_SHA.test(head) || !isRecord(carry)) return false;
   return typeof carry.fromHead === "string" && FULL_SHA.test(carry.fromHead) && verdict.head === carry.fromHead && carry.head === head &&
     isId(carry.headTree) && carry.headTree === carry.mergeTree;
-}
-
-function isStringList(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 // Each touched path must be one the collector matched to the repo's declared generated files, and never a protected one.
@@ -148,28 +144,6 @@ function verdictMergeCarriedMergeUpDisjoint(facts: MergeFacts): boolean {
 // Only a known non-security kind passes, so an unregistered or unrecognised kind never carries.
 function prKindNotSecurity(facts: MergeFacts): boolean {
   return typeof facts.kind === "string" && CARRYING_KINDS.has(facts.kind);
-}
-
-function isNonCanonicalSegment(segment: string): boolean {
-  return NON_CANONICAL_SEGMENTS.has(segment) || TRAILING_SPACE_OR_DOT.test(segment);
-}
-
-// A path we cannot compare exactly could alias a protected one, so it counts as protected.
-function isNonCanonical(path: string): boolean {
-  return !PRINTABLE_ASCII.test(path) || path.includes("\\") || path.split("/").some(isNonCanonicalSegment);
-}
-
-function isProtectedPath(path: unknown): boolean {
-  if (typeof path !== "string" || isNonCanonical(path)) return true;
-  const folded = path.toLowerCase();
-  return PROTECTED_FILES.has(folded);
-}
-
-/** Whether a base-side path bars a MERGE carry across a merge-up; a path that cannot be compared exactly counts as fenced. */
-export function isCarryFencedPath(path: unknown): boolean {
-  if (typeof path !== "string" || isNonCanonical(path)) return true;
-  const folded = path.toLowerCase();
-  return CARRY_FENCED_FILES.has(folded) || CARRY_FENCED_ENTRIES.has(folded) || CARRY_FENCED_PREFIXES.some((prefix) => folded.startsWith(prefix));
 }
 
 function isWellFormedRun(run: CheckRunFact): boolean {
@@ -231,6 +205,7 @@ const MERGE_CHECKS: Record<MergeConditionKind, (facts: MergeFacts) => boolean> =
   "repo-not-frozen": (facts) => facts.repoFrozen === false,
   "no-protected-path-change": noProtectedPathChange,
   "seat-grants-merge-on-green-approve": (facts) => Array.isArray(facts.seatGrants) && facts.seatGrants.includes("merge-on-green-approve"),
+  ...BY_REC_CHECKS,
 };
 
 // Exact strings only, so an unknown, missing or differently cased kind or mode fails closed.
@@ -261,10 +236,6 @@ function conditionHolds(condition: ConditionKind, facts: ConditionFacts): boolea
   if (isMergeCondition(condition)) return holds(MERGE_CHECKS[condition], facts.merge);
   if (isQuestionCondition(condition)) return holds(QUESTION_CHECKS[condition], facts.question);
   return false;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const LEAF_TYPES = new Set(["string", "number", "boolean", "undefined"]);

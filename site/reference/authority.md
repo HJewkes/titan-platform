@@ -72,14 +72,14 @@ safe label of 1 to 200 characters such as a host or an item id, never fetched co
 
 ## The table (version 1.0.0)
 
-51 allow, 6 gate and 67 deny rows: one unconditional row per pair, plus the five conditional
-allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS and ANS-DC-QA described below. Each rule also carries an optional `condition` that
+52 allow, 6 gate and 67 deny rows: one unconditional row per pair, plus the six conditional
+allow rows MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS, MRG-AU-RB and ANS-DC-QA described below. Each rule also carries an optional `condition` that
 qualifies the verdict in words, such as "inside its own worktree", and the evidence kinds
 the enforcing code should record.
 
 | Action | OT | OR | CO | WK | HD | AU | DC |
 |---|---|---|---|---|---|---|---|
-| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC, MRG-AU-RM or MRG-AU-RS | deny |
+| `merge` | allow | gate (OR) | gate (OT, OR) | deny | deny | gate (OT, OR); allow by MRG-AU-RV, MRG-AU-RC, MRG-AU-RM, MRG-AU-RS or MRG-AU-RB | deny |
 | `release` | allow | deny | gate (OT) | deny | deny | allow | deny |
 | `secret-read` | allow | deny | deny | deny | deny | allow | deny |
 | `untrusted-ingest` | allow | allow | allow | allow | allow | allow | deny |
@@ -163,6 +163,32 @@ checks execute (`scripts/`, `package.json`, `pnpm-lock.yaml`) is not fenced: it 
 landed on main, it runs on the merged head before the required contexts pass, and fencing it would
 end the carry for almost every merge-up. `isCarryFencedPath(path)` exports that test so the
 caller can refuse the carry before it asks.
+
+MRG-AU-RB (owner decision of 2026-11-19, TP-6765) allows an automation merge when the owner left
+an approve-merge gate unanswered for 24 hours on a merge recommendation. It needs no seat grant and
+no reviewer as the resolver; the gate is cancelled as `auto-by-rec`, and automation still resolves no
+gate. It keeps MRG-AU-RV's `verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`,
+`merge-tree-clean`, `repo-not-frozen` and `no-protected-path-change`, and adds five conditions:
+
+- `owner-gate-silent-24h`: the `ownerGate` fact names `facts.head` as its `head`, `pending` is exactly
+  `true`, and `observedAt - openedAt` is at least 24 hours. Both are positive integer epoch
+  milliseconds that the caller reads, since the evaluator has no clock. A head move re-opens the gate,
+  so the clock starts again.
+- `gate-recommends-merge`: that same gate's `recommended` option id is exactly `merge`.
+- `no-hold`: `holdClasses` is a list of strings and is empty. Any Shepherd hold, of any class
+  (`owner-asked`, `owner-review`, a g10 or visual hold), fails it, and so does a missing list.
+- `no-owner-path`: `ownerTierPaths`, the changed paths Shepherd's owner tier holds for the owner
+  (its settings, publish and owner-lever lists), is a list of strings and is empty; a missing list
+  fails. A changed path also fails it, however that read came out, when MRG-AU-RS fences it
+  (`isCarryFencedPath`, which covers `packages/authority/`, so a table edit never matches), when any
+  segment is `.claude` or `.agent-chat`, when it is under `products/factory/src/shepherd/`,
+  `packages/hitl/`, or is the factory's `config*` or `cli-release*`, or when its file name carries an
+  owner-lever stem such as `g10-`, `merge-facts`, `risk-tier`, `owner-tier`, `merge-evidence-gate`,
+  `gate-resolve`, `owner-tap`, `inbox-actions` or `owner-release`.
+- `no-release-path`: `headRef` is a non-empty canonical branch name that is not a
+  `changeset-release/` or `release/` branch (an `owner:` or `refs/heads/` prefix counts), and no changed path is a
+  `CHANGELOG.md`, `.changeset/config.json`, `.changeset/pre.json` or under
+  `.github/workflows/release`. A changeset added under `.changeset/` passes.
 
 ANS-DC-QA allows the decider to answer a question gate. It reads `facts.question` and checks
 `gate-rule-is-question` (`ruleKind` is exactly `question`) and `category-mode-auto` (`mode` is
