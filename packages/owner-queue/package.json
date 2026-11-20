@@ -17,6 +17,10 @@
     "./withdraw": {
       "types": "./dist/withdraw.d.ts",
       "import": "./dist/withdraw.js"
+    },
+    "./sitting": {
+      "types": "./dist/sitting.d.ts",
+      "import": "./dist/sitting.js"
     }
   },
   "files": [
