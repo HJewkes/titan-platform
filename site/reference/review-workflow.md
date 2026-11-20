@@ -47,7 +47,7 @@ proof standing and the base the proof judged. `preflight(snapshot, policy)` is p
 3. a carried merge-up: `stop(carried)`; mergeable state `behind` or `dirty`: `stop(needs-update)` or `stop(conflict)`;
 4. the plan (`planForHead`): a member whose profile is not installed gives `fixer` with case
    `start-refused:profile` and the profile as detail, before any member starts;
-5. a checkout that is not ready, or a held account: `{ kind: "heal", heals }`, the shape `healOnce` takes;
+5. a checkout that is not ready, or a held account: `{ kind: "heal", heals }`;
 6. otherwise `go` with the plan.
 
 ```ts
