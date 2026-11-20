@@ -39,6 +39,7 @@ export async function messageAgent(
   text: string,
   timeoutMs: number,
   options: MessageOptions = {},
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
@@ -46,6 +47,6 @@ export async function messageAgent(
   if (text.trim() === "") {
     throw new DispatchError("a message needs non-empty text");
   }
-  const result = await runAgentChatAsync(agentChatBinPath, buildMessageArgs(name, text, options), timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, buildMessageArgs(name, text, options), timeoutMs, undefined, signal);
   if (result.status !== 0) throw refusal("send", result);
 }
