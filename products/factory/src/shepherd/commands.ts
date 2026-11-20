@@ -17,7 +17,7 @@ import { cachedByHead, localPrFiles } from "./git-pr-files.js";
 import { applyRegistrationHold } from "./registration-hold.js";
 import { briefCommand } from "./brief-command.js";
 import { prsCommand } from "./prs-command.js";
-import { kindMove, testOnlyHint } from "./register-kind.js";
+import { kindHintFor, kindMove } from "./register-kind.js";
 import type { KindMove } from "./task-kind.js";
 import { PrArg, RegisterArgs, RepoArg, coded, headBranch, policyFor, refuseKindMove, sliceAfter } from "./register-args.js";
 import { cancelSupersededGates, pendingGateIds, endSuperseded, isDivergedEnd, isReplayDiverged, restartFor } from "./restart.js";
@@ -176,7 +176,7 @@ export async function register(args: RegisterArgs, ctx: FactoryContext): Promise
  */
 async function registerWithHold(args: RegisterArgs, ctx: FactoryContext): Promise<Registered> {
   const registered = await classifyRegistered(ctx, await register(args, ctx));
-  const kindHint = await testOnlyHint(servicesOf(ctx), registered.registration);
+  const kindHint = await kindHintFor(servicesOf(ctx), registered.registration);
   return kindHint === undefined ? registered : { ...registered, kindHint };
 }
 
