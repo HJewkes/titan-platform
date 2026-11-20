@@ -220,3 +220,44 @@ describe("the adversary brief and its hold", () => {
     expect(shapeBrief("perf", { ...target, holdContext })).toBe(shapeBrief("perf", target));
   });
 });
+
+describe("the adversary brief on a fix round", () => {
+  const sinceHead = "a".repeat(40);
+  const scope = { sinceHead, paths: ["src/guard.ts"], hunks: [{ path: "src/guard.ts", start: 10, end: 14 }], mergedBase: false };
+  const earlierFindings = [{ head: sinceHead, text: "1. An empty grant list reads as allowed." }];
+  const fixRound = { ...target, scope, earlierFindings };
+
+  it("adds a focus on the open findings and the changed ranges since the reviewed head", () => {
+    const brief = shapeBrief("adversary", fixRound);
+
+    expect(brief).toContain(`Look first at the change since head ${sinceHead.slice(0, 12)}`);
+    expect(brief).toContain("whether it closes the 1 open finding listed between EARLIER-FINDINGS and END-EARLIER-FINDINGS below");
+    expect(brief).toContain("- src/guard.ts: 10-14");
+    expect(brief).toContain("An empty grant list reads as allowed.");
+  });
+
+  it("keeps the full-diff instruction and carries no unchanged-line rule", () => {
+    const brief = shapeBrief("adversary", fixRound);
+
+    expect(brief).toContain("Review the whole PR's diff");
+    expect(brief).toContain(`gh pr diff ${target.pr} --repo ${target.repo}`);
+    expect(brief).not.toContain(`git diff ${sinceHead}`);
+    expect(brief).not.toContain("Important:");
+    expect(brief).not.toContain("This is a fix-round re-review");
+  });
+
+  it("adds no focus without a scope, and leaves the other members' briefs unscoped", () => {
+    const unscoped = { ...target, earlierFindings };
+
+    expect(shapeBrief("adversary", unscoped)).not.toContain("Look first at");
+    expect(shapeBrief("adversary", unscoped)).not.toContain("This is a fix round.");
+    expect(shapeBrief("perf", fixRound)).toBe(shapeBrief("perf", unscoped));
+    expect(shapeBrief("tests", fixRound)).toBe(shapeBrief("tests", unscoped));
+  });
+
+  it("adds no focus for a scope the brief's checks refuse", () => {
+    const refused = { ...fixRound, scope: { ...scope, sinceHead: "not-a-sha" } };
+
+    expect(shapeBrief("adversary", refused)).toBe(shapeBrief("adversary", { ...target, earlierFindings }));
+  });
+});
