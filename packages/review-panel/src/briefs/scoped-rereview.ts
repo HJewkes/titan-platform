@@ -1,3 +1,5 @@
+import { EARLIER_FINDINGS_END, EARLIER_FINDINGS_START } from "./earlier-findings.js";
+
 /** The tag a scoped re-review's new item outside the fix ranges must start with to be allowed (TP-3735). */
 export const IMPORTANT_TAG = "Important:";
 /** The line that names such an item's class. */
@@ -57,6 +59,19 @@ const mergedBaseLines = (scope: ReviewScope): string[] =>
   scope.mergedBase
     ? [`Main was merged into this PR since head ${scope.sinceHead.slice(0, 12)}, so that diff also shows main's changes in these paths. Only the ranges below are the fix; take main's changes as given.`]
     : [];
+
+/**
+ * An adversary fix round keeps the whole PR's diff as its subject (TP-3735) and only gets told where to look first, so it
+ * carries no unchanged-line rule (TP-6412).
+ */
+export function focusLines(scope: ReviewScope, openFindings: number): string[] {
+  return [
+    "This is a fix round. Review the whole PR's diff as the brief below says; this section only says where to look first.",
+    `Look first at the change since head ${scope.sinceHead.slice(0, 12)}, the head the last review read, and at whether it closes the ${openFindings} open finding${openFindings === 1 ? "" : "s"} listed between ${EARLIER_FINDINGS_START} and ${EARLIER_FINDINGS_END} below. That change's line ranges at this head:`,
+    ...rangeLines(scope),
+    "A fail-open or bypass anywhere in the diff is blocking, inside those ranges or not.",
+  ];
+}
 
 /** The fix diff is the review's subject; the unchanged-line and no-repeat rules keep a fix round from re-reviewing the whole PR. */
 export function scopeLines(scope: ReviewScope): string[] {
