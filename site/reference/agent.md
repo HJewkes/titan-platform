@@ -73,6 +73,7 @@ is set.
 | every call | `-p --output-format json --tools "" --strict-mcp-config --mcp-config '{"mcpServers":{}}' --setting-sources "" --max-budget-usd <maxBudgetUsd>` |
 | `maxTurns` | `--max-turns`, at least 2 when `outputSchema` is set; `error_max_turns` is a retryable `runtime_error` |
 | `prompt` | stdin |
+| `images` | `--input-format stream-json --output-format stream-json --verbose`, with the prompt sent as one stream-json user message (see below) |
 | `model` | `--model` |
 | `systemPrompt` | `--system-prompt` |
 | `outputSchema` | `--json-schema`, then a local zod parse; a mismatch is `schema_invalid` |
@@ -84,6 +85,23 @@ sources throw a `TypeError` before anything spawns. `claudePrintCapabilities()` 
 same limits in the shared capability vocabulary. A measured call with no `systemPrompt`
 used about 7,600 input tokens for the default Claude Code prompt, cost $0.031 on sonnet
 and took 4.4 s wall time.
+
+### Image attachments
+
+`images` takes absolute paths to PNG or JPEG files. The file bytes decide the type, not the
+extension. Every path is read before anything spawns. A missing, unreadable or
+non-PNG/JPEG file returns a `runtime_error` that names the path. When `images` is non-empty,
+stdin carries one stream-json user message: a base64 image block per file, in order, then
+the prompt text. The CLI only accepts stream-json input together with stream-json output and
+`--verbose`, so the answer is read from the last `type:"result"` line of the JSONL stream.
+That line carries the same fields as the `--output-format json` object. With no images (or
+`images: []`), args and stdin are what they were before. A 1920×1080 sheet costs about 1.8k
+input tokens on top of the call's fixed overhead. The SDK harness throws a `TypeError` when
+given `images`.
+
+For Codex, put the paths in `native.images` on a `CodexRunRequest`. The exec adapter passes
+one `-i <path>` per image and rejects a bad path as `invalid_request` before it starts the
+process. That flag is checked only against a faked process so far, not a live Codex.
 
 The JSON result's `usage.input_tokens` is the non-cached count only, often single digits
 beside thousands of `cache_creation_input_tokens`, so read cost from `totalCostUsd` or the

@@ -51,6 +51,8 @@ export interface AgentRunConfig<T = string> {
   /** Defaults to `claude-code` (the SDK). `claude-print` spawns `claude -p` and needs no `CLAUDE_CODE_OAUTH_TOKEN`. */
   harness?: AgentRunHarness;
   prompt: string;
+  /** Absolute paths to PNG or JPEG files, sent before the prompt in this order. Only the `claude-print` harness accepts them. */
+  images?: readonly string[];
   cwd: string;
   /** Required: the SDK's own default is unlimited. Must be positive. */
   maxTurns: number;

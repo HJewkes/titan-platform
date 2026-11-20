@@ -7,6 +7,7 @@ import { terminateProcessGroup } from "./codex-process.js";
 import { classifyResult, usageFromResult } from "./failures.js";
 import { CLAUDE_PRINT_UNSUPPORTED_OPTIONS, type HarnessCapabilityDescriptor } from "./harness-contracts.js";
 import { capabilityRecord } from "./capability-record.js";
+import { readImageAttachments, type ImageAttachment } from "./image-attachments.js";
 import type { AgentFailure, AgentInit, AgentRunConfig, AgentRunResult } from "./types.js";
 
 /** SIGTERM alone has been ignored by the CLI in the repo-review pipeline, so SIGKILL follows. */
@@ -14,6 +15,8 @@ export const CLAUDE_PRINT_KILL_GRACE_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 600_000;
 const EMPTY_MCP_CONFIG = '{"mcpServers":{}}';
 const LOGIN_FAILURE = /not logged in|please run \/login|invalid api key/i;
+const JSON_OUTPUT = ["--output-format", "json"];
+const STREAM_JSON_IO = ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"];
 
 export function claudePrintCapabilities(): HarnessCapabilityDescriptor<"claude-print"> {
   const capabilities = capabilityRecord(() => ({
@@ -57,9 +60,15 @@ function isExecutableFile(path: string): boolean {
   }
 }
 
+/** Image blocks only travel in a stream-json user message, and the CLI then requires stream-json output and --verbose. */
+function hasImages(config: AgentRunConfig<unknown>): boolean {
+  return (config.images?.length ?? 0) > 0;
+}
+
 export function buildClaudePrintArgs(config: AgentRunConfig<unknown>): string[] {
+  const io = hasImages(config) ? STREAM_JSON_IO : JSON_OUTPUT;
   const args = [
-    "-p", "--output-format", "json", "--tools", "", "--strict-mcp-config", "--mcp-config", EMPTY_MCP_CONFIG,
+    "-p", ...io, "--tools", "", "--strict-mcp-config", "--mcp-config", EMPTY_MCP_CONFIG,
     "--setting-sources", "", "--disable-slash-commands", "--max-turns", String(claudePrintMaxTurns(config)), "--max-budget-usd", String(config.maxBudgetUsd),
   ];
   if (config.model) args.push("--model", config.model);
@@ -101,16 +110,28 @@ export async function runClaudePrint<T>(
   clock: Clock,
 ): Promise<AgentRunResult<T>> {
   if (config.signal?.aborted) return { ok: false, failure: aborted(config.signal) };
+  const attached = readImageAttachments(config.images ?? []);
+  if ("reason" in attached) return { ok: false, failure: { kind: "runtime_error", reason: attached.reason } };
   const bin = resolveClaudeBin(env);
   if (!bin) return { ok: false, failure: { kind: "runtime_error", reason: "claude binary not found on PATH; set CLAUDE_BIN" } };
   const child = spawn(bin, buildClaudePrintArgs(config), {
     cwd: config.cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"],
   });
-  const outcome = await supervise(child, config);
+  const outcome = await supervise(child, config, claudePrintStdin(config.prompt, attached.images));
   return settle(outcome, config, clock.now() - clock.startedAt);
 }
 
-function supervise(child: ChildProcess, config: AgentRunConfig<unknown>): Promise<ChildOutcome> {
+/** Without images the prompt is bare stdin text; with them it is one stream-json user line, images first. */
+function claudePrintStdin(prompt: string, images: readonly ImageAttachment[]): string {
+  if (images.length === 0) return prompt;
+  const content = [
+    ...images.map(image => ({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data.toString("base64") } })),
+    { type: "text", text: prompt },
+  ];
+  return `${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`;
+}
+
+function supervise(child: ChildProcess, config: AgentRunConfig<unknown>, stdin: string): Promise<ChildOutcome> {
   const timeoutMs = config.inactivityTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   const output = collectOutput(child);
   let ended: AgentFailure | undefined;
@@ -124,7 +145,7 @@ function supervise(child: ChildProcess, config: AgentRunConfig<unknown>): Promis
   config.signal?.addEventListener("abort", onAbort, { once: true });
   // A child killed before it reads the prompt closes stdin; that EPIPE is not the failure.
   child.stdin?.on("error", () => {});
-  child.stdin?.end(config.prompt);
+  child.stdin?.end(stdin);
   return new Promise(resolve => {
     const finish = (code: number | null, signal: NodeJS.Signals | null, spawnError?: Error) => {
       clearTimeout(timer);
@@ -147,7 +168,7 @@ function collectOutput(child: ChildProcess): () => { stdout: string; stderr: str
 function settle<T>(outcome: ChildOutcome, config: AgentRunConfig<T>, durationMs: number): AgentRunResult<T> {
   if (outcome.ended) return { ok: false, failure: outcome.ended };
   if (outcome.spawnError) return { ok: false, failure: { kind: "runtime_error", reason: `claude -p failed to start: ${outcome.spawnError.message}`, raw: outcome.spawnError } };
-  const result = parseResult(outcome.stdout);
+  const result = parseResult(outcome.stdout, hasImages(config));
   if (!result) return { ok: false, failure: exitFailure(outcome, "printed no JSON result") };
   config.onMessage?.(result);
   const usage = usageFromResult(result, durationMs);
@@ -163,14 +184,14 @@ function settle<T>(outcome: ChildOutcome, config: AgentRunConfig<T>, durationMs:
 /** What the CLI's stdout is trusted for; its JSON is not schema-checked, so optional fields stay optional. */
 type LooseResult = { subtype: string; is_error?: boolean; result?: string; errors?: readonly string[]; modelUsage?: Record<string, unknown> };
 
-function parseResult(stdout: string): SDKResultMessage | undefined {
-  try {
-    const parsed: unknown = JSON.parse(stdout);
-    const isResult = typeof parsed === "object" && parsed !== null && (parsed as { type?: unknown }).type === "result";
-    return isResult ? parsed as SDKResultMessage : undefined;
-  } catch {
-    return undefined;
+/** `--output-format json` prints one object; stream-json prints JSONL, and the last `type:"result"` line carries the same fields. */
+function parseResult(stdout: string, streamed: boolean): SDKResultMessage | undefined {
+  const candidates = streamed ? stdout.split("\n").reverse() : [stdout];
+  for (const text of candidates) {
+    const parsed = parseJson(text);
+    if (typeof parsed === "object" && parsed !== null && (parsed as { type?: unknown }).type === "result") return parsed as SDKResultMessage;
   }
+  return undefined;
 }
 
 function exitFailure(outcome: ChildOutcome, what: string): AgentFailure {
