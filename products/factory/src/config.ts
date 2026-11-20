@@ -10,6 +10,7 @@ import { isRepoKey } from "./shepherd/seats.js";
 import { ConsoleOriginSchema } from "./digest/gate-alarm.js";
 import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
+import { AutoByRecConfigSchema } from "./shepherd/by-rec-config.js";
 import { VisualGateSchema } from "./shepherd/visual-gate-config.js";
 import { RedSeatConfigSchema } from "./shepherd/red-seat-config.js";
 
@@ -251,14 +252,12 @@ export const FactoryConfigSchema = z.object({
        * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
        * docs, recorded as `no-repro-non-source`; absent means `keep-owner`, today's sh-sent-back gate (TP-4275). `lowTierPolicy` (TP-5403): absent means `shadow`; `on` is the owner's switch (q28), set only after the owner settles which gate code may go low. `ownerTier`: `OwnerTierMode` (TP-5406). `ownerValidate`: `OwnerValidateMode` (TP-5411).
        */
-      gateReset: z
-        .strictObject({
+      gateReset: z.strictObject({
           twoMergeRelease: z.enum(["off", "shadow", "on"]).optional(),
           lowTierPolicy: z.enum(["off", "shadow", "on"]).optional(), ownerTier: z.enum(["off", "shadow", "on"]).optional(), ownerValidate: z.enum(["off", "shadow", "on"]).optional(),
           heldRepair: z.enum(["off", "on"]).optional(), noReproProceed: z.enum(["off", "on"]).optional(),
           nonSourceNoRepro: z.enum(["keep-owner", "record-fact"]).optional(),
-        })
-        .optional(),
+        }).optional(),
       backPressure: BackPressureConfigSchema.optional(),
       /**
        * How a registered PR's merge settles its `--task` (TP-4274). `keep`, the default when absent, closes it on every merge.
@@ -267,7 +266,7 @@ export const FactoryConfigSchema = z.object({
        */
       taskClose: z.enum(["keep", "last-slice-only"]).optional(),
       checkCandidates: z.enum(["off", "record", "propose"]).optional(), // Reviewers' check candidates (TP-6482): absent means record; propose only records until B5.
-      visualGate: VisualGateSchema.optional(),
+      visualGate: VisualGateSchema.optional(), autoByRec: AutoByRecConfigSchema.optional(), // autoByRec: the by-rec sweep (TP-6772), absent means shadow.
       releaseAppLogin: z.string().regex(/^[^\s[\]]+\[bot\]$/, "must be an App's <app-slug>[bot] login").optional(), // Only a head this App pushed keeps the owner's release answer (TP-5606).
       /**
        * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer

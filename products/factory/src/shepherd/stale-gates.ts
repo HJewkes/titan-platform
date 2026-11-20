@@ -1,6 +1,7 @@
 import { GateAlreadySettled, type GateStore } from "@titan-design/hitl";
 import { GATE_CANCELLED_SIGNAL, type AssistedOptions, type StepResult, type WorkflowContext } from "@titan-design/workflow";
 import { stepIdMatches } from "../definition.js";
+import { BY_REC_ANSWER_ORIGIN } from "../workflows/land-approval.js";
 import { resetBound, type UpdateBound } from "../workflows/land-budget.js";
 import type { Escalated } from "./route-table.js";
 
@@ -37,6 +38,12 @@ const READDRESSED = `${SUPERSEDED}readdressed: `;
 /** The cancel reason that hands a dead-end owner gate to `seat`. */
 export const readdressedReason = (seat: string): string => `${READDRESSED}${seat} (TP-4759)`;
 
+/**
+ * How the by-rec sweep cancels an approve-merge gate it resolved under MRG-AU-RB (TP-6772). Land reads it as a merge of
+ * the head the gate asked about and of no other head; the owner never answered, so it consumes nothing an answer would.
+ */
+export const BY_REC_CANCEL = "auto-by-rec: ";
+
 type Superseded = { superseded: string };
 
 async function answerOrSuperseded(ctx: WorkflowContext, stepId: string, prompt: string, options: AssistedOptions): Promise<StepResult | Superseded> {
@@ -44,8 +51,17 @@ async function answerOrSuperseded(ctx: WorkflowContext, stepId: string, prompt: 
   if (answer.signal !== GATE_CANCELLED_SIGNAL) return answer;
   const reason = String(answer.data?.reason);
   if (reason.startsWith(SUPERSEDED)) return { superseded: reason };
+  const byRec = reason.startsWith(BY_REC_CANCEL) && stepIdMatches("approve-merge", stepId) ? byRecAnswer(answer, prompt) : undefined;
+  if (byRec) return byRec;
   throw new Error(`${stepId} was cancelled: ${reason}`);
 }
+
+function byRecAnswer(answer: StepResult, prompt: string): StepResult | undefined {
+  const headSha = gateHead(prompt);
+  return headSha === undefined ? undefined : { ...answer, signal: null, data: { decision: "merge", headSha, origin: BY_REC_ANSWER_ORIGIN } };
+}
+
+const isByRecAnswer = (answer: StepResult): boolean => answer.data?.origin === BY_REC_ANSWER_ORIGIN;
 
 /** Undefined means the head sweep cancelled the gate because the pull request moved past the head it asks about. */
 export async function askAtHead(ctx: WorkflowContext, stepId: string, prompt: string, options: AssistedOptions = {}): Promise<StepResult | undefined> {
@@ -77,7 +93,7 @@ export function supersedingGates(ctx: WorkflowContext, leave: Leave, answered: (
     if (!LAND_HEAD_GATES.some((gate) => stepIdMatches(gate, stepId))) return ctx.assisted(stepId, prompt, options);
     const answer = await answerOrSuperseded(ctx, stepId, prompt, options);
     const approve = stepIdMatches("approve-merge", stepId);
-    if (!("superseded" in answer)) return approve ? (answered(), answer) : answer;
+    if (!("superseded" in answer)) return approve && !isByRecAnswer(answer) ? (answered(), answer) : answer;
     const gated = gateHead(prompt);
     if (readdress && approve && gated && answer.superseded.startsWith(READDRESSED)) return readdress(gated, () => assisted(stepId, prompt, options));
     throw leave(answer.superseded.startsWith(REREVIEW) ? gated : undefined, gated, stepId);

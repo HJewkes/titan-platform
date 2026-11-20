@@ -15,6 +15,7 @@ import { registerShepherdTaskApproval } from "./cli-shepherd-task-approval.js";
 import { registerShepherdWait } from "./cli-shepherd-wait.js";
 import { registerShepherdWatch } from "./cli-shepherd-watch.js";
 import { registerShepherdStats } from "./cli-stats.js";
+import { registerShepherdByRec } from "./cli-shepherd-by-rec.js";
 import { registerShepherdTaskKeyReport } from "./cli-shepherd-task-key-report.js";
 import { gitBehind } from "./deploy-behind.js";
 import { deployBlockOf, deploySummary, withGitBehind, type DeployHealth } from "./deploy-health.js";
@@ -63,6 +64,7 @@ export function registerShepherd(program: Command, verbs: Verbs): void {
   registerRepoFreezeVerbs(verb, verbs);
   registerOrderVerbs(verb, verbs);
   registerShepherdStats(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
+  registerShepherdByRec(shepherd, verbs.io, verbs.dbPath);
   registerShepherdCoverage(shepherd, verbs.io, verbs.dbPath, verbs.setExit);
   registerShepherdWait(shepherd, verbs);
   registerShepherdFollowUps(shepherd, verbs);

@@ -5,6 +5,7 @@ import { stepIdMatches } from "../definition.js";
 import { SEND_BACK } from "../gate-brief.js";
 import { ownerAtHeadRowsIn, type OwnerAtHeadRow } from "../owner-at-head.js";
 import { SET_ANSWER_ORIGIN, step } from "../workflows/land.js";
+import { BY_REC_ANSWER_ORIGIN } from "../workflows/land-approval.js";
 import { approvedSetFollow, spendOnOwnerAnswer, type SetCarry } from "./approved-set-carry.js";
 import { APPROVAL_CARRY_STEP, followBases, type CarryTarget } from "./carry-merge.js";
 import { fixCarryStep } from "./fix-carry.js";
@@ -158,6 +159,8 @@ async function followedAnswer(ctx: WorkflowContext, carry: ApprovalCarry, from: 
 /** What a gate's answer leaves to follow: a merge at its head, kept with its D21 finding; a send-back or a D21 gate's other answer clears it. */
 function approvalAfter(current: Approved | undefined, answer: StepResult, gate: LandGate): Approved | undefined {
   const merged = MergeAnswer.safeParse(answer.data).data;
+  // An auto-by-rec merge (TP-6772) is no owner answer: it covers its own head, and a later head waits at its own gate.
+  if (merged?.origin === BY_REC_ANSWER_ORIGIN) return undefined;
   if (merged?.headSha === gate.head) {
     const origin = merged.origin === SET_ANSWER_ORIGIN ? SET_ANSWER_ORIGIN : "answer";
     if (!gate.ciPolicyWeakened) return { head: gate.head, base: gate.base, origin };

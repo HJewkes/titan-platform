@@ -29,7 +29,7 @@ interface Wait {
 
 const OWNER_CLASSES: readonly string[] = RESOLVER_CLASSES;
 
-/** An owner-class resolve made under a grant was the delegate's call, not the owner's, so it is no touch. */
+/** An owner-class resolve made under a grant was the delegate's call, not the owner's, so it is no touch; an auto-by-rec cancel is never a resolve, so it is none either. */
 export const isOwnerTouch = (gate: GateRecord): boolean =>
   gate.status === "resolved" && gate.resolvedBy !== undefined && OWNER_CLASSES.includes(gate.resolvedBy.class) && gate.resolvedEvidence?.grant === undefined;
 
