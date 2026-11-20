@@ -185,7 +185,8 @@ export async function classifyRegistered(ctx: FactoryContext, registered: Regist
   const services = servicesOf(ctx);
   const local = cachedByHead(services.prFiles ?? localPrFiles);
   const lowTier = services.lowTierPolicy?.();
-  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, { local, ...(head !== undefined && { head }), ...(lowTier && { lowTier }) });
+  const files = { local, ...(head !== undefined && { head }), ...(lowTier && { lowTier }), ...(services.releaseAppLogin && { releaseAppLogin: services.releaseAppLogin }) };
+  const g10Hold = await applyRegistrationHold(services.port, services.store.get(), registered.runId, files);
   const held = g10Hold === undefined ? registered : { ...registered, g10Hold, registration: services.store.get().byRun(registered.runId)! };
   const sizeFlag = await sizeFlagFor(services.port, head === undefined ? held.registration : { ...held.registration, headSha: head }, { local });
   return sizeFlag === undefined ? held : { ...held, sizeFlag };

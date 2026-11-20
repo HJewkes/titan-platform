@@ -195,7 +195,9 @@ describe("a g10 head with an unproven or error fix-proof and a correctness + adv
 
     expect(spawns.some((spawn) => spawn.name.endsWith("-tests"))).toBe(false);
     expect(panel).toMatchObject({ outcome: "no-verdict", fixProofShortfall: true });
-    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned" }]);
+    const adversaryMerge = expect.objectContaining({ shape: "adversary", verdict: "MERGE" });
+    const reason = "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned";
+    expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason, panel: expect.objectContaining({ members: expect.arrayContaining([adversaryMerge]) }) }]);
   });
 });
 
