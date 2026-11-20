@@ -1,5 +1,8 @@
 import type { StepRoute } from "@titan-design/workflow";
 import { WorkflowOwnershipLostError, WorkflowRunStore } from "@titan-design/workflow";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
 import { openFactoryHost, untilSettledOrGated } from "./host.js";
@@ -21,9 +24,8 @@ const untilAborted: StepRoute[] = [{ match: "work", onRestart: "repeat", runner:
 
 const longRunning = defineWorkflow({ name: "long-running", steps: [{ id: "work", kind: "dispatch" }], run: async (ctx) => void (await ctx.dispatch("work", "work")) });
 
-function hostWithClock() {
-  const clock = { now: Date.parse("2026-11-04T17:50:00Z") };
-  const host = openFactoryHost({ dbPath: ":memory:", workflows: [longRunning], routes: untilAborted, now: () => clock.now, leaseMs: LEASE_MS, gatePollMs: 5 });
+function hostWithClock(dbPath = ":memory:", clock = { now: Date.parse("2026-11-04T17:50:00Z") }) {
+  const host = openFactoryHost({ dbPath, workflows: [longRunning], routes: untilAborted, now: () => clock.now, leaseMs: LEASE_MS, gatePollMs: 5 });
   onTestFinished(() => host.close());
   return { host, clock };
 }
@@ -52,10 +54,14 @@ describe("a run whose lease this process loses mid-step", () => {
   });
 
   it("names the run as lost in the resume report", async () => {
-    const { host, clock } = hostWithClock();
-    const runId = host.runtime.start("long-running");
-    host.runtime.shutdown();
+    const dir = mkdtempSync(join(tmpdir(), "ownership-lost-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const dbPath = join(dir, "factory.db");
+    const { host: previous, clock } = hostWithClock(dbPath);
+    const runId = previous.runtime.start("long-running");
+    previous.runtime.shutdown();
     clock.now += 10 * LEASE_MS;
+    const { host } = hostWithClock(dbPath, clock);
     refuseRenewals();
 
     const report = await host.resume();

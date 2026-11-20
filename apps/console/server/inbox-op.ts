@@ -10,6 +10,7 @@
  */
 import type { MERGE_WAITS, OwnerItem, OwnerOp, OwnerOpKind } from "@titan-design/owner-queue";
 import { holdClassOf } from "./gate-strip.js";
+import { isG10Class } from "./g10-hold.js";
 import type { InboxItem } from "./inbox-view.js";
 import type { ActionOutcome } from "./owner-action.js";
 import { isPlanOp, planMessageOf, planReadBackOf, postedPlanOp, type PlanReadBack } from "./inbox-plan-op.js";
@@ -85,8 +86,7 @@ const NO_FORCE_STOP = "the factory does not report agent-chat's grace, so a forc
 
 const short = (sha: string): string => sha.slice(0, 7);
 
-const G10_CLASSES: ReadonlySet<string> = new Set(["g10-review", "g10-adversary"]);
-const isG10Hold = (hold: { class: string } | undefined): boolean => hold !== undefined && G10_CLASSES.has(hold.class);
+const isG10Hold = (hold: { class: string } | undefined): boolean => hold !== undefined && isG10Class(hold.class);
 
 const PAST_HOLD = "; the g10 hold is skipped, with whatever verdicts it still waits for";
 const afterLoop = (at: string): string =>
