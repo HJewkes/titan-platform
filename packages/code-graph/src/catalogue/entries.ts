@@ -137,7 +137,7 @@ const SOURCE: readonly MetricDescriptor[] = [
   {
     name: "symbol_comment_ratio", unit: "ratio", appliesTo: SYMBOL, rollup: "max", direction: "neutral",
     absent: "exclude", source: "source-metrics",
-    description: "symbol_comment_lines / max(symbol_body_lines, 1). High values suggest narration; zero is not a defect.",
+    description: "symbol_comment_lines / max(symbol_body_lines, 1); 0 under 6 body lines, where one note dominates. High values suggest narration; zero is not a defect.",
   },
   {
     name: "symbol_narrating_comments", unit: "count", appliesTo: SYMBOL, rollup: "max", direction: "higher-worse",

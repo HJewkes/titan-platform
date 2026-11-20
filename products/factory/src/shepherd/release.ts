@@ -11,6 +11,7 @@ import { publishReview } from "./publish-review.js";
 import { RELEASE_AUTHOR_STEP, releaseAuthorRoute } from "./release-author.js";
 import type { EffectivePolicy, MergeMode } from "./policy-schema.js";
 import { RELEASE_FOLLOW_STEP, followRelease, npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
+import { registryGet } from "./registry-get.js";
 import type { ShepherdStore } from "./store.js";
 import { readPath } from "../narrow.js";
 import { VERSION_PACKAGES_BRANCH, manifestEditBlockers, nonReleaseFiles, readManifests, type ManifestPair } from "./release-diff.js";
@@ -39,16 +40,13 @@ export function releaseTask(repo: RepoSlug): string {
 type NpmPresence = "missing" | "untrusted" | "trusted";
 export type PackageRegistry = (name: string) => Promise<NpmPresence>;
 
-const REGISTRY_TIMEOUT_MS = 10_000;
-
 const LatestVersion = z.looseObject({ _npmUser: z.looseObject({ trustedPublisher: z.unknown().optional() }).optional() });
 const TrustedPublisher = z.looseObject({ id: z.string().min(1) });
 
 export function npmRegistry(fetchImpl: typeof fetch = fetch): PackageRegistry {
   return async (name) => {
-    const response = await fetchImpl(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`, { signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS) });
-    if (response.status === 404) return "missing";
-    if (!response.ok) throw new Error(`registry.npmjs.org answered ${response.status} for ${name}`);
+    const response = await registryGet(name, "latest", fetchImpl);
+    if (!response) return "missing";
     const latest = LatestVersion.parse(await response.json());
     return TrustedPublisher.safeParse(latest._npmUser?.trustedPublisher).success ? "trusted" : "untrusted";
   };
