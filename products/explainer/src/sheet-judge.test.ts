@@ -27,9 +27,9 @@ const isCanary = (call: JudgeCall<unknown>): boolean => call.images?.length === 
 /** A judge that answers each call through its own schema, so a reply the real judge could not send fails the test. */
 function fakeHarness(answer: Answer, calls: JudgeCall<unknown>[] = []): JudgeHarness {
   return async <T,>(call: JudgeCall<T>): Promise<JudgeReply<T>> => {
-    calls.push(call as JudgeCall<unknown>);
+    calls.push(call);
     const pass = passOf(call.prompt);
-    const got = answer(pass, call as JudgeCall<unknown>);
+    const got = answer(pass, call);
     const spend = { usd: 0.06, tokensIn: 7000, tokensOut: 200 };
     if ("fail" in got) return { ok: false, reason: got.fail, ...spend };
     return { ok: true, output: call.schema.parse({ pass, findings: got.findings, scores: PERFECT }), ...spend };
