@@ -107,7 +107,9 @@ the beat's next focus, and checks each reveal from its beat's start. `cameraPath
 `cameraMotionRows`, `keyBoxRows` and `revealRows` and reports four L0 rows: `camera:velocity`,
 `camera:jerk`, `camera:key-in-frame` and `camera:seen-before-reveal`. Limits, severities, the sample
 multiple and the assumed easing live in `doctrine/qa/camera-path.yaml`. Every row is a warning,
-and `runL0` reports them only when a caller passes a camera track.
+and `runL0` reports them only when a caller passes a camera track. `eval l0 --camera-track <file>` passes one:
+`camera-track-file.ts` parses an `explainer.camera-track/v1` file (strict; `fps`, `sampleRateMultiple`, `easeName`
+and the camera-path input) with `readCameraTrack`.
 
 `script-schema.ts` parses `script/v1`, a two-track script: per beat, a narration track
 (`spoken`, `why`, `fact_ids`) and a visual track whose `map_state` is the map track's schema

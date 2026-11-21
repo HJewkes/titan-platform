@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cameraPathCheck } from "./camera-path.js";
 import { runEvalCli } from "./eval-cli.js";
 import { mapLintCheck } from "./eval-l0.js";
 import { rulesSha, scriptSha } from "./eval-store.js";
@@ -58,6 +59,21 @@ describe("explainer eval l0", () => {
     expect(rows.every(([config, s, rules]) => config === "tour-short/script-v1-01" && s === sha && rules === rulesSha(RULES))).toBe(true);
     const run = JSON.parse(readFileSync(join(dir, "bench/evals/runs.jsonl"), "utf8"));
     expect(run).toMatchObject({ script_sha: sha, parent_sha: "0123456789ab", rules_sha: rulesSha(RULES), eval_id: "L0-script", eval_version: rulesSha(RULES), usd: 0, wall_s: 1.5, started_at: "2026-10-13T10:00:00.000Z" });
+  });
+
+  it("eval l0 with a camera track writes four camera rows; without it, none", async () => {
+    const box = { x: 0, y: 0, width: 1600, height: 900 };
+    const track = { schema: "explainer.camera-track/v1", fps: 30, sampleRateMultiple: 4, easeName: "smootherstep", track: [{ t: 0, box }, { t: 0.1, box }, { t: 0.2, box }, { t: 0.3, box }], beats: [{ beatId: "b1", startS: 0 }], keyBoxes: [], reveals: [] };
+    const script = write("script.json", scriptWith());
+    const camera = (...extra: string[]) => runEvalCli(["eval", "l0", script, "--config", "c", "--rules", join(dir, "rules.yaml"), "--bench", join(dir, "bench"), ...extra], { now: clock(), checks: [cameraPathCheck] });
+
+    await camera();
+    expect(structureLines().filter((line) => line.includes("\tcamera:"))).toHaveLength(0);
+
+    const code = await camera("--camera-track", write("camera-track.json", track));
+    const rows = structureLines().filter((line) => line.includes("\tcamera:")).map((line) => line.split("\t")[3]);
+    expect(code).toBe(0);
+    expect(rows).toEqual(["camera:velocity", "camera:jerk", "camera:key-in-frame", "camera:seen-before-reveal"]);
   });
 
   it("fails a script whose beat reveals four new boxes, naming the beat", async () => {
