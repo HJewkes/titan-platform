@@ -1546,7 +1546,8 @@ You are building a step of the explainer video pipeline and need its file contra
 `claimsCheckWith(facts)` (Q-E20) checks each pull request, task and count a script names against the gathered facts.
 `spokenTokenCheckWith(lexicon)` (Q-V14) fails a spoken line with a print device, or a path, code token, unit or acronym that no lexicon entry or phoneme override voices.
 `assertionCheckWith(tagger)` (Q-D7) fails a beat headline with no subject and finite verb, over ten words, or written after its narration.
-Only `explainer eval l1`, `l2`, `cold`, `items` and `smoke`, `explainer eval writing --judge` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
+`explainer eval sheet --sheets <dir>` judges a contact-sheet directory (four critique passes and a planted-glow canary) and prints the scores, caps, top three fixes and the usd spent.
+Only `explainer eval l1`, `l2`, `cold`, `items`, `sheet` and `smoke`, `explainer eval writing --judge` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
 `explainer rewrite` (`rewriteScript`) rewrites a drafted script's spoken lines toward the Q-V11 register bands, one call per chapter a round,
 keeps a beat's rewrite only when `guardBeat` accepts it,
 moves extra numbers to `visual.labels`, and

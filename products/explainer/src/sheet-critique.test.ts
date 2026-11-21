@@ -36,6 +36,7 @@ describe("critiqueScore", () => {
     const replies = [reply({ findings: [finding({ tags: ["glow"] })] })];
 
     expect(critiqueScore(replies).overall).toBe(6.5);
+    expect(critiqueScore(replies).caps).toEqual(["glow-or-gradient"]);
   });
 
   it("an unknown tag never caps", () => {

@@ -920,6 +920,14 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   sentence. It exits 1 when a chapter is above `--threshold` or a call fails.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
+- `explainer eval sheet --sheets <dir> [--judge <judge.json>] [--json] [--min-overall <n>] [--gate]` judges a
+  contact-sheet directory (`cells.json` and the sheet PNGs from `explainer sheets`) with `runSheetCritique`: four
+  passes over every sheet, then a planted-glow canary. The judge defaults to claude-print opus; a judge config that
+  names the script model (sonnet) is a usage error. It prints `sheet:overall` (a warning, an error under `--gate`),
+  `sheet:design`, `sheet:clarity`, `sheet:idea` and `sheet:content` (report), `sheet:caps`, the top three fixes, the
+  findings voided for naming no listed cell, and the total `usd`. Token counts are not printed: they under-report
+  image tokens. `--min-overall` and `--gate` (minimum 7 unless `--min-overall` says otherwise) make a low overall
+  exit 1; a run whose judge missed the canary exits 1 whatever its score, and a missing `cells.json` exits 2.
 
 Every verdict and answer must quote the beat it cites, verbatim and at least two words long.
 A verdict with no quote, or a quote not in that beat's text on that track, is void (L1) or
