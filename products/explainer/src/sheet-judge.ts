@@ -10,7 +10,7 @@ import { CAP_TAGS, CRITIQUE_PASSES, critiqueScore, type CritiqueResult } from ".
 export const SHEET_JUDGE: JudgeConfig = JudgeConfigSchema.parse({ provider: "claude-print", model: "opus", max_budget_usd: 0.5 });
 
 const RUBRIC_FILE = "sheet-critique.md";
-const CANARY_PNG = fileURLToPath(new URL("../fixtures/sheet-critique/canary-glow.png", import.meta.url));
+const CANARY_PNG = fileURLToPath(new URL("../assets/canary-glow.png", import.meta.url));
 // Named like a real sheet and beat, so the judge cannot tell the canary call from a pass.
 const CANARY_SHEET_NAME = "sheet-intro.png";
 const CANARY_CELL: SheetCellRef = { beat: "intro", t: 0 };
