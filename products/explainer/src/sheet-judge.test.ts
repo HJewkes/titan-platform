@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
 import { CRITIQUE_PASSES } from "./sheet-critique.js";
 import { SHEET_JUDGE, runSheetCritique, type SheetCellRef, type SheetCritiqueInput } from "./sheet-judge.js";
@@ -102,7 +103,7 @@ describe("runSheetCritique", () => {
   it("the canary still ships in the published package", async () => {
     const calls: JudgeCall<unknown>[] = [];
     const packageDir = fileURLToPath(new URL("..", import.meta.url));
-    const { files } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { files: string[] };
+    const { files } = z.object({ files: z.array(z.string()) }).parse(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")));
 
     await runSheetCritique(input(fakeHarness(catchesCanary, calls)));
 
