@@ -198,3 +198,48 @@ describe("demotion", () => {
     ]);
   });
 });
+
+describe("bulk owner rows", () => {
+  const bulkRow = (daysAgo = 1) => row({ outcome: "bulk" }, daysAgo);
+
+  it("adds nothing to samples, agreed, baseline or missedRedirects", () => {
+    const base = sampleSet(2, 1);
+    const withBulk = withPredictions([
+      ...base.rows.map((r): [LedgerRow, Prediction] => [r, r.prediction]),
+      [bulkRow(), predict(RECOMMENDED)],
+      [bulkRow(), predict(OTHER, true)],
+    ]);
+    const plain = scoreOf(base);
+    const mixed = scoreOf(withBulk);
+    expect(mixed).toMatchObject({
+      samples: plain.samples,
+      agreed: plain.agreed,
+      baseline: plain.baseline,
+      missedRedirects: plain.missedRedirects,
+      bulk: 2,
+    });
+  });
+
+  it("never recommends auto for a category made only of bulk rows", () => {
+    const set = withPredictions(Array.from({ length: 30 }, (): [LedgerRow, Prediction] => [bulkRow(), predict(RECOMMENDED)]));
+    expect(scoreOf(set, autoPolicy)).toMatchObject({ samples: 0, agreement: null, bulk: 30, recommendAuto: false });
+  });
+
+  it("counts only in-window owner bulk rows, with or without a prediction", () => {
+    const window = categoryPolicy(shadowPolicy, "tech_design").windowDays;
+    const set = withPredictions([[bulkRow(), predict(RECOMMENDED)]]);
+    const rows = [
+      ...set.rows,
+      bulkRow(),
+      bulkRow(window + 5),
+      { ...bulkRow(), answered_by: "overrule" as const },
+    ];
+    expect(scoreOf({ rows, predictions: set.predictions }).bulk).toBe(2);
+  });
+
+  it("leaves a non-bulk category reporting bulk 0 and overrule counting unchanged", () => {
+    const set = sampleSet(1, 0);
+    const rows: LedgerRow[] = [...set.rows, { ...bulkRow(), answered_by: "overrule" }];
+    expect(scoreOf({ rows, predictions: set.predictions })).toMatchObject({ bulk: 0, overrules: 1 });
+  });
+});
