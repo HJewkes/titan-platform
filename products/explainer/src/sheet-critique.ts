@@ -22,6 +22,8 @@ export const CAP_TAGS = [
 
 type CapTag =(typeof CAP_TAGS)[number];
 
+const CAPPING_TAGS: readonly CapTag[] = ["glow-or-gradient", "unsupported-number"];
+
 const TAG_ALIASES: Readonly<Record<string, CapTag>> = {
   ...Object.fromEntries(CAP_TAGS.map((tag) => [tag, tag])),
   glow: "glow-or-gradient",
@@ -61,6 +63,8 @@ export interface CritiqueResult {
   overall: number;
   scores: CritiqueReply["scores"];
   top: string[];
+  /** The capping tags a located finding carried, whether or not the cap lowered the score. */
+  caps: string[];
 }
 
 type Located = Finding & { cell: NonNullable<Finding["cell"]> };
@@ -91,5 +95,6 @@ export function critiqueScore(replies: readonly unknown[]): CritiqueResult {
   const weighted = DIMENSIONS.reduce((sum, d) => sum + scores[d] * CRITIQUE_WEIGHTS[d], 0);
   const overall = tagged("glow-or-gradient") ? Math.min(weighted, GLOW_OVERALL_CAP) : weighted;
   const top = [...findings].sort((a, b) => b.severity - a.severity).slice(0, TOP_FINDINGS).map(formatFinding);
-  return { overall, scores, top };
+  const caps = CAPPING_TAGS.filter(tagged);
+  return { overall, scores, top, caps };
 }

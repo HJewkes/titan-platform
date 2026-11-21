@@ -9,6 +9,7 @@ import { listenerCommand } from "./listener-cli.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
+import { sheetCommand } from "./eval-sheet-cli.js";
 import { migrateSpike } from "./migrate.js";
 import { skippedSpineChecks } from "./lint-spine.js";
 import { vettableSentences } from "./lint-voice.js";
@@ -174,6 +175,7 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
     .addCommand(itemsCommand(deps, onResult))
     .addCommand(listenerCommand(deps, onResult))
     .addCommand(smokeCommand(deps, onResult))
+    .addCommand(sheetCommand(deps, onResult))
     .addCommand(calibrateCommand(onResult))
     .addCommand(writingCalibrateCommand(onResult))
     .addCommand(writingCommand(deps, onResult));
