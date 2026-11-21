@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import { relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { JudgeCall, JudgeHarness, JudgeReply } from "./eval-harness.js";
 import { CRITIQUE_PASSES } from "./sheet-critique.js";
@@ -94,6 +97,18 @@ describe("runSheetCritique", () => {
 
     expect(result).toEqual({ ok: false, judge: "claude-print:opus", reason: "hierarchy call failed: runtime_error: budget", spend: { usd: 0.12, tokensIn: 14000, tokensOut: 400 } });
     expect(calls).toHaveLength(2);
+  });
+
+  it("the canary still ships in the published package", async () => {
+    const calls: JudgeCall<unknown>[] = [];
+    const packageDir = fileURLToPath(new URL("..", import.meta.url));
+    const { files } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { files: string[] };
+
+    await runSheetCritique(input(fakeHarness(catchesCanary, calls)));
+
+    const canary = calls[4]!.images![0]!;
+    expect(existsSync(canary)).toBe(true);
+    expect(files.some((entry) => `${relative(packageDir, canary)}/`.startsWith(`${entry}/`))).toBe(true);
   });
 
   it("refuses a judge that is the script model", async () => {

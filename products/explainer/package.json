@@ -16,6 +16,7 @@
     "doctrine",
     "stage-bumps",
     "rubrics",
+    "fixtures/sheet-critique",
     "README.md"
   ],
   "author": "Henry Jewkes",
