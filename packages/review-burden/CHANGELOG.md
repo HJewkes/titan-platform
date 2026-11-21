@@ -1,5 +1,17 @@
 # @titan-design/review-burden
 
+## 0.2.0
+
+### Minor Changes
+
+- 29b3b5f: `detectRenames` now reads `git diff -z`, so renames of non-ASCII paths carry their real path instead of a quoted one. `RenamePair.similarity` is removed. review-burden exports `parseNameStatus`.
+
+### Patch Changes
+
+- Updated dependencies [b937077]
+- Updated dependencies [3d19ff3]
+  - @titan-design/fix-proof@0.9.1
+
 ## 0.1.0
 
 ### Minor Changes

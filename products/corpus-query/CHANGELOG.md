@@ -1,5 +1,33 @@
 # @titan-design/corpus-query
 
+## 0.1.2
+
+### Patch Changes
+
+- b73c802: Throw from `readPassage` when a corpus file was truncated or edited after indexing, instead of returning padded or wrong text.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- Updated dependencies [3fe2120]
+- Updated dependencies [81668be]
+- Updated dependencies [8a69e02]
+- Updated dependencies [beff4cb]
+- Updated dependencies [bd68bea]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [efa6e58]
+- Updated dependencies [f34bb79]
+  - @titan-design/agent@0.8.0
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/workflow@0.15.1
+  - @titan-design/evidence@0.6.0
+  - @titan-design/hitl@0.10.2
+
 ## 0.1.1
 
 ### Patch Changes

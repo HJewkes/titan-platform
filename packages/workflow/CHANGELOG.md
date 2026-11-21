@@ -1,5 +1,27 @@
 # @titan-design/workflow
 
+## 0.15.1
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- efa6e58: `WorkflowRuntime.cancel(..., { abandon: true })` now emits a `step_abandoned` event for each in-flight step it drops, before `workflow_cancelled`, so the dropped steps stay on record once the run's `activeSteps` are cleared.
+- f34bb79: `WorkflowRuntime.shutdown()` now stops admission: `hydrate()` returns nothing and `start()` leaves its row unclaimed afterwards, and a hydrate still reconciling when shutdown lands releases the run instead of launching it. `quiesced()` still reports only `quiesce()`.
+- Updated dependencies [3fe2120]
+- Updated dependencies [81668be]
+- Updated dependencies [beff4cb]
+- Updated dependencies [bd68bea]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+- Updated dependencies [3d19ff3]
+  - @titan-design/agent@0.8.0
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/hitl@0.10.2
+
 ## 0.15.0
 
 ### Minor Changes

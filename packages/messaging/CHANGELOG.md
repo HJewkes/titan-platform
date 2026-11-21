@@ -1,5 +1,12 @@
 # @titan-design/messaging
 
+## 0.5.1
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.5.0
 
 ### Minor Changes

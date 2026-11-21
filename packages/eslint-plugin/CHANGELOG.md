@@ -1,5 +1,15 @@
 # @titan-design/eslint-plugin
 
+## 0.5.0
+
+### Minor Changes
+
+- 36b177c: Every rule now names the review-finding class keys it catches in `meta.docs.classes`, so a review step can skip a class a lint rule already covers. The exported rules are typed as `Rule.RuleModule` plus that field.
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @titan-design/anthropic-account
 
+## 0.5.0
+
+### Minor Changes
+
+- 5c8299f: Export `profilesRoot(env, home)` from `@titan-design/anthropic-account/node` as the single resolver of the Claude profiles root, and use it in active-work, factory context-audit, session-miner friction transcripts and the titan config report. `CLAUDE_PROFILE_ROOT` now applies to all of them; a relative value is ignored.
+
+### Patch Changes
+
+- a411d70: Report a credentials file left by a timed-out sign-in (empty tokens, zero expiry, a `loginEnded` reason) as `logged out (time_limit)` instead of `login refused (malformed)`. `LoginState` gains a `logged-out` variant carrying the reason; truly bad files still read as malformed.
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.4.1
 
 ### Patch Changes

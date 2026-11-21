@@ -1,5 +1,169 @@
 # @titan-design/factory
 
+## 0.29.0
+
+### Minor Changes
+
+- 44e5516: An owner's `merge` at a ci-policy-weakened (D21) land gate now follows clean merge-ups to the next land gate (556(3), TP-4811). It follows only Shepherd's own merge-up: the head's tree equals the approved head merged with a base commit, there is no fix commit, and the base side brings no carry-fenced path and no repo skill. The next gate must also be a D21 gate whose marker names no other owner-at-head row, with the same CI-policy finding (the card's weakened keys). Any other head asks the owner again. So do skill-path, files-unread and ci-policy-malformed gates, a kind that follows nothing, and a D21 gate with no card.
+- 078ae3a: Add the `delete-branch` owner op (`{kind, repo, branch, tipSha}`) and its factory effect (TP-3623). The factory re-reads every check before it deletes: a managed repo (`shepherd.repos`), a valid branch name under an allowed prefix (`shepherd.consoleAnswers.branchPrefixes`, default `scratch/`), not the default branch, not protected, no open PR on or into it, no live Shepherd run on it and no agent on its own `agent-chat/<name>` branch. A tip that moved answers `moved`. The op maps to `destructive-remote`, whose owner-remote row denies it, so the console cannot run it until the authority table says otherwise. The console pins no PR for an op that names none.
+- 3e06a72: Route reviewer follow-ups below medium severity to a weekly digest instead of the task list. Shepherd's `sh-follow-ups` step and `shepherd follow-ups` still file medium and high follow-ups as tasks. Low ones become rows in `<active-work root>/<initiative>/sources/follow-up-digest.jsonl`, and the step result lists them under `digested`. Each write to the digest drops rows older than 4 weeks unless they carry `promoted`. `shepherd follow-ups` files nothing for a PR whose Shepherd run stopped and prints `skipped: "stopped"`. If it cannot read Shepherd's runs, it files nothing and exits 69.
+- c585b81: Add the read command `shepherd.ownerMeter({week})`: for one ISO week it returns runs merged, merged runs that held an owner-resolved gate, their share, and owner resolves split into owner-terminal and owner-remote. A delegate's resolve under a grant is not counted as the owner's.
+- f0c8ca4: Add `shepherd stats --nits`: per ISO week, the share of kept verdict text under Nit, Pre-existing or cosmetic headings and the low-severity cosmetic follow-ups filed, with before and after rows for the nit policy.
+- 767fc06: Shepherd: under `shepherd.gateReset.twoMergeRelease: on`, a `g10-adversary` hold now releases itself on the adversary member's clean verdict at the PR's head: a MERGE whose `Authority:` line reads `unchanged` or `tightened`, with required CI green and no change to the owner's rule file. The correctness MERGE and the lineage check are no longer read for the hold; a FIX_FIRST, a `widened` line or a missing line keeps the hold for the owner. A panel that withholds its verdict still records the adversary's MERGE so it can release the hold. The release event's actor is `shepherd:verdict:<agentId>/<sessionId>`, and a `g10-review` hold the release uncovers is judged at once on the opus MERGE in hand. A changesets Version Packages PR on `changeset-release/main`, pushed there by the `shepherd.releaseAppLogin` App, whose diff is version-only (release files only, manifests changing only versions and bumped ranges) takes no G10 touch hold.
+- 9353f86: Add the `host-command` owner op (TP-5265): a deposit may name one vetted owner-only host command by id, starting with `broker-restart-window`, and never a path or argument. The factory's effect starts the vetted script beside the installed agent-chat CLI as a transient `systemd-run --user` unit, outside any agent session's process tree. The op sits under `destructive-local`, which denies owner-remote, until the owner picks its authority row.
+- c7bd865: `shepherd freeze` and an `unfreeze` that lifted a freeze now append `repo-freeze` and `repo-unfreeze` rows to the Shepherd timeline, with no run, the repo, the actor and the reason. The kinds arrive in migration 55; the freeze and thaw kinds and the SLO freeze-hours pairing are unchanged. `shepherd unfreeze` now records the caller as actor.
+- e12a413: Ship Shepherd's reviewer reader as the `@titan-design/factory/shepherd/reviewer-reader` subpath export, so `pnpm smoke:reviewer` reads transcripts through the real `finishedTurnMessages` instead of a hand-written mirror (TP-5808).
+- 21450df: Add the dispatcher shadow's ready-stock trigger (TP-5964). A rule-file lane may set `floor` and `coordinator`. After each `dispatch shadow-tick`, a floored lane's dispatchable tasks are counted by the work-supply census rule (open, `brief:ready`, and no owner, needs-decision, parked, blocked, plan-first or superseded class). Below the floor, the tick sends one refill request with the count and the floor to the lane's coordinator, or to `compare.operator` when it names none, at most once per lane per UTC day (`<shadow dir>/refill/<day>.jsonl`). Floors are absent by default, so the change is inert until a rule file sets them.
+- e61d9bb: Add the factory-config-set owner op effect (TP-6301). A console tap sets one live editable factory config row only while the file still holds the op's `expectFrom` (a hand edit answers `moved`), refuses a path or value the editable rows reject and a result the config schema rejects, then keeps a `config.json.bak-console-<tag>` backup, replaces the file through a temp file, fsync and rename, appends `config.revisions.jsonl`, reloads the config ref and answers with the value serve now reads.
+- c28e4aa: Complete the shadow dispatcher's selection policy (TP-5761, TP-5755 S3). The rule file's `relax` (`bet-field`, `no-fold`, `no-owner-steps`) and `intake` (`minSeverity`, default `medium`; `expireDays`, default 28) keys are now schema fields. `dispatch shadow-tick` judges each lane under that policy: agent-filed work below the minimum severity, filed from a PR whose Shepherd run stopped, or unpromoted past the expiry is refused, as is a task serving another outcome than its bet's, a bet whose outcome is retired, and a task with `blocked_on`. Incidents are never refused by intake. A relaxed pass carries `relaxed` and the strict `strict_codes` on its row. When the active-work daemon answers `plan.*` with Unknown command, the tick reads the plan store's files instead and the wake row says `plan_read: "file"`; any other plan read failure still fails the lane closed. A lane whose initiative active-work withholds from agents (its `inventory` `withheld_from_agents` verdict) writes one `owner-only-initiative` row and reads none of its tasks; an unread inventory fails every lane closed. `dispatch eligible` output is unchanged.
+- 1ecdcd7: Add the dispatcher shadow's upkeep cap (TP-5755 S4): the share of upkeep files among all files the lane's PRs changed in the last `upkeep.windowDays` (7), classed by the checked-in `eligibility/upkeep-paths.json`. At `upkeep.capShare` (0.25) or more, `upkeep-cap` holds tasks tagged `class: upkeep` and untagged tasks whose bet serves one of `upkeep.factoryOutcomes`; product tasks are never held. Changed paths come from `gh api` reads cached in `<shadow.dir>/../cache/pr-files.json`; an unread share holds upkeep tasks.
+- ba41fe3: Read phase-2 bet sheets in the shadow dispatcher (TP-5765, TP-5755 S7). `dispatch sheets check` parses each `titan-bet-sheet/v1` file in the sheet dir (front matter, one `outcome` block, `bet` blocks in proposed order), checks each bet's cites against its intent digest, and prints one line per sheet, exiting non-zero on any error. `dispatch sheets import --dry-run` prints the `plan.outcome.add` and `plan.bet.add` calls a sheet would make; `--apply` makes them over active-work rpc, which write a draft outcome and proposed bets only, and exits 69 when the daemon has no plan commands. The rule file's new `bets` key (`source`: `selected` or `selected-then-sheet`, `sheetDir`, `digestDir`, `sheetWeek`) lets `dispatch shadow-tick` judge a lane with no selected bet this week against its sheet's proposed bets, labelled `basis: "proposed-sheet"` (and `sheet_week` when the week is pinned). A sheet that does not parse refuses its lane with one `sheet-unreadable` row.
+- 8622e6d: Add the landed rules to the shadow dispatcher (TP-5763, TP-5755 S5). A lane task whose PR merged but whose task is still open with a `restart`, `config`, `release`, `publish` or `credential` owner step now counts as `merged-not-switched-on` against the lane's open-PR limit, beside the open and merged-not-deployed counts; a `sitting`-only step does not, and a done task frees its slot. When the lane's filing flow is paused, an agent-filed task created in a paused week is refused as `filing-paused`; an owner-filed task never is. Rows carry `numbers: {open, mergedNotDeployed, mergedNotSwitchedOn, limit}`. `dispatch eligible` output is unchanged.
+
+### Patch Changes
+
+- 61a7e30: An accepted verdict carries the reviewer's Check-candidates: `checkCandidatesFields(text)` returns `checkCandidates` and `checkCandidatesWarning`, which `acceptVerdict` and Shepherd's external-review acceptor spread on MERGE and FIX_FIRST alike. The verdict never reads them.
+- e11e750: An adversary fix round gets a focus section (TP-6412). Given a usable fix-round scope, `shapeBrief("adversary", …)` adds a
+  section that points at the change since the last reviewed head, its line ranges, and the open findings, while the brief
+  still reads the whole PR's diff and carries no unchanged-line rule. Every other member's brief still drops the scope.
+  Under `shepherd.review.scopedRereview: on`, Shepherd passes the scope to the adversary member only, and records its
+  `sh-review` result as `scopeFocus: true` rather than `scoped`. Under `shadow` and `off` the adversary brief is unchanged.
+- 0de5073: An adversary Authority label glued to an identifier character is still a reading (TP-6624). `Authority-gate: widened` and
+  `Authority_level: widened` read widened, and any other line whose fold starts `authority` (`Authority-widens: ...`, an
+  `authorityLevel` lead) reads malformed, so it can never sit beside `Authority: unchanged` unread. session-read exports
+  `foldLabelledLine`; its CI-policy reading does not change. Factory bumps `sh-await-verdict`, whose output changes for such
+  replies.
+- 4d349a1: Bump the `sh-await-verdict` step version, because its `authority_missing` refusal now carries `quotes` naming the prose line that starts with Authority, and bump the `ci-wait` step version, because its import closure moved through review-panel and no review attested its behaviour unchanged; refresh the closure lock (TP-6608).
+- 35cd366: `behindMain` counts every main commit behind a `-dirty` build instead of clearing the ones outside the factory closure, since a dirty build may hold uncommitted closure edits.
+- bd68bea: Bump the `ci-wait`, `merge` and `sh-await-verdict` step versions, because their import closures moved with `canonicalJson` and no review attested their behaviour unchanged; refresh the closure lock.
+- 09202cd: A fixer's await-new-head wait now ends when a shepherd review is asked at the same head, so the next land round takes the ask instead of staying parked.
+- 5890f1f: `context-audit` counts the last usage line of a response written over several transcript lines, so its output tokens and API-equivalent USD no longer undercount.
+- 566389c: Shepherd's flake check reads the failing test files from the checked vitest section of a job log, so an Unhandled Errors log, a tail cut before the banner, or a non-vitest red no longer reads as outside the PR's diff.
+- c50ae12: Test-only: the gone-elsewhere RESYNC timeout test fires an injected read timer by hand instead of faking global timers.
+- 52d3f4f: Read the bet-sheet plan through the shared plan hook in the eligibility reader instead of a private copy. No behaviour change.
+- 49b8e79: `shepherd stats --reviews` reads retire costs from active-work's real root, including the macOS Application Support directory, by resolving it through `activeWorkRoot`.
+- 16238be: Shepherd register now records a gate-cancel event on the new run when it supersedes a replay-diverged run that had a pending gate, naming the old run, the gate's step and the new run.
+- 09cb59b: Show only changed pr-visual pairs in the weekly visual round and count the unchanged ones in the packet line.
+- afe4c80: `shepherd register` hints at `--kind feature` or `refactor` when a fix-proof kind is registered on a workflow-only diff, because a workflow-ci fix-proof is NO_REPRO unless a required check is red at the merge base and the kind cannot leave the fix-proof kinds later.
+- 14d8262: Shepherd: a changed-files read that threw at merge time (a rate-limit 403, a 5xx) no longer parks an owner approve-merge gate. Land waits at the head with the settle backoff and re-reads the evidence; past the 20-minute bound the seat is told once and the wait goes on. A truncated list still gates the owner at once, and unread files never merge (TP-6758).
+- a1be27a: Write one freeze per plan-freeze-set tap under concurrent posts and crash replay: the set checks the plan store for the tap's own earlier freeze under the plan lock (TP-5624).
+- fffd80d: An adversary MERGE at the head that names no `Attests:` token for a claimed step now reads `adversary-declined`, not `adversary-missing`, and gets the one implementer send-back a correctness decline gets, with a brief naming the adversary. No adversary verdict at all still gates the owner on `adversary-missing` (TP-5902).
+- 893d4e7: Land carries an owner's approve-merge approval to a head update-branch moved to only when that head is a clean merge-up
+  of the approved head: its first parent the approved head, its second on the base branch, and its tree git's clean
+  merge-tree of the two (TP-6006). A two-parent push with any other tree, or a failed read, asks approve-merge again. The
+  fake GitHub's update-branch commits now carry that merge tree, and `fake.cleanMergeTree` answers it.
+- e3c12b6: `shepherd visual-feedback-notes` now takes a lock in the state dir, so a second sweep started while one runs exits 75 instead of filing the same notes again. Each note's key is written to the ledger before `active-work task add` runs and taken back if the add fails, so a failed ledger write no longer leads the next sweep to file the note a second time (TP-5483).
+- ca0d4af: Make the shadow dispatcher fence test follow local imports transitively, with a ratchet allowlist of the edges TP-6157 removes, and move `activeWorkOrigin` to its own module so fenced files no longer pull in the launch-capable cleanup ports.
+- 7c4d91e: `dispatch sheets import --apply` reads the plan store first and skips the outcome and bets it already holds, so a re-run or a run after a partial import adds only what is missing (TP-5877).
+- 90d451b: Shepherd stops a draft pull request with the reason `draft`, not `not-mergeable`, and a repeat registration restarts a run that stopped `draft` once the PR is ready.
+- 6faa297: Shepherd's three npm readers share one `registryGet` helper that applies the registry timeout and the 404/non-ok rule. `npmVersionRegistry` no longer hangs on a stalled registry (TP-5944).
+- 27fc142: Shepherd carries a generated-only remerge only while the base still requires the check that content-diffs the generated files (`validate` for titan-platform); otherwise the approval and review carries re-gate.
+- e2c474f: Count a merged task that awaits both deploy and switch-on once, as merged-not-deployed, in the dispatcher shadow landed signals (TP-5866).
+- 56c2eb0: Bound single-reviewer not-started retries in the run itself (TP-5386). From the `MAX_NOT_STARTED_REVIEWS`th review dispatch at one head that starts no reviewer, the run takes the existing `no-reviewer` hold and alerts the seat instead of retrying again; before, only the status view read the streak as stalled. A replayed record that went on without the hold keeps its recorded retry, and a not-started review intent (a slow roster) is unchanged.
+- ddf6384: Refuse a `plan-bet-select` owner op that names a bet of another initiative, and show such a bet as missing in the console read-back (TP-5620).
+- 06d9681: An owner-tier merge gate's reason also names any CI-policy, attest, old-path or required-checks row that would gate after it, so the owner approves once (TP-5741).
+- 5c8299f: Export `profilesRoot(env, home)` from `@titan-design/anthropic-account/node` as the single resolver of the Claude profiles root, and use it in active-work, factory context-audit, session-miner friction transcripts and the titan config report. `CLAUDE_PROFILE_ROOT` now applies to all of them; a relative value is ignored.
+- 83085b6: Parse the plan-round drift diff with the shared git-pr-files parser instead of a second copy (TP-5799).
+- 281f4c0: Route the diverged-run sweep's owner-answer merge through the land loop's merge guard, so a frozen, released, g10-held or out-of-order PR stays parked with its reason on the run timeline.
+- d4d1325: Add tests pinning the approved-set carry refusals.
+- fac0cbd: Refuse ensureBranch, putFile, setPrBase, mergeIntoBranch and openPr for an advisory repo, so no branch or PR write of Shepherd's port reaches it. Factory build keeps the unguarded port, so on an advisory repo it still creates its branch and opens a PR for the owner to merge.
+- e5d8d29: Export `consoleInboxDir` and `scorecardStorePath` from app-paths and use them in place of the per-product copies (TP-5809). The console inbox spool now expands a leading `~` in `TITAN_CONSOLE_STATE` in yt-scout, and the factory's eligibility check expands a `~` in `TITAN_SCORECARD_STORE`; the other resolutions are unchanged.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- d25e61e: Stop emitting `agent_visible` from `inventory` and `task.keys` (TP-5830). Every reader now takes the `withheld_from_agents` verdict, and `task.keys` rows carry it; the shepherd's task-ref reads a missing verdict as withheld.
+- b0da47b: `dispatch shadow-tick` rebuilds lane visibility from the initiative brief and the charter, through pm's `agentAccess`, when every row of the active-work daemon's `inventory` answer lacks `withheld_from_agents` (an older daemon), instead of refusing every lane as owner-only (TP-5868). An unreadable brief or charter withholds; a mixed, empty or failed answer still fails closed. The wake row carries `visibility_read: "rpc" | "file"`.
+- 92a09f1: Record each changed merge-wait reason as a `merge-wait` Shepherd event, so `shepherd timeline` shows what a merge waits on (TP-5881).
+- 8e1e9b8: Recording a merge-wait timeline row is best-effort (TP-5888): a store error such as SQLITE_BUSY is logged with the PR and no longer fails a held merge step.
+- 5c1ec88: Merge facts no longer read a no-op `edited` fix-proof run's skips over the completed real run at the same head, so a title or body edit after push stops failing `required-contexts-green`. A red real run stays red, and any other skip still gates.
+- f9f8cf2: Give the tests review member the same one correction turn as the adversary when its verdict is malformed (TP-5904).
+- 88c2aff: Seed the reviewer question bank with a README behaviour-claim question and a workflow-run provenance question, each selected by changed path (TP-6477).
+- 74c6f54: Add the `check_candidates` table (migration 54) and `shepherd.checkCandidates` (`off`, `record` or `propose`, default `record`). A row holds one class at one head of one PR, with each reviewer member's own verdict and every locator; `confirm` marks named heads and `since` lists rows by date. Nothing writes or gates on the table yet.
+- f51cd69: Shepherd records a reviewer's Check-candidates in a new `sh-check-candidates` step, after `sh-follow-ups`, for a MERGE or a FIX_FIRST and for each panel member. Each candidate becomes one `check_candidates` row with the member (panel shape, reviewer agent id and its own verdict) and the PR's area: the `packages/<x>` or `products/<x>` dir, else the first path segment, with the most changed lines. The step never throws and never changes the verdict; it reads `shepherd.checkCandidates` in its body, so `off` records `skipped: "off"` and writes nothing. A verdict with no block records no step, and a ledger recorded before the step existed replays without it.
+- d0b9edf: GitHubPort gains `refActivity`, a branch's repository activity with the account that made each push. Shepherd keeps and carries the owner's release approve-merge answer only to a head that the configured `shepherd.releaseAppLogin` (a `[bot]` login) pushed. It also counts an added CHANGELOG.md as a release file only when the package.json beside it is modified (TP-5606).
+- 609473f: Count a lane merge inside the 20-minute deploy grace as merged-not-deployed (TP-5667). The deploy block now carries `waitingSince`, the time of the oldest ask or origin/main commit the running build lacks, and the dispatcher cuts off at that instead of waiting for a commit to age past the grace.
+- 7b1d6c4: Shepherd no longer freezes a repo's other merges behind a ready Version Packages PR that is itself held, since a held release cannot land first. A merge step that waits on a hold now names its reason on the console, once for each new reason.
+- 67034bd: An unreadable seat reviewer that no registration ties to any PR no longer holds every registered PR forever (TP-2886). Once every roster row of its name is exited or deregistered and its newest write is at least 4 hours old, the seat check clears with a warning naming it. Until then it still blocks with a retry, and the reason names the reviewer, `agent-chat agent retire <name>` and the age-out time, or why it never ages out (a row still running, or no write time). Transient read failures and reviewers tied to this PR are unchanged.
+- 682332e: A visual approve-merge gate reaches the owner only when there is something to look at (TP-6776). Before the gate opens,
+  the `sh-visual-packet` step reads the head's `pr-visual` check run and, for a successful run, the frame count in its
+  artifact's manifest. A run that concluded failure, timed_out, cancelled or startup_failure, or a success with zero frames,
+  records `visual-run-empty` with its reason, spawns no packager, and tells the run's seat (`visual-empty` notice); the run
+  waits for a new head and no owner gate opens. A notice that cannot go out opens the gate with a "Nothing to look at" line.
+  A pending run, no run, or an unread frame count opens the gate as before.
+- 8802d0e: Shepherd: a fix-round wake now waits out spawn-gate deferrals for 3 hours, as long as a queued review does, instead of failing at 30 minutes.
+- Updated dependencies [61a7e30]
+- Updated dependencies [e11e750]
+- Updated dependencies [d8294fb]
+- Updated dependencies [3fe2120]
+- Updated dependencies [8a69e02]
+- Updated dependencies [0de5073]
+- Updated dependencies [4d349a1]
+- Updated dependencies [beff4cb]
+- Updated dependencies [66eef82]
+- Updated dependencies [838103e]
+- Updated dependencies [29b3b5f]
+- Updated dependencies [f012a1b]
+- Updated dependencies [e114f17]
+- Updated dependencies [078ae3a]
+- Updated dependencies [ecdddab]
+- Updated dependencies [25f5d83]
+- Updated dependencies [893d4e7]
+- Updated dependencies [73cd2ea]
+- Updated dependencies [9353f86]
+- Updated dependencies [8231dca]
+- Updated dependencies [d77960e]
+- Updated dependencies [8286432]
+- Updated dependencies [dc4eb2c]
+- Updated dependencies [8fb9ab8]
+- Updated dependencies [4ed6420]
+- Updated dependencies [bbe129b]
+- Updated dependencies [62066a3]
+- Updated dependencies [07e7f6d]
+- Updated dependencies [13c9b1c]
+- Updated dependencies [ff39530]
+- Updated dependencies [a56d49d]
+- Updated dependencies [dcfbadd]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [a411d70]
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [5c8299f]
+- Updated dependencies [c759bad]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+- Updated dependencies [07330ed]
+- Updated dependencies [d0b9edf]
+- Updated dependencies [0cc16f2]
+- Updated dependencies [efa6e58]
+- Updated dependencies [f34bb79]
+  - @titan-design/review-panel@0.10.0
+  - @titan-design/agent-dispatch@0.11.0
+  - @titan-design/agent@0.8.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/code-graph@0.20.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/owner-queue@0.9.0
+  - @titan-design/github@0.14.0
+  - @titan-design/pm@0.12.0
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/anthropic-account@0.5.0
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/rpc-client@0.4.3
+  - @titan-design/workflow@0.15.1
+  - @titan-design/evidence@0.6.0
+  - @titan-design/coordinator@0.7.4
+  - @titan-design/hitl@0.10.2
+  - @titan-design/review-workflow@0.2.0
+  - @titan-design/dispatch-ledger@0.1.2
+  - @titan-design/health@0.2.2
+
 ## 0.28.0
 
 ### Minor Changes

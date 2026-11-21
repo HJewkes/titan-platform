@@ -1,5 +1,157 @@
 # @titan-design/explainer
 
+## 0.4.0
+
+### Minor Changes
+
+- d7e0bf5: Let a PR decision-brief run go through render and export with `explainer pr trigger --through export`. The default stop stays at the audition.
+- 20797aa: Add the explainer audio library: `explainer audio import|gen|list`, an append-only `explainer.audio-ledger/v1`
+  ledger (`LedgerEntrySchema`, `importAudio`, `readLedger`) whose import normalises each file to 48 kHz mono WAV and
+  measures its loudness through ffmpeg, accepts only generated-own and CC0-1.0, and skips a file it already holds;
+  plus a seeded procedural generator (`generateBed`, `generateSfx`) for a looping pad bed and click, pop, whoosh,
+  chime and riser SFX.
+- f9f48a6: Add pure audio-mix functions: speech intervals and a ducking gain envelope, SFX placement on cue words with a 0.25 s spacing guard, and 48 kHz voice laying, bed looping with a 2 s crossfade, edge fades and track summing.
+- e9192c8: Add `cameraMotionRows(track, limits, shakes?)`: `camera:velocity` and `camera:jerk` rows that name the times a sampled camera track's frame-normalised centre or zoom speed, or its jerk, passes a limit, outside declared shake windows.
+- 61b0c75: Add the camera-path check to L0 (TP-5887). `cameraPathFromMap` samples a compiled map track into a camera track with its key boxes and reveal windows, and `cameraPathRows` reports `camera:velocity`, `camera:jerk`, `camera:key-in-frame` and `camera:seen-before-reveal` through the existing camera rows. Thresholds, severities, the sample multiple and the assumed smootherstep easing live in `doctrine/qa/camera-path.yaml`. Every row is a warning, and `runL0` takes the camera input as an optional sixth argument; without it the rows stay dormant.
+- f3e4228: Add a J13 "sounds spoken" row to the cold-viewer rubric, reported only, with a written-register canary.
+- dbb4790: Add `explainer daily`, which runs the closed UTC day's daily-overview digest from gather on a $6 cap.
+- 936892e: Let `explainer run --day` take `yesterday` (the previous UTC date), and print a stderr note when `--facts-from gatherDaily` reads the current, unclosed UTC day.
+- 99a4af2: `explainer eval l0 --camera-track <file>` reads an `explainer.camera-track/v1` file and runs the four `camera:*` rows on it. `readCameraTrack` parses the file strictly into the camera-path input. Without the flag nothing changes.
+- 5695108: Add `fileCards`, which builds a file card for each map file from code-read's `node.get` (loc, fan-in, fan-out with percentile and delta). A file the map folded into a `+N more` box gets no card and a `W-CARD-PRUNED` warning.
+- 867fce6: Draw the finding-card kind on the composition page through ListFrame: severity sets the row's mark, status and round form the chip.
+- 4eef97a: `eval writing` quotes the offending sentences, at most three with their beat, on each failing hallmark row, and `--json` carries them as `spans` on every gate row.
+- 8057b71: Refuse a run whose judge model is the script model, and default the judge to a Codex model so the reviewer is not the writer.
+- d64e03d: Report decorative gradients (more than one) and glow effects in a custom layer as a layer-build note; the layer still builds.
+- a25ce3a: Reject audition spines whose block seconds miss the profile's runtime band or whose sentence lacks a contrastive and a consequential turn, so the sampler's retry names them.
+- 0961671: Accept `plate: true` on a timeline beat; the composition page leaves that beat's stage background transparent.
+- 3fd90b3: Add `explainer plate-cues`, which exports each beat's cue seconds as `explainer.plate-cues/v1` for plate authors and checks a plate log against them within one frame.
+- fb9f4a5: Add a repeatable `--visual-path <glob>` option to `explainer pr trigger`. With it the trigger also starts a decision brief for every open, non-draft PR whose changed files match a glob, read from `titan-factory shepherd prs --json` and `gh pr diff --name-only`, so a visual PR gets its video without an owner hold.
+- cbfbf80: Draw the proof beat: a command line and one row per check, each with a StateChip that turns from its base to its head state on the row's cue.
+- 6909548: Relax Q-V9 per owner round tp5721-qv9-sentence-length-r1: a sentence over the human 99th percentile (62 words) is an L0 error, and one of 26 to 62 words fails only when speech-vet runs and finds it unclean to speak, passing pending a hand vet otherwise. Both caps now live in `doctrine/writing-gate.json` `sentence-cap` (TP-5721 S3).
+- 4cb338c: The rewrite plan directs hallmark-flagged sentences as cuts: `hallmarkHits` lists each naming-refrain, teaser, label-first and colon-tricolon sentence with its beat and row, `BeatDirective.cuts` carries them while the matching hallmark row fails, and the rewrite prompt tells the model to delete each quoted sentence or fold it into a neighbour, never reword it.
+- dd4ea1b: Add `explainer runs`: lists every explainer-video run, newest first, with its own cost and wall time and the share of runs that have per-stage cost and runtime (TP-6185).
+- 955ae44: The composition page draws the metrics-panel and scorecard beat kinds as a table (TP-6329). Each slot row is a table row carrying its reveal id and landing on its cue; a metrics row with no target draws no target cell, and a scorecard row shows its reason beside its call. The kinds fixture gains one hand-written beat per kind.
+- a485827: Give the script stage guide the writing lab's long-line and style-rules blocks, and replace the one-idea-per-sentence advice with length that follows the step of reasoning.
+- 7b7227b: Add `critiqueScore`: weighted contact-sheet critique scoring with hard caps and located top findings (TP-6275).
+- 7e87869: Report measured speech rate as two reported qa check rows: `speech-rate-overall` fails outside the 150-190 wpm band and `speech-rate-beats` names beats over 250 wpm. A qa.json with no speech rate passes as "not measured".
+- f9e8d81: Add `statCards`, which builds a stat card for each package box on the map from code-read's `packages.stats` (file count, internal, incoming and outgoing edges, cohesion, instability). A row whose package has no box on the map gets no card and a `W-CARD-PRUNED` warning.
+- 19ded17: Expand a literal `{day}` in a bridge's `theater.dir` to the run's gather day, so each daily exports to its own folder instead of replacing the last one's video. A `{day}` bridge for a run with no gather day is refused, naming `--theater`, and an explicit `--theater` still wins.
+- 8d11eca: Draw a verdict card's call as a ship, fix or avoid toned chip beside its heading, and drop the duplicated call prefix from the heading.
+- 21b1538: Add `foldVideoReport` and `explainer run report --video <videoId>`: fold every run of a video into one cost report by run, stage and step, with `costUnknown` carried up and no file written (TP-6326).
+- 49662da: `JudgeCall` takes an optional `images` list, and `createJudgeHarness` forwards it to both the claude-print and codex judges.
+- e70488a: Add `runSheetCritique`, the image judge for contact sheets (TP-5886). It runs the four critique passes in a fixed order with every chapter sheet attached, voids and counts any finding that names no cell in `cells.json`, and sends a fifth canary call with a planted glow still. A run whose judge misses the glow is marked untrusted. The surviving findings feed `critiqueScore`. `SHEET_JUDGE` is claude-print opus with `max_budget_usd` 0.5 per call, and the run refuses a judge that is the script model. The rubric is `rubrics/sheet-critique.md`. `CAP_TAGS` is now exported.
+- a1de634: Render sidecars (TP-2997). The render stage writes the script's chapters, the tts voice block and each stage's
+  StepUsage (cost and wall time, from the run's stage records, with render's own row on the injected clock) into
+  `render-manifest.json`. Chapters tile the video: the first opens at 0 and each ends where the next opens.
+  frame-capture exports `stills()`, true-size PNGs of one page at chosen seconds, taken in time order on one page.
+- 3b1fd21: Add `explainer eval writing --judge <config>` (TP-5721): a hallmark-judge call and a term-extractor call, with
+  verbatim-quote checks and a canary, add `writing:hallmark-marks` (an error over 28 per 1,000 words, a warning over
+  20), `writing:words-per-term` (a warning under 60) and `writing:terms-first-400` (report-only). Thresholds live in
+  the `judged` block of `doctrine/writing-gate.json`; a failed call or an unmarked canary leaves the rows unmeasured,
+  and an unmeasured hallmark row fails the verdict.
+- f4c4b05: Add the writing gate and hallmark rows (TP-5721). `eval l0` gains Q-V16 (`writing:short-register`, an error),
+  Q-V17 (one `hallmark:*` row per deterministic tell; the naming refrain is an error, the rest warnings) and Q-V18
+  (`hallmark:named-before-defined`, an error). `eval writing` prints the same rows below the calibrated ones, and an
+  error row fails its verdict. Thresholds and severities live in `doctrine/writing-gate.json`, which also makes
+  `phrases` and `variety:connector-share` report-only.
+- d30fde1: Add the L0 warning row Q-V19:term-spoken-shown: a term a beat declares in new_terms must be spoken in that beat, shown in its labels or chips, and cued within a second of its first spoken word.
+- 00754e7: Add the report-only L0 row hallmark:motivated-before-named: the count of declared new_terms first spoken before 20 planned seconds of their chapter have passed.
+
+### Patch Changes
+
+- 52aa8ca: Sheet-critique cap tags use a closed vocabulary. `critiqueScore` normalises near-miss spellings such as `glow` and `gradient` to `glow-or-gradient`, so a judge's loose wording no longer slips past the 6.5 overall cap. An unknown tag stays on the finding and never triggers a cap.
+- 6f922b2: Add `explainer ab --ar-result`, which runs the script stage per stored case and repeat and prints one `ar-result/v2` line each, stopping before a run that would pass `--max-usd`, and rename the L0 violation count `l0_error_rows` (TP-6305).
+- 76af9d2: Add `arResultFor`, which maps one script-stage case run to an `ar-result/v2` line with the cold, rewrite, pace and cost guard metrics, the L0 gate and the violation counts (TP-6269).
+- a5960ac: Add `keyBoxRows` and `revealRows`, which check a camera track: a key box must stay in the frame above the caption band while it is in play (`camera:key-in-frame`), and a reveal object must not be wholly framed before its cue (`camera:seen-before-reveal`) (TP-6319).
+- 060a161: Share one `CameraSample` (`{ t, box }`) between the camera motion and framing rows, and export `keyBoxRows` and `revealRows`. Framing callers that passed `{ t, camera }` samples now pass `{ t, box }`; the rows are unchanged.
+- 0d6edb2: Show per-stage check verdict changes (flipped, added, removed) in `run report --compare`, in the table and the `--json` compare rows.
+- 0b953ea: The daily reads its repos and decisions log from `<data dir>/daily/sources.yaml` when `--repo` and `--decisions` name none, and refuses to gather with no repos from either.
+- c67ea7d: Add `explainer eval sheet`, which judges a contact-sheet directory with the sheet-critique passes and glow canary, prints the scores, caps, top three fixes and usd spent, and exits 1 on an untrusted run or, with `--min-overall` or `--gate`, a low overall (TP-5886). `critiqueScore` now also returns the `caps` that fired.
+- eba02ee: Point the explainer render, qa and video eval suites at check names the stages emit, and test that every eval suite verdict names an emitted check.
+- c60c4bc: Reject a gantt beat task whose end date is before its start date (TP-6224).
+- feb1a27: Excuse camera jerk and velocity spikes whose finite-difference window overlaps a declared shake window. A jump on a shake's last sample no longer reports a `camera:jerk` time after the shake ends.
+- d2efbca: Reword the Q-W5 promise rule and repair hint to ask for the question the video settles, and fail promises that open with "By the end" or say "be able to".
+- 71bc290: The qa stage stores the settled-moment occupancy tables it builds as an `occupancy` output (`occupancy/v1`), instead of dropping them after anchoring its findings. `qa.json` is unchanged.
+- fbdc4cc: Refuse a rewritten beat that adds a naming-refrain, label-first or teaser sentence the original did not have.
+- 9aefaab: Report the eval writing verdict on every run's final script as a reported `writing` check on the rewrite stage, with its word count, bucket, gate fails, warnings and failing rows.
+- 8f14f9c: Base a `--from` rerun on the named video's newest run that completed every required stage before `--from`, instead of the newest run of any video; the error names the video when none qualifies (TP-6238).
+- 53ec1f9: Name the failed stage, up to five of its failed gates and the `failed/<stage>.json` record path when `explainer run` ends red, and the spend-cap stage and spend when it stops.
+- f892d58: Add the VT §4 id checklist (`doctrine/section4-ids.tsv`) and a test that fails when a source with a craft file leaves a §4 id without a rule of that ref and layer. Complete `craft/talks-and-slides.yaml` for every talks-and-slides id (O1-O8, S1-S12, B1-B9, T1-T6, C1-C9). (TP-6349)
+- 1f3cf61: The sheets stage cuts beat-aware contact sheets from the render's timeline, preferring the page's marks where the render published them, and stores one sheet per chapter as the tree output `contact-sheets`. Its ffmpeg sits behind the host's `ffmpeg` seam.
+- 3c29a0c: Stamp a daily-overview video's sidecar subject, title, alias and series from the run's gather day instead of the script id, and write take `v<n>` for the run's position among the video's runs.
+- fdbdd00: Scale each beat and block word cap, the re-time's seconds and the script prompt's quoted rate by the profile's voice rate, the speed the voice stage speaks at, so a fast-voice profile is no longer held to the rate-1 cap.
+- 155e29c: `active-work task list` prints one line per task and a count without `--json`; `--json`, MCP and HTTP output are unchanged. The explainer daily preset reads the `--json` envelope or a bare object.
+- e5d8d29: Export `consoleInboxDir` and `scorecardStorePath` from app-paths and use them in place of the per-product copies (TP-5809). The console inbox spool now expands a leading `~` in `TITAN_CONSOLE_STATE` in yt-scout, and the factory's eligibility check expands a `~` in `TITAN_SCORECARD_STORE`; the other resolutions are unchanged.
+- 99e0c99: Keep a beat's derived page hints under a slots pin (TP-5991). A pin replaces slots only, so render, pinned by resolve's
+  `generated-slots`, now keeps `qaLeadLine` on verdict cards and `headingYields` on lists past three rows, and its
+  lead-line set matches the one qa reads.
+- d6256fd: Revert a rewritten chapter that turns a passing hallmark row red, naming the row, so a rewrite no longer adds a hallmark unnoticed.
+- 36d6a73: Derive each beat's settled and step page marks from the compiled timeline's reveals, so a page can report marks without registering them in its animation code (TP-6278).
+- 974ad9e: Pass Q-W4 only when a body chapter's beat speaks at least half the content terms of its user_value text, and have the Q-W4 repair hint quote the unspoken text and the beat to say it in.
+- f968652: The rewrite guard no longer reports a lost list item when the labels carry the noun of a verb-led first item, such as "restart" for "triager picks restart".
+- Updated dependencies [d8294fb]
+- Updated dependencies [3fe2120]
+- Updated dependencies [81668be]
+- Updated dependencies [8a69e02]
+- Updated dependencies [0de5073]
+- Updated dependencies [beff4cb]
+- Updated dependencies [bd68bea]
+- Updated dependencies [66eef82]
+- Updated dependencies [838103e]
+- Updated dependencies [29b3b5f]
+- Updated dependencies [f012a1b]
+- Updated dependencies [078ae3a]
+- Updated dependencies [65484c3]
+- Updated dependencies [a69e307]
+- Updated dependencies [ecdddab]
+- Updated dependencies [f9e8d81]
+- Updated dependencies [aabd6cb]
+- Updated dependencies [25f5d83]
+- Updated dependencies [893d4e7]
+- Updated dependencies [73cd2ea]
+- Updated dependencies [9353f86]
+- Updated dependencies [8231dca]
+- Updated dependencies [d77960e]
+- Updated dependencies [8286432]
+- Updated dependencies [dc4eb2c]
+- Updated dependencies [8fb9ab8]
+- Updated dependencies [4ed6420]
+- Updated dependencies [bbe129b]
+- Updated dependencies [a56d49d]
+- Updated dependencies [dcfbadd]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [a1de634]
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [d0b9edf]
+- Updated dependencies [efa6e58]
+- Updated dependencies [f34bb79]
+  - @titan-design/agent-dispatch@0.11.0
+  - @titan-design/agent@0.8.0
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/code-graph@0.20.0
+  - @titan-design/owner-queue@0.9.0
+  - @titan-design/frame-capture@0.3.0
+  - @titan-design/github@0.14.0
+  - @titan-design/graph-layout@0.3.0
+  - @titan-design/pm@0.12.0
+  - @titan-design/code-read@0.3.6
+  - @titan-design/workflow@0.15.1
+  - @titan-design/evidence@0.6.0
+  - @titan-design/hitl@0.10.2
+  - @titan-design/speech-vet@0.1.2
+  - @titan-design/speech-tts@0.1.2
+  - @titan-design/render-qa@0.1.1
+
 ## 0.3.9
 
 ### Patch Changes

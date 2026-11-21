@@ -1,5 +1,18 @@
 # @titan-design/react-app
 
+## 0.3.0
+
+### Minor Changes
+
+- 6b652a8: Export `useHashRoute(parse)` and `safeDecode(text)`: a hook that re-renders on `hashchange` with the route `parse` reads from the hash, and a `decodeURIComponent` that keeps a lone `%` raw. The console and codewatch routers use them in place of their own copies.
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [b937077]
+  - @titan-design/rpc-client@0.4.3
+
 ## 0.2.0
 
 ### Minor Changes

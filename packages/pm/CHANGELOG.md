@@ -1,5 +1,21 @@
 # @titan-design/pm
 
+## 0.12.0
+
+### Minor Changes
+
+- 73cd2ea: Add optional `moved_to` and `moved_from` task keys to `TaskSchema`, and a `moved` done reason, so a tombstone pointer survives a read.
+- 8286432: Add `IntentLineSchema` to pm: one dated, quoted owner-intent line, refused without a quote or a date. `parseIntentDigest` now validates each bullet with it, and its lines carry `superseded_by` instead of `supersededBy`. pm's plan store gains an `intent` kind under `plan/intent/`. active-work adds `plan intent add|show|list|digest|import-messages`: `add --message <id>` takes the date and `msg:<id>` reference from the owner-message extract, which now lives at `<aw>/factory/plan/owner-messages.jsonl` (the old sources copy is read while it is absent), `digest` renders the lines as a `titan-intent-digest/v1` file, and `active-work lint` refuses a malformed intent line.
+- dc4eb2c: `@titan-design/pm` exports `isoDate`, the calendar-checked `YYYY-MM-DD` validator. active-work's pause, brief and note schemas use it instead of their own copies.
+- 8fb9ab8: Add `loadLaneIntentLines` and `writeLaneIntentLine` for intent lines filed by lane inside one initiative. `parseIntentDigest` no longer requires the digest's `slug` to equal its `initiative`; both must still be lowercase slugs.
+- 4ed6420: Add a prediction check that reads each bet's prediction against the scorecard week rows and records `confirmed`, `missed` or `unread` on the bet, plus `orderBetsForSheet`, which sorts a missed prediction before any new bet in the same initiative.
+- 17d1110: `@titan-design/pm/node` adds `readInitiativeTasks(activeRoot, slug, { archive })`, the one reader for an initiative's task files. It returns parsed rows in filename order (live, then archive on request), unparsable files with a reason instead of throwing, and `missing` when the initiative has no `tasks/` folder.
+
+### Patch Changes
+
+- 25f5d83: `parseIntentDigest` now refuses a slug that is not a lowercase slug and a slug that differs from `initiative` (TP-5783), and returns a line-numbered error for a repeated front matter key or an unknown one (TP-5784).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.11.0
 
 ### Minor Changes

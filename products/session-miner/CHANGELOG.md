@@ -1,5 +1,96 @@
 # @titan-design/session-miner
 
+## 0.12.0
+
+### Minor Changes
+
+- ffce8d1: Add `--embedder hash|local|ollama` so `playbook recall` blends vector similarity into its ranking through `MemoryVectors`. When the embedder fails, recall keeps the keyword ranking and reports `memory-vector degraded`.
+- ad58e4f: `memory.report` now reads the global CLAUDE.md in each Claude root and each project's CLAUDE.md, splits them at second-level headings, and groups the sections with the facts and proposes a destination for them. A CLAUDE.md is never proposed for deletion. The envelope reports `instructionSections`.
+- fe6f420: Report dangling, unindexed and past-the-load-limit MEMORY.md pointers in the `memory.scan` result, as counts plus paths and line numbers.
+- 5a64b5e: `playbook.status` now reports `stale` (a count of rules with no feedback in 180 days) and `staleOldest`, the five quietest with their last evidence time.
+- f464d33: Add `session.files` and `task.sessions` lookups to the CLI and MCP: the sessions that wrote a repo-relative path, with transcript locators, and the sessions a task's `ran` edges join, with agent, profile and edge source.
+- e98ea8b: Add `playbook.show <id>` to the CLI and MCP: one playbook rule with its maturity, state and score, the sessions it came from, its feedback log, and the rules it replaced or was replaced by. A retired rule is still shown; an unknown id exits 66.
+
+### Patch Changes
+
+- 4eb5c07: session-graph now owns the drain ingest: `ingestDrain(graph, { limit })` clusters tool-result errors into recurring failure templates and returns a `DrainSummary`, `listTemplates(graph, limit)` reads them, and `DRAIN_TEMPLATE_MIGRATION` and `DRAIN_SCREENED_MIGRATION` carry the template, occurrence, clusterer_snapshot and drain_screened tables at versions 2000 and 2002. It adds a dependency on `@titan-design/cluster`. session-miner's `drain.ingest` and `drain.templates` commands become thin wrappers over them.
+- 68ac3c8: Use a memory fact file's mtime as its modified date when its frontmatter has none, so the stale-project delete rule can fire on real memory.
+- d44f552: Add `replayPlaybook`, which seeds a playbook bullet from the first occurrence of each recurring Drain cluster and scores how often recall on a later session's opening query would have served it in the top k, next to a baseline repeat rate.
+- 9155bdb: Read ticket-scorecard task files, archive included, through `@titan-design/pm/node`. The scorecard now also reads `.yaml` task files, and a file that fails to parse no longer counts toward the newest-mtime watermark.
+- 081ab7e: Read throughput task files through `@titan-design/pm/node`'s `readInitiativeTasks`. Throughput now also reads `.yaml` task files, and a task file that cannot be read is reported as `read: ...` in `unparsed`.
+- 5c8299f: Export `profilesRoot(env, home)` from `@titan-design/anthropic-account/node` as the single resolver of the Claude profiles root, and use it in active-work, factory context-audit, session-miner friction transcripts and the titan config report. `CLAUDE_PROFILE_ROOT` now applies to all of them; a relative value is ignored.
+- d3d1d5b: Add `denialOf`, the one classifier for Claude Code permission, auto-mode-classifier and permission-hook-deadline text (TP-5807). The friction gate, blocked-flow denials, the tool-errors insight and the reviewer smoke check now use it, so a non-error result worded "was denied" is counted as a denial.
+- e5d8d29: Export `consoleInboxDir` and `scorecardStorePath` from app-paths and use them in place of the per-product copies (TP-5809). The console inbox spool now expands a leading `~` in `TITAN_CONSOLE_STATE` in yt-scout, and the factory's eligibility check expands a `~` in `TITAN_SCORECARD_STORE`; the other resolutions are unchanged.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- Updated dependencies [8a69e02]
+- Updated dependencies [0de5073]
+- Updated dependencies [beff4cb]
+- Updated dependencies [f012a1b]
+- Updated dependencies [e114f17]
+- Updated dependencies [078ae3a]
+- Updated dependencies [ecdddab]
+- Updated dependencies [25f5d83]
+- Updated dependencies [893d4e7]
+- Updated dependencies [5911f78]
+- Updated dependencies [84a7cc0]
+- Updated dependencies [73cd2ea]
+- Updated dependencies [eabd299]
+- Updated dependencies [9353f86]
+- Updated dependencies [8231dca]
+- Updated dependencies [d77960e]
+- Updated dependencies [8286432]
+- Updated dependencies [dc4eb2c]
+- Updated dependencies [8fb9ab8]
+- Updated dependencies [4ed6420]
+- Updated dependencies [bbe129b]
+- Updated dependencies [cffaab7]
+- Updated dependencies [e93951d]
+- Updated dependencies [b33b361]
+- Updated dependencies [144f696]
+- Updated dependencies [13c9b1c]
+- Updated dependencies [ff39530]
+- Updated dependencies [4eb5c07]
+- Updated dependencies [f5c87b7]
+- Updated dependencies [a56d49d]
+- Updated dependencies [dcfbadd]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [a411d70]
+- Updated dependencies [209305e]
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [5c8299f]
+- Updated dependencies [c759bad]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+- Updated dependencies [0910060]
+- Updated dependencies [3fec5b7]
+- Updated dependencies [07330ed]
+- Updated dependencies [d0b9edf]
+- Updated dependencies [7acf411]
+- Updated dependencies [efa6e58]
+- Updated dependencies [f34bb79]
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/owner-queue@0.9.0
+  - @titan-design/github@0.14.0
+  - @titan-design/pm@0.12.0
+  - @titan-design/memory@0.4.0
+  - @titan-design/session-graph@0.20.0
+  - @titan-design/retrieval@0.5.0
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/anthropic-account@0.5.0
+  - @titan-design/workflow@0.15.1
+  - @titan-design/hitl@0.10.2
+  - @titan-design/throughput@0.3.3
+
 ## 0.11.9
 
 ### Patch Changes
