@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError, Option } from "commander";
+import { readCameraTrack } from "./camera-track-file.js";
 import { calibrateCommand } from "./eval-calibrate-cli.js";
 import { coldCommand } from "./eval-cold-cli.js";
 import { failedChecks, L0_CHECKS, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
@@ -40,6 +41,7 @@ interface L0Flags {
   spine?: string;
   facts?: string;
   coverage?: string;
+  cameraTrack?: string;
   failOnGhosts?: boolean;
   speechVet?: boolean;
   format: ScriptFormat;
@@ -118,7 +120,8 @@ async function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): Promise<
   const facts = flags.facts ? claimFacts(readFileSync(flags.facts, "utf8")) : undefined;
   const coverage = flags.coverage ? parseCoverage(readFileSync(flags.coverage, "utf8")) : undefined;
   const checks = withCoverage(withClaimFacts(await l0Checks(script, flags, deps), facts), coverage, facts);
-  const results = runL0(script, layout, checks, timing, spine);
+  const camera = flags.cameraTrack ? readCameraTrack(readJson(flags.cameraTrack)) : undefined;
+  const results = runL0(script, layout, checks, timing, spine, camera);
   const rows: StructureRow[] = results.map((result) => ({ config_id: flags.config, script_sha: sha, rules_sha: rules, ...result }));
   appendTsv(bench.structure, STRUCTURE_COLUMNS, rows);
   appendRun(bench, deterministicRun({ configId: flags.config, scriptSha: sha, parentSha: flags.parent ?? null, rulesSha: rules, evalId: L0_EVAL_ID, started, finished: now() }));
@@ -142,6 +145,7 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     .option("--spine <file>", "story spine markdown (the script-method template); the spine lints Q-E15 and Q-E18 and the ledger lints read it")
     .option("--facts <file>", "the gather's digest.json or facts pack (facts.md or facts.jsonl); without it Q-E20 reports that it did not run")
     .option("--coverage <file>", "the daily gather's coverage.json; without it Q-E21 reports that it did not run")
+    .option("--camera-track <file>", "an explainer.camera-track/v1 file; without it the camera:* rows do not run")
     .addOption(new Option("--format <format>", "script format: a script/v1 file, or a motion-spike script.json migrated to script/v1 first").choices(SCRIPT_FORMATS).default("v1"))
     .option("--fail-on-ghosts", "exit 1 when a rule claims a check id that no L0 check emits; by default each is a warning")
     .option("--speech-vet", `vet each ${VETTED_RANGE} word sentence with speech-vet (local Kokoro and Whisper; the first run downloads them) so Q-V9 fails one that is unclean to speak; off by default, which passes them pending a hand vet`)
