@@ -1,5 +1,16 @@
 # @titan-design/frame-capture
 
+## 0.3.0
+
+### Minor Changes
+
+- 65484c3: Read an optional `__titanMotion.marks()` once after the page's API appears. `captureFrames` returns the marks on `FramesResult.marks`, sorted by `t`, or `[]` for a page without `marks()`. A mark with a non-finite `t` or an unknown `kind` rejects the capture with an error that names the mark.
+- a69e307: Add `transparent` to `PageOptions` and `FramesOptions`, which captures frames with alpha 0 where the page paints nothing, and an optional plate mp4 on `startEncoder`, which composites the PNG frames over it with an ffmpeg overlay filter.
+- a1de634: Render sidecars (TP-2997). The render stage writes the script's chapters, the tts voice block and each stage's
+  StepUsage (cost and wall time, from the run's stage records, with render's own row on the injected clock) into
+  `render-manifest.json`. Chapters tile the video: the first opens at 0 and each ends where the next opens.
+  frame-capture exports `stills()`, true-size PNGs of one page at chosen seconds, taken in time order on one page.
+
 ## 0.2.0
 
 ### Minor Changes

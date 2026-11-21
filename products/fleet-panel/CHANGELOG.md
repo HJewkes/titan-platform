@@ -1,5 +1,14 @@
 # @titan-design/fleet-panel
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [a411d70]
+- Updated dependencies [5c8299f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/anthropic-account@0.5.0
+
 ## 0.1.0
 
 ### Minor Changes

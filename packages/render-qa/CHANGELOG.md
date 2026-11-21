@@ -1,5 +1,14 @@
 # @titan-design/render-qa
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [65484c3]
+- Updated dependencies [a69e307]
+- Updated dependencies [a1de634]
+  - @titan-design/frame-capture@0.3.0
+
 ## 0.1.0
 
 ### Minor Changes

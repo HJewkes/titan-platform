@@ -1,5 +1,35 @@
 # @titan-design/review-workflow
 
+## 0.2.0
+
+### Minor Changes
+
+- 0cc16f2: Remove the unused `healOnce` export and its `HealPassResult` type. `applyHeal` stays; the recipe's heal pass is the only one.
+
+### Patch Changes
+
+- Updated dependencies [61a7e30]
+- Updated dependencies [e11e750]
+- Updated dependencies [d8294fb]
+- Updated dependencies [0de5073]
+- Updated dependencies [4d349a1]
+- Updated dependencies [ecdddab]
+- Updated dependencies [893d4e7]
+- Updated dependencies [62066a3]
+- Updated dependencies [07e7f6d]
+- Updated dependencies [b937077]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [d0b9edf]
+- Updated dependencies [efa6e58]
+- Updated dependencies [f34bb79]
+  - @titan-design/review-panel@0.10.0
+  - @titan-design/agent-dispatch@0.11.0
+  - @titan-design/github@0.14.0
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/workflow@0.15.1
+  - @titan-design/evidence@0.6.0
+
 ## 0.1.2
 
 ### Patch Changes

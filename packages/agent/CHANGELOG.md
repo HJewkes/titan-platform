@@ -1,5 +1,21 @@
 # @titan-design/agent
 
+## 0.8.0
+
+### Minor Changes
+
+- 3fe2120: Add image attachments to a run. `AgentRunConfig.images` takes absolute PNG or JPEG paths for the claude-print harness. Each one is sent as a base64 content block before the prompt, over stream-json input. `CodexNativeOptions.images` passes one `-i` per image to `codex exec`, which is not yet verified against a live Codex. A missing or non-PNG/JPEG file fails before anything spawns. A run without images keeps its old args and stdin.
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [81668be]
+- Updated dependencies [bd68bea]
+- Updated dependencies [b937077]
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/agent-lifecycle@0.1.11
+
 ## 0.7.0
 
 ### Minor Changes

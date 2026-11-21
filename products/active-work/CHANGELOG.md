@@ -1,5 +1,187 @@
 # @titan-design/active-work
 
+## 0.32.0
+
+### Minor Changes
+
+- ae3119b: Record an `aw.launch` line in `usage.jsonl` with the time from process start to just before `claude` is spawned.
+- 2f1adff: Record every `aw` open's wall time and phase timings as an `aw.open` line in `usage.jsonl`.
+- 48bea05: The bootstrap prompt renders absolute ISO dates and timestamps instead of relative ages (TP-6322). The Last session heading, the Context line, the paused-since line, sibling session lines and open-loop lines no longer say "2 days ago", "12m ago" or "[1d]", so the prompt stays byte-identical as the clock moves. `time_since_last_session_human` stays in the metadata.
+- 8a69e02: `precedent extract` indexes the titan console's `answers.jsonl` owner answers as a fifth ledger source, read incrementally behind an offset and prefix-hash watermark.
+- 9ae5bb0: Add `active-work digest --personal`: overdue tasks, tasks due in the next 14 days, trigger-met loops and the five stalest open tasks across owner-only initiatives, in that order and capped at 30 lines. A caller that may not read owner-only initiatives gets every section empty.
+- c360423: Accept relative due dates (`+3d`, `+2w`) on `task add` and `task edit --due`; they resolve to an absolute YYYY-MM-DD against today.
+- 8fb9ab8: Add `--lane <slug>` to `plan intent add` and `plan intent digest`. A lane's lines are numbered `<lane>/I<n>` and filed under the initiative, and its digest renders `slug: <lane>` with `initiative: <initiative>`. Without the flag the lane is the initiative and nothing changes.
+- 5be3a06: Lint reports dep and parent cycles and unknown parent or dep ids across initiatives; an id archived in any initiative counts as known.
+- 332c9ac: Let `loops --all-initiatives` list open loops across every initiative visible to the caller, each entry tagged with its slug. `--due` still keeps only trigger-met loops, and an agent caller gets nothing from an owner-only initiative.
+- cd969dc: Add a repeatable `--tag` filter to `note list`; several tags must all be present.
+- c85443c: Add a `plan.seed` command that reads an owner-intent digest and returns its live lines, the initiative's success statements and a domain's ready tasks, as JSON and markdown.
+- d2eecdf: `preflight --since <iso>` lists sources files written since that time which no task, note or session names, and the checklist asks for each to be answered with a task id, a seat name or none.
+- 8b0ff20: Return owner decisions from the precedent ledger as a `decisions` class in `context.related`, on by default, ranked under the caller's visibility and capped at its share of a page.
+- ba4e052: Add `renderResumeBlock`, a pure builder for the markdown block re-injected after a compaction.
+- 99ab9a6: Add `ingestSource`, which content-addresses a `.md` or `.txt` source's bytes into a new `cache_blob` table (graph migration 1005) and extracts its text to `sources/extracted/<stem>.md`. A second ingest of unchanged bytes is a no-op.
+- 7f69571: `task apply` accepts `set_bet`, `set_estimate`, `set_fold`, `set_kind`, `set_cos`, `set_area` and `set_due`. Values are checked against the task schema, the category registry (read once per run) and the plan store (each bet id looked up once); a bad value fails only its own line. An unknown op now lists the valid ones.
+- ee035bb: `task done` now names the open tasks it unblocks, in any initiative, as a `completing X unblocks A-1, B-2` warning and a ` (unblocks A-1, B-2)` suffix on the `--quiet` line. An agent caller gets a count for dependents in initiatives it may not see. The JSON task result is unchanged.
+- af1e527: Add `task list --unblocked`, which keeps only tasks whose every dep is closed, archived or done. A dep resolves by file name across all initiatives, and an unknown id counts as open.
+- 4eff469: Log each daemon workspace refresh's duration, file counts and outcome (ok, failed, lock-held), and a line when a reader's freshness budget expires, so the related-read budget can be re-measured from `daemon.log`.
+- c1196a1: `wrap` now requires exactly one of `--reports` (a JSON array of `{ref, answer}`) or `--no-reports`, and records `reports` or `no_reports: true` in the session frontmatter. The agent-chat completion hook passes `--no-reports`.
+- 1baef3a: Show the initiative's recent owner answers in the bootstrap prompt: up to three
+  answered ledger rows inside the recently-done window, newest first. An unreadable
+  ledger leaves the section out and adds a `retrieval_degraded` line.
+- 5432239: The workspace edge pass now writes `mentions` edges from source markdown bodies and from each task's title, done_when and notes, not only from notes. A source body over 256 KB is skipped and counted as `oversizedSources` in the refresh summary.
+- 8286432: Add `IntentLineSchema` to pm: one dated, quoted owner-intent line, refused without a quote or a date. `parseIntentDigest` now validates each bullet with it, and its lines carry `superseded_by` instead of `supersededBy`. pm's plan store gains an `intent` kind under `plan/intent/`. active-work adds `plan intent add|show|list|digest|import-messages`: `add --message <id>` takes the date and `msg:<id>` reference from the owner-message extract, which now lives at `<aw>/factory/plan/owner-messages.jsonl` (the old sources copy is read while it is absent), `digest` renders the lines as a `titan-intent-digest/v1` file, and `active-work lint` refuses a malformed intent line.
+- 0353800: Run precedent extract on the daemon: one pass shortly after start, then every `AW_PRECEDENT_EXTRACT_MS` (default 30 minutes, 0 turns it off), so served decisions stay current (TP-6218).
+- 81f1370: Add `precedent.show` (`active-work precedent show <key>`), which opens one ledger precedent by its exact key. An unknown key, an owner-only initiative's row and an unclaimed row asked for by a non-owner all return the same not-found error.
+- ff39530: `taskLedger(db, taskId)` lists every session linked to a task, newest first, with agent, profile, span, priced cost with an unpriced flag, linked PRs and their review verdicts; `readTaskInitiative` names the task's initiative. `active-work miner ledger <task>` renders them, and refuses an agent caller for a task in an initiative that is not agent-visible.
+- c54003a: `active-work source list --limit N` returns the N newest sources by mtime (nulls last), capped after the `--type` filter, with `total` and `truncated` in the result. Without it the listing is unchanged.
+- 155e29c: `active-work task list` prints one line per task and a count without `--json`; `--json`, MCP and HTTP output are unchanged. The explainer daily preset reads the `--json` envelope or a bare object.
+- 6a7cb21: Index planning records as a `plans` workspace class (TP-5453 P10). Outcomes, bets and intent digests under an initiative's `plan/` folder get spans in the workspace index, so `context related` returns a bet's outcome and intent lines. Owner-only initiatives index none of them. Adds migration 1004 (`plan_record`).
+- 55ff5ba: Add `context.brief` (TP-5453 P11a-1). It renders the related-context section of a spawn brief as finished
+  text within a UTF-8 byte budget (default 2600, max 4000): at most three workspace ids, ranked with the agent's
+  view whoever calls, over every registered workspace class except transcripts and initiative briefs. A missing
+  index gives empty text and a `degraded` entry. With `trigger` set, the rendered refs are logged as served in
+  the same call.
+- 209305e: Add `sessionsTouchingFiles` to session-graph (TP-5453 P11b-1). It lists the sessions with a live `touched`
+  edge to any of the given repo-relative files since a time, newest first and capped. Each row has the
+  session's cwd, title, the matching file refs and the initiatives its task edges name. `context.brief` in
+  active-work uses it to add a recent-sessions section for the files an assignment names. The section covers
+  the last 14 days, holds at most 4 lines and stays within 500 bytes. It lists a session only when the agent
+  view shows its initiative, so sessions in owner-only initiatives, or in no initiative, never appear.
+- 8afd8b3: `context.brief` adds a code section (TP-5453 P11b-2): one hop of imports around the files the assignment
+  names, plus the done_when and owns paths of each task key it names in an agent-visible initiative, at most six
+  lines in an 800-byte share. Neighbours come from codewatch's `node.neighbors` over loopback; when codewatch is
+  not answering, the named files' relative imports are read from the new optional `repoRoot` checkout and the
+  result carries `degraded: code/no-snapshot`. The section stops at 800 ms. The workspace, code and session
+  sources now run concurrently under one 2,000 ms deadline, and a source that misses it is listed as a timeout.
+- d25e61e: Stop emitting `agent_visible` from `inventory` and `task.keys` (TP-5830). Every reader now takes the `withheld_from_agents` verdict, and `task.keys` rows carry it; the shepherd's task-ref reads a missing verdict as withheld.
+- 30d7d33: `note add` now stamps every new note with `created_at` (a full ISO timestamp; `created` stays a date), takes an optional `--session`, and records `agent` from `AGENT_CHAT_NAME` when run from the CLI. Notes filed before this change still load.
+- bafe586: `task list` takes `--due-before <YYYY-MM-DD>` to keep tasks due on or before a date (undated tasks drop out, a malformed date is a usage error) and `--sort due` to order by due date, earliest first, undated last, with priority breaking ties.
+- d6e90e0: `note list` takes `--limit` and `--cursor` to page the newest-first list. The result now reports `total`, `truncated` and `next_cursor` (null on the last page); a malformed or out-of-range cursor is a usage error. Without `--limit` the full list is returned.
+- 58aa3dc: `spawn` takes `--task <initiative>/<ID>`: it appends that task's `context.brief` block to the brief and logs each served ref to `retrieval-hits.jsonl` with trigger `spawn`, the task key and its section. Hit-log entries gain optional `task` and `section` fields. When the block is empty or degraded, the brief goes out unchanged and one stderr line names the reason; without `--task` nothing changes.
+- 50b9788: Add the weekly sheet (TP-5453 P16). `active-work plan sheet generate` writes `<initiative>/plan/sheets/<week>.md` from the initiative's outcomes, bets, scorecard week rows and stored prediction checks, in five sections: statement, moved, not moved, proposed bets and proposed stops. Every bet line names its intent line and metric, and any bet line that cites no intent line is flagged and defaults to hold. A bet with no prediction check reads `unread`. `plan sheet show` reads a sheet back. `plan sheet apply-defaults` records the sheet's defaults as its decisions, and only once the deadline has passed with no answer recorded. Reading a sheet never records anything. The console initiative page shows the newest sheet.
+- 7acf411: `why <path>:<line>[-<end>]` runs `git blame -L` at HEAD and maps each commit to its PR (the squash subject's `(#n)`), the tasks behind it and the sessions that did the work, printing the rung that found each: `trailer`, `pr-subject`, `pr-task`, `refs`, `session-ran`. An `Agent-Session:` trailer is read first. Sessions and tasks in an initiative the caller may not see are counted in `hidden`, never named. session-graph exports the walk as `commitLineage` (TP-2771).
+- fa7f84e: `wrap` now returns `promotion_candidates` and warns about notes the search hit log shows surfacing in 3 or more renders across 2 or more initiatives.
+
+### Patch Changes
+
+- 91859ff: Parse task files concurrently, up to 32 reads at a time, in the archive pass `active-work open` runs first. On a large initiative the pass no longer waits on one file read at a time.
+- 5140284: Reuse parsed tasks for unchanged files in the archive pass `active-work open` runs first. A sidecar under the state directory keeps each task's parsed form, stamped with the file's inode, size, mtime and ctime; a file whose stamp differs, or any problem reading the sidecar, falls back to a full parse.
+- d8bdea2: Count `tasks/archive` when allocating a task id, so archiving the highest id no longer lets the next `task add` reissue it.
+- bc03117: Show each task's due date in the bootstrap task list and list overdue and due-within-7-days tasks first, earliest due first.
+- 3c19c03: Open the graph and compute agent visibility once per bootstrap and share both with note ranking and every loop query, instead of reopening the graph and rescanning every brief per query.
+- 438efc0: Keep the spawn brief's code neighbours to the spawn's own checkout, and refuse named files that resolve outside it, by `..`, absolute path or symlink.
+- bf0a81c: Accept a `--dep` or `--parent` that names an archived task. The edge check now reads the ids under every initiative's `tasks/archive/` by file name, and an id found in no live or archived file is refused with "no live or archived task file in any initiative".
+- d558d66: Read indexed values in the commands, bootstrap, migrations, lint, decider, sources, workspace-index and top-level modules through forms that type `undefined`, so they pass `noUncheckedIndexedAccess`. Behaviour is unchanged.
+- cf65b27: Mark records written by `loop open` and `loop resolve` with `ledger: true`, and skip them when bootstrap picks the narrative session and the parallel sessions, and in `session list`, so a loop filed after the last wrap no longer reads as the last session.
+- 146efb1: `open` starts live branch status as soon as `artifacts.yml` is read, so the gh and git lookups overlap the task archive pass instead of waiting behind it.
+- c8efd53: Fall back to static branches when bootstrap live status misses a 2.5 s deadline, and cap static branch and stash lists at 10 lines.
+- e5d2595: Read session files concurrently (16 at a time) in `loadSessionsFromDir`, keeping filename-ascending order.
+- efc38f9: `active-work setup` and `active-work doctor` now require Node 24, the engines minimum, through one shared constant and version parser. They no longer pass Node 22 and 23.
+- a2f2848: `note add` now warns, and returns `possible_dup` with the older note's filename, when an existing note in the initiative has a near-identical title. The note is still written.
+- 4718e69: Workspace refresh now caches note bodies by path, mtime and size, so it re-reads only notes that changed or are new instead of every note on each pass (TP-6339).
+- 58b89d1: Persist loop retrieval's document-frequency counts in a sidecar beside the session graph, so a warm `open` skips the FTS5 vocabulary lookups an earlier process already paid for. A pass that indexes spans deletes the sidecar, the counts are stamped with the graph's inode and highest span ids, and a missing or unreadable sidecar falls back to live counts.
+- 892a301: `task.reorder` now bumps only the open tasks that collide with the new priority, walking upward until a free slot. Done tasks and tasks past the first gap keep their priority and updated date, and `shifted` lists only the rewritten tasks.
+- 9db5f5b: Share the branch probes and check summary between live-status and artifact-status.
+- b42f84e: Read and write `drain-trees.json` through the cluster package's own snapshot parser, so partition keys this product does not know survive a restart.
+- c819ad4: An unknown bet id on task add or edit now lists the initiative's bets, or says it has none, and names the `plan bet add` command.
+- f2a655f: `aw --version` now prints the running build's version instead of a hardcoded `0.1.0`.
+- d302288: `context.brief`'s recent-sessions section lists a session only when every initiative its task edges name is shown to agents, so a session that also worked in an owner-only initiative, or in one whose visibility is unknown, is withheld (TP-5986). A session with no task edges maps to an initiative by its cwd's folder under the configured active root, whatever that root is named, instead of an `active-work/` path match (TP-5987). `why` applies the same every-edge rule and cwd mapping to the sessions it serves.
+- 977026b: Context mode reads a span's tier-2 text through `readLocatorText`, so a span running past the end of a shrunk file drops the tier instead of showing partial text.
+- 2687f5c: Carry a note's `read_if` condition into every tier of `context.related`'s context mode, so the entry text keeps the "read if" hint that list mode already returns.
+- dc89efd: Log each served hit's class and, in context mode, its tier in the retrieval hit log, and cap the logged query at 500 characters with a `queryHash` of the full text.
+- 027ca26: `loops` resolves task triggers against `tasks/archive/` as well as `tasks/`, so a loop waiting on a task keeps its task-done trigger once that task is archived (TP-1015).
+- dc4eb2c: `@titan-design/pm` exports `isoDate`, the calendar-checked `YYYY-MM-DD` validator. active-work's pause, brief and note schemas use it instead of their own copies.
+- 758f60c: Search the owner's free-text note on precedents and return free_text and answered_at on precedent.search hits (TP-6162).
+- 8b568bc: Suggest slugs containing the input and cap the Known list at 12 when an initiative slug matches nothing.
+- 9fd56cf: `context related` no longer spends a slot on a task whose id the query text already names; the next-ranked hit takes its place.
+- e93951d: `@titan-design/retrieval` exports the query-term helpers `meaningfulTerms`, `orExpression`, `deriveQuery`, `selectTerms`, `documentFrequencyCap` and `DF_CAP_FLOOR`, with the `DerivedQuery` and `DocumentFrequency` types. They turn prose into a rarity-ranked FTS5 OR expression. active-work now imports them instead of its own copies.
+- dc753c2: A full session-index pass now hands every discovered transcript to the missing sweep as present, so a sealed transcript the pass skips is never marked `missing` and then restored. This removes the `unvisitedOk`/`restoreUnvisited` workaround (TP-1019).
+- bdf12cb: Add `@titan-design/service-supervisor` with `renderSystemdUserService` and `renderLaunchAgentPlist`. active-work now renders its unit and plist through it; the unit's `NODE_ENV` line is now quoted like the other `Environment=` lines.
+- c4bcfe4: Show priority, due, kind, cos, area, parent, dep, bet, done_at and done_reason in the compact `task show` output when present.
+- ab65526: A lock that is lost while held (for example after a laptop sleeps past the stale window) no longer throws from proper-lockfile's timer and kills the daemon. `withFileLock` and `withRefreshLock` now fail the holder's operation with a `LockCompromisedError` (exit 75) instead (TP-1013).
+- 7c47a3c: `miner outcomes` folds a seat or agent name that holds an owner-only initiative slug into the `owner-only` bucket for a non-owner caller (TP-5773). Only initiatives on disk now are matched.
+- c74e78b: Doctor reports initiatives whose slug is a reserved miner key, with the rename remedy (TP-5782).
+- bb466f1: Read initiative task files through `@titan-design/pm/node`'s `readInitiativeTasks`. The lint-only task loader is gone; lint, doctor, loops, wrap and the loop board share bootstrap's `loadTasks`. Tasks now come back sorted by file name, and an unreadable `tasks/` directory throws instead of reading as empty.
+- 10204b9: The session index reads each initiative's task files through `@titan-design/pm/node` `readInitiativeTasks` instead of its own walker.
+- 5c8299f: Export `profilesRoot(env, home)` from `@titan-design/anthropic-account/node` as the single resolver of the Claude profiles root, and use it in active-work, factory context-audit, session-miner friction transcripts and the titan config report. `CLAUDE_PROFILE_ROOT` now applies to all of them; a relative value is ignored.
+- 3969bdb: Read `.schema-version` through one reader: `readSchemaVersion` now delegates to `readRawSchemaVersion` and applies the zero rule once (TP-5810).
+- 83ed2aa: Export `transcriptFromPath` from session-read, beside `discoverTranscripts`; active-work's copy is removed.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- 4819abe: The duplicate tagger scores titles with the same `jaccard` the 0.9 threshold was tuned with.
+- 31c05b3: Restore a task undone from the dashboard Tasks view to its priority position instead of appending it.
+- e446ba9: `aw open` with no slug returns an empty picker and one warning when the active root cannot be read (EACCES, ENOTDIR), instead of throwing. A missing root still returns an empty picker with no warning (TP-6222).
+- bdf51d5: Add `task edit --clear <field>` to remove due, kind, cos, area, parent or bet from a task. Clearing an absent field is a notice, clearing due on a cos fixed task is refused, and `--clear` with a set flag for the same field is a usage error.
+- af19e22: Cap the bootstrap's open loops (12), abandoned loops (8), archived task ids (10) and malformed task filenames (5), each with a "+N more" pointer; the totals and the closing instruction still state the true count.
+- 8e56f8b: A bare `aw` run from an initiative's own directory (or any directory inside it) now opens that initiative instead of the picker. A registered worktree nested deeper still wins, and a brief is parsed only for an initiative that matched the directory (TP-6245).
+- a1e7eca: Print task schema failures as one `field: message` per issue instead of the zod issues array as JSON.
+- cc7f82e: `task show` now shows an archived task, marking compact text with `archived: yes`, and a missing id names the other initiatives that file it.
+- 95dc38c: Log each search run's hit and degraded counts to `search-queries.jsonl` so zero-hit queries can be counted.
+- 0003f78: Make the sessions, session-index, drain, discover, utils, setup and wrap modules and their tests compile under `noUncheckedIndexedAccess`. Behaviour is unchanged; an indexed read that cannot be satisfied now falls back to an empty value or skips the row instead of reading `undefined`.
+- 1702c03: Split the over-long dashboard components and the artifacts schema refinement into named helpers, with no behavior change.
+- Updated dependencies [d8294fb]
+- Updated dependencies [81668be]
+- Updated dependencies [8a69e02]
+- Updated dependencies [0de5073]
+- Updated dependencies [beff4cb]
+- Updated dependencies [bd68bea]
+- Updated dependencies [f012a1b]
+- Updated dependencies [e114f17]
+- Updated dependencies [1fc8813]
+- Updated dependencies [5911f78]
+- Updated dependencies [25f5d83]
+- Updated dependencies [5911f78]
+- Updated dependencies [84a7cc0]
+- Updated dependencies [73cd2ea]
+- Updated dependencies [eabd299]
+- Updated dependencies [8286432]
+- Updated dependencies [dc4eb2c]
+- Updated dependencies [8fb9ab8]
+- Updated dependencies [4ed6420]
+- Updated dependencies [bbe129b]
+- Updated dependencies [cffaab7]
+- Updated dependencies [e93951d]
+- Updated dependencies [b33b361]
+- Updated dependencies [144f696]
+- Updated dependencies [bdf12cb]
+- Updated dependencies [13c9b1c]
+- Updated dependencies [ff39530]
+- Updated dependencies [4eb5c07]
+- Updated dependencies [f5c87b7]
+- Updated dependencies [a56d49d]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [a411d70]
+- Updated dependencies [209305e]
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [5c8299f]
+- Updated dependencies [c759bad]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+- Updated dependencies [0910060]
+- Updated dependencies [3fec5b7]
+- Updated dependencies [07330ed]
+- Updated dependencies [7acf411]
+  - @titan-design/agent-dispatch@0.11.0
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/decider@0.7.1
+  - @titan-design/pm@0.12.0
+  - @titan-design/memory@0.4.0
+  - @titan-design/session-graph@0.20.0
+  - @titan-design/retrieval@0.5.0
+  - @titan-design/service-supervisor@0.1.0
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/anthropic-account@0.5.0
+  - @titan-design/code-read@0.3.6
+
 ## 0.31.1
 
 ### Patch Changes

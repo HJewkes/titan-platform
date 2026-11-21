@@ -1,5 +1,22 @@
 # @titan-design/graph-layout
 
+## 0.3.0
+
+### Minor Changes
+
+- f9e8d81: Export `packageRootOf`, the directory of the package `packageOf` names for a file, so callers that need a package box's root path share the rule the repo map uses for its directory labels.
+- aabd6cb: `emitRepoMap` takes an optional `context` ({ actors, externals, links }). When given, the map gains a level-0 `context` level: a `sys` box around every package, with the actors and externals outside it as top-level boxes and each link drawn as a level-0 protocol arrow. Without it the map and its sha are unchanged.
+
+### Patch Changes
+
+- Updated dependencies [beff4cb]
+- Updated dependencies [66eef82]
+- Updated dependencies [838103e]
+- Updated dependencies [29b3b5f]
+- Updated dependencies [b937077]
+- Updated dependencies [3d19ff3]
+  - @titan-design/code-graph@0.20.0
+
 ## 0.2.0
 
 ### Minor Changes

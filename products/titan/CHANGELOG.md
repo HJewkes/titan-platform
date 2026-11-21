@@ -1,5 +1,19 @@
 # @titan-design/titan
 
+## 0.5.1
+
+### Patch Changes
+
+- 5c8299f: Export `profilesRoot(env, home)` from `@titan-design/anthropic-account/node` as the single resolver of the Claude profiles root, and use it in active-work, factory context-audit, session-miner friction transcripts and the titan config report. `CLAUDE_PROFILE_ROOT` now applies to all of them; a relative value is ignored.
+- Updated dependencies [e114f17]
+- Updated dependencies [a411d70]
+- Updated dependencies [5c8299f]
+- Updated dependencies [c759bad]
+- Updated dependencies [3d19ff3]
+  - @titan-design/daemon@0.10.0
+  - @titan-design/anthropic-account@0.5.0
+  - @titan-design/health@0.2.2
+
 ## 0.5.0
 
 ### Minor Changes

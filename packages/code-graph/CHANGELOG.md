@@ -1,5 +1,37 @@
 # @titan-design/code-graph
 
+## 0.20.0
+
+### Minor Changes
+
+- beff4cb: `CacheBlobTable` gains `delete(namespace, model)`, which drops every row under that pair and returns the count, and `models(namespace)`, which lists the models holding rows there with their row counts (TP-220). code-graph's `embedSnapshot` result now carries `staleVectors`, the symbol vectors cached under another model identity, and the new `pruneStaleSymbolVectors(store, model)` deletes them, returning `{ deleted, models }`. `embedSnapshot` does not prune on its own.
+- 66eef82: `symbol_comment_ratio` is 0 for a function body under `COMMENT_RATIO_MIN_BODY_LINES` (6) code rows, so a one-line body with a one-line provenance note no longer scores 1.0. `computeSourceMetrics` takes `{ commentRatioMinBodyLines }` to change the floor. `INDEX_VERSION` moves to 0.37.0, so an existing index recomputes the ratio instead of carrying the old value forward.
+- 838103e: A Python module id now ends in `@py` instead of dropping the extension (TP-308): `src/sample.py` belongs to module `src/sample@py`, while `src/sample.ts` keeps `src/sample`. Before, a `.ts` and a `.py` file with the same stem shared one module node, and its language came from whichever file merged last. TypeScript module ids, file ids and symbol ids are unchanged. Rules or views that matched Python module ids by their bare stem must add the `@py` tag. `INDEX_VERSION` moves to 0.36.0, so stored indexes with the old ids are not reused.
+- 29b3b5f: `detectRenames` now reads `git diff -z`, so renames of non-ASCII paths carry their real path instead of a quoted one. `RenamePair.similarity` is removed. review-burden exports `parseNameStatus`.
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [beff4cb]
+- Updated dependencies [29b3b5f]
+- Updated dependencies [cffaab7]
+- Updated dependencies [e93951d]
+- Updated dependencies [b33b361]
+- Updated dependencies [144f696]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [3fec5b7]
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/review-burden@0.2.0
+  - @titan-design/retrieval@0.5.0
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/evidence@0.6.0
+
 ## 0.19.0
 
 ### Minor Changes

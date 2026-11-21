@@ -1,5 +1,30 @@
 # @titan-design/yt-scout
 
+## 0.1.3
+
+### Patch Changes
+
+- e5d8d29: Export `consoleInboxDir` and `scorecardStorePath` from app-paths and use them in place of the per-product copies (TP-5809). The console inbox spool now expands a leading `~` in `TITAN_CONSOLE_STATE` in yt-scout, and the factory's eligibility check expands a `~` in `TITAN_SCORECARD_STORE`; the other resolutions are unchanged.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- Updated dependencies [3fe2120]
+- Updated dependencies [8a69e02]
+- Updated dependencies [beff4cb]
+- Updated dependencies [078ae3a]
+- Updated dependencies [9353f86]
+- Updated dependencies [8231dca]
+- Updated dependencies [d77960e]
+- Updated dependencies [dcfbadd]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [3d19ff3]
+  - @titan-design/agent@0.8.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/owner-queue@0.9.0
+
 ## 0.1.2
 
 ### Patch Changes

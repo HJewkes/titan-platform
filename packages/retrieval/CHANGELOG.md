@@ -1,5 +1,24 @@
 # @titan-design/retrieval
 
+## 0.5.0
+
+### Minor Changes
+
+- cffaab7: Add `collapsedTreeRetriever`, which ranks every level of a summary tree together and returns hits whose payload carries `level` and `leafIds`, so callers cite leaves rather than summaries.
+- e93951d: `@titan-design/retrieval` exports the query-term helpers `meaningfulTerms`, `orExpression`, `deriveQuery`, `selectTerms`, `documentFrequencyCap` and `DF_CAP_FLOOR`, with the `DerivedQuery` and `DocumentFrequency` types. They turn prose into a rarity-ranked FTS5 OR expression. active-work now imports them instead of its own copies.
+- b33b361: Add ordered recovery steps to the retrieval engine: `EngineOptions.recovery`, `recoveryTimeoutMs` (default 250) and `recoveryTrigger`, `SearchOptions.recover`, and `SearchResponse.recovered`. When fusion is empty and at least one retriever answered, each `RecoveryStep` rewrites the query in turn and the first rewrite with hits wins. A throwing or timed-out step adds a `recovery:<name>` degradation and the engine moves on (TP-6336).
+- 144f696: Add pure vocabulary correction: `extractTerms`, `scoreTerm`, a banded `editDistance`, `maxEditDistance`, `findCorrection`, `correctQuery` and an in-memory `vocabularyFromEntries` source. Terms keep their cased form, so a camelCase identifier earns its bonus. The vocabulary source is injected, so no database is needed (TP-988).
+- 3fec5b7: Add `order: "edges"` to the context budget so a plan lists its best hits at both ends instead of in score order. The default stays `score`.
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [beff4cb]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+  - @titan-design/store-sqlite@0.6.0
+
 ## 0.4.0
 
 ### Minor Changes

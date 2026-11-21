@@ -1,5 +1,11 @@
 # @titan-design/agent-surface
 
+## 0.4.1
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.4.0
 
 ### Minor Changes

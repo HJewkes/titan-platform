@@ -1,5 +1,20 @@
 # @titan-design/agent-lifecycle
 
+## 0.1.11
+
+### Patch Changes
+
+- bd68bea: Export `canonicalJson` from agent-protocol as the one copy; agent-lifecycle now imports it. Output is byte-identical to the former copies.
+- Updated dependencies [81668be]
+- Updated dependencies [beff4cb]
+- Updated dependencies [bd68bea]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/store-sqlite@0.6.0
+
 ## 0.1.10
 
 ### Patch Changes

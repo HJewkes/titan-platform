@@ -1,5 +1,50 @@
 # @titan-design/session-analytics
 
+## 0.20.0
+
+### Minor Changes
+
+- 13c9b1c: Add `linkCoverage(db, window)`: the share of implementer sessions with task ids, a linked PR and a known PR state, and of reviewer sessions with a resolved review.
+- ff39530: `taskLedger(db, taskId)` lists every session linked to a task, newest first, with agent, profile, span, priced cost with an unpriced flag, linked PRs and their review verdicts; `readTaskInitiative` names the task's initiative. `active-work miner ledger <task>` renders them, and refuses an agent caller for a task in an initiative that is not agent-visible.
+- d3d1d5b: Add `denialOf`, the one classifier for Claude Code permission, auto-mode-classifier and permission-hook-deadline text (TP-5807). The friction gate, blocked-flow denials, the tool-errors insight and the reviewer smoke check now use it, so a non-error result worded "was denied" is counted as a denial.
+- 07330ed: Add `predecessorChain(db, sessionId, input)`: a session's agent chain oldest first, across the seat's earlier generations and the differently named agent each session's origin says it succeeds.
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 1029d2e: The scorecard first-pass row now counts only verdict blocks parseVerdictBlock accepts, so fenced, duplicated, malformed and short-head verdicts no longer count.
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- 62d9877: The mechanical first-blocker row counts only FIX_FIRST messages the verdict parser accepts (TP-5847).
+- Updated dependencies [61a7e30]
+- Updated dependencies [e11e750]
+- Updated dependencies [81668be]
+- Updated dependencies [0de5073]
+- Updated dependencies [4d349a1]
+- Updated dependencies [beff4cb]
+- Updated dependencies [bd68bea]
+- Updated dependencies [f012a1b]
+- Updated dependencies [eabd299]
+- Updated dependencies [bbe129b]
+- Updated dependencies [62066a3]
+- Updated dependencies [07e7f6d]
+- Updated dependencies [4eb5c07]
+- Updated dependencies [f5c87b7]
+- Updated dependencies [a56d49d]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [209305e]
+- Updated dependencies [b937077]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [7acf411]
+  - @titan-design/review-panel@0.10.0
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/session-graph@0.20.0
+
 ## 0.19.0
 
 ### Minor Changes

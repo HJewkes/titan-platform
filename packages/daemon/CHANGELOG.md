@@ -1,5 +1,16 @@
 # @titan-design/daemon
 
+## 0.10.0
+
+### Minor Changes
+
+- e114f17: `closeOnSignal(handle, onClose?)` closes a started daemon on SIGINT or SIGTERM after running a caller's `onClose`, and closes the handle even when `onClose` rejects. The console and codewatch apps drop their identical local copies.
+- c759bad: Export `touchedPaths`, the build-closure path rule (TP-5798), so the console self-updater and the factory deployer share one copy.
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.9.0
 
 ### Minor Changes
