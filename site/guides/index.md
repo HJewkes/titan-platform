@@ -42,6 +42,8 @@ how it fails.
 - **[Set up the autonomous loop](/guides/autonomous-loop-setup)** — what to create to run
   the build-and-merge loop: the release GitHub App, npm trusted publishing, rulesets, the
   factory service, seat policy and Claude Code grants.
+- **[Idle heartbeat](/guides/idle-heartbeat)** — `titan heartbeat idle`: wake a seat after
+  it has gone a set time without a turn, instead of on a fixed `CronCreate` schedule.
 - **[Session miner](/guides/session-miner#run-it)** — `titan-miner`: index Claude Code and
   Codex transcripts, search, cluster failures, keep a playbook, serve over MCP and HTTP.
 - **[Retrieval eval](/guides/retrieval-eval)** — `retrieval-eval`: mine query and label

@@ -89,6 +89,7 @@ export type { ReadClaudeTextOptions } from "./claude-read.js";
 export { readSessionObservations, readSessionSourceText } from "./session-observations.js";
 export type { ReadSessionObservationOptions, ReadSessionSourceTextOptions, SessionObservationReadResult } from "./session-observations.js";
 export { readRecentSessionTurns, readRecentSessionTurnsSync } from "./recent-session-turns.js";
+export { readClaudeTurnState, type TurnState } from "./turn-state.js";
 export { SessionIdentityError } from "./recent-claude.js";
 export type { SessionIdentityErrorCode } from "./recent-claude.js";
 export type { ReadRecentSessionTurnsOptions, RecentObservedValue, RecentSessionReadError, RecentSessionTurn,
