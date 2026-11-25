@@ -5,7 +5,7 @@ import { findClaudeSessionSource, readClaudeTurnState } from "@titan-design/sess
 import { renderOutcome, type IdleBeatArgs } from "./render.js";
 import { waitForIdleBeat, type IdleBeatPorts } from "./run.js";
 
-export interface HeartbeatIo {
+interface HeartbeatIo {
   stdout: (text: string) => void;
   stderr: (text: string) => void;
   env: NodeJS.ProcessEnv;

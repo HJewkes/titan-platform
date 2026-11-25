@@ -13,14 +13,14 @@ export interface IdleBeatPolicy {
   maxMs?: number;
 }
 
-export interface IdleBeatInput {
+interface IdleBeatInput {
   turn: TurnState;
   nowMs: number;
   armedAtMs: number;
   policy: IdleBeatPolicy;
 }
 
-export type IdleBeatStep = { kind: "wait" } | { kind: "beat"; reason: "idle" | "max"; idleMs: number };
+type IdleBeatStep = { kind: "wait" } | { kind: "beat"; reason: "idle" | "max"; idleMs: number };
 
 const WAIT: IdleBeatStep = { kind: "wait" };
 
