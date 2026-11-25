@@ -1,4 +1,4 @@
-import type { TurnState } from "@titan-design/session-read";
+import type { TurnState } from "./turn-state.js";
 
 /**
  * The idle heartbeat's rule. A fixed cron wakes a session even when it has just finished a

@@ -1,4 +1,4 @@
-import type { TurnState } from "@titan-design/session-read";
+import type { TurnState } from "./turn-state.js";
 import { idleBeatStep, type IdleBeatPolicy } from "./idle-beat.js";
 
 export interface IdleBeatPorts {

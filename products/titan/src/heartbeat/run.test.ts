@@ -1,4 +1,4 @@
-import type { TurnState } from "@titan-design/session-read";
+import type { TurnState } from "./turn-state.js";
 import { describe, expect, it } from "vitest";
 import { waitForIdleBeat, type IdleBeatPorts } from "./run.js";
 

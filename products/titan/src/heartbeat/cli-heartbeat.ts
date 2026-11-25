@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Command } from "commander";
-import { findClaudeSessionSource, readClaudeTurnState } from "@titan-design/session-read";
+import { findClaudeSessionSource } from "@titan-design/session-read";
+import { readClaudeTurnState } from "./turn-state.js";
 import { renderOutcome, type IdleBeatArgs } from "./render.js";
 import { waitForIdleBeat, type IdleBeatPorts } from "./run.js";
 

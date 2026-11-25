@@ -57,6 +57,16 @@ describe("readClaudeTurnState", () => {
     expect(readClaudeTurnState(file)).toEqual({ kind: "idle", sinceMs: Date.parse(at(4)) });
   });
 
+  it("skips the line a short window cuts and a final line still being written", () => {
+    const file = join(mkdtempSync(join(tmpdir(), "turn-state-")), "session.jsonl");
+    const lines = [prompt(1), toolUse(2), endTurn(4)].map((r) => JSON.stringify(r));
+    writeFileSync(file, `${lines.join("\n")}\n{"type":"user","timest`);
+
+    const window = lines[2]!.length + 40;
+
+    expect(readClaudeTurnState(file, window)).toEqual({ kind: "idle", sinceMs: Date.parse(at(4)) });
+  });
+
   it("reads a missing transcript as unknown, never idle", () => {
     expect(readClaudeTurnState(join(tmpdir(), "no-such-dir-for-turn-state", "x.jsonl")).kind).toBe("unknown");
   });
