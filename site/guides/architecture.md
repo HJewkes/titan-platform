@@ -344,6 +344,7 @@ graph TD
   titan --> anthropicAccount
   titan --> daemon
   titan --> health
+  titan --> sessionRead
   ytScout --> agent
   ytScout --> appPaths
   ytScout --> ownerQueue
