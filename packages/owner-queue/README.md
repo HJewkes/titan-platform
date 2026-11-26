@@ -91,7 +91,7 @@ below; the `package-layers` rule in `.codewatch/check.json` enforces this in CI.
   reason, at? }`. `byRecPolicySchema` (`titan/auto-by-rec-policy@1`: `mode`, `afterHours`
   default 24, `minConfidence`, `exclude`) can only add exclusions to `BY_REC_FLOOR`, which
   stays in code. A deposit's `onSilence: apply-default` wait replaces the 24 h. `byRecSubjectOfItem`
-  builds a subject from an item, `byRecRowSchema` (`titan/auto-by-rec@1`) is the log row and
+  builds a subject from an item and `byRecRoundSubject` from a round@2 question (context included), `byRecRowSchema` (`titan/auto-by-rec@1`) is the log row and
   `BY_REC_RESOLVER` the attribution.
 - `rank(items)` orders one-way items and blocking items routed `owner-now` first, then by how
   many keys an answer unblocks, then oldest first; ties group by initiative, then by id.

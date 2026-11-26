@@ -32,12 +32,13 @@ export function roundItemId(roundId: string, questionId: string): string {
   return `round:${roundId}/${questionId}`;
 }
 
-function summaryOf(prompt: string): string {
+export function summaryOf(prompt: string): string {
   const line = prompt.replace(/\s+/g, " ").trim();
   return line.length <= MAX_SUMMARY ? line : `${line.slice(0, MAX_SUMMARY - 1)}…`;
 }
 
-function contextOf(question: Question, manifest: Manifest): string {
+/** The section's `deciding` and context, or the round's context: what the owner reads above the question. */
+export function contextOf(question: Pick<Question, "id">, manifest: Pick<Manifest, "sections" | "context">): string {
   const section = manifest.sections?.find((each) => each.questionIds.includes(question.id));
   return [section?.deciding, section?.context ?? manifest.context].filter((text) => text?.trim()).join("\n");
 }

@@ -28,13 +28,14 @@ const RAMP_PLAN = { planApprovals: [{ questionId: "ramp", approve: "Staged", tas
 
 type QuestionFixture = Record<string, unknown> & { id: string };
 
-function manifest(unit: string, questions: readonly QuestionFixture[], recommendations: string, extra: Record<string, unknown>) {
+function manifest(unit: string, questions: readonly QuestionFixture[], recommendations: string, extra: Record<string, unknown>, section: Record<string, unknown> = {}) {
   return {
     ...extra,
     schema: "titan-review/round@2", unit, round: 1, storybookUrl: "http://127.0.0.1:6006", context: "A synthetic kiln round.", widths: [1280], variants: [], recommendations,
     sections: [{
       id: "main", title: "Main", deciding: "The defaults.", changed: "Nothing real.", context: "Synthetic.", questionIds: questions.map((question) => question.id),
       parts: questions.flatMap((question) => (typeof question.signsOff === "string" ? [{ id: question.signsOff, label: question.id, proposed: question.id }] : [])),
+      ...section,
     }],
     questions,
   };
@@ -49,11 +50,19 @@ const neverSubmit = async (): Promise<never> => {
 };
 
 /** Writes the round with its mtime `ageMs` ago and, unless `unseen`, lets a sweep see it then, as the hourly timer would. */
-async function stageRound(id: string, questions: readonly QuestionFixture[], { ageMs = 24 * HOUR, recommendations = "shown", extra = {}, unseen = false } = {}): Promise<void> {
+interface Staging {
+  ageMs?: number;
+  recommendations?: string;
+  extra?: Record<string, unknown>;
+  section?: Record<string, unknown>;
+  unseen?: boolean;
+}
+
+async function stageRound(id: string, questions: readonly QuestionFixture[], { ageMs = 24 * HOUR, recommendations = "shown", extra = {}, section = {}, unseen = false }: Staging = {}): Promise<void> {
   const roundDir = path.join(dir, id);
   await mkdir(roundDir, { recursive: true });
   const file = path.join(roundDir, "round.json");
-  await writeFile(file, JSON.stringify(manifest(id.replace(/-r1$/, ""), questions, recommendations, extra)));
+  await writeFile(file, JSON.stringify(manifest(id.replace(/-r1$/, ""), questions, recommendations, extra, section)));
   const opened = new Date(NOW - ageMs);
   await utimes(file, opened, opened);
   if (!unseen) await sweepByRecRounds({ dir, stateDir, submit: neverSubmit, now: opened });
@@ -196,6 +205,28 @@ describe("the rounds by-rec sweep, live", () => {
     expect(await exists(path.join(dir, "kiln-r1", "feedback.json"))).toBe(false);
     expect(await exists(path.join(dir, "kiln-r1", BY_REC_MARKERS.live))).toBe(false);
     expect(await rows()).toEqual([]);
+  });
+
+  async function expectMoneySkip(staging: Staging, questions: readonly QuestionFixture[] = [RAMP]): Promise<void> {
+    await stageRound("kiln-r1", questions, staging);
+    const run = harness();
+
+    const report = await run.sweep();
+
+    expect(report.outcomes).toEqual([{ roundId: "kiln-r1", result: "skipped", reason: 'question "ramp": floor:money', waiting: false }]);
+    expect(await exists(path.join(dir, "kiln-r1", "feedback.json"))).toBe(false);
+  }
+
+  it("a cost named only in the round context skips the round as floor:money", async () => {
+    await expectMoneySkip({ section: { context: "Staging the ramp adds $400/month of runner time." } });
+  });
+
+  it("a cost named only in a section's deciding text skips the round", async () => {
+    await expectMoneySkip({ section: { deciding: "Whether to pay $90 a month for the staged ramp." } });
+  });
+
+  it("a cost named only in optionDetails skips the round", async () => {
+    await expectMoneySkip({}, [{ ...RAMP, optionDetails: { Staged: { detail: "Costs $5 a run." } } }]);
   });
 
   it("leaves a round the owner already answered alone", async () => {
