@@ -35,9 +35,18 @@ const INTERRUPTED = "[Request interrupted by user";
 
 /** Pure: the turn state the newest main-chain record implies; records are oldest first. */
 export function claudeTurnState(records: readonly unknown[]): TurnState {
+  let localOutputAfter = false;
   for (let i = records.length - 1; i >= 0; i--) {
     const record = asObject(records[i]);
     if (record === null || record.isSidechain === true) continue;
+    const kind = userKind(record);
+    if (kind === "no-reply") continue;
+    if (kind === "local-output") {
+      localOutputAfter = true;
+      continue;
+    }
+    // A slash command whose output follows it ran locally; one with no output yet may be a prompt command still starting.
+    if (kind === "command" && localOutputAfter) continue;
     const state = stateOf(record);
     if (state !== undefined) return state;
   }
@@ -58,6 +67,27 @@ function stateOf(record: Json): TurnState | undefined {
   }
 }
 
+const LOCAL_OUTPUT_TAGS = ["<local-command-stdout>", "<local-command-stderr>", "<local-command-caveat>"];
+
+/**
+ * User records Claude Code writes that the model never answers: the compaction summary and a
+ * local slash command's output. Reading them as a prompt would leave a quiet seat busy for good.
+ * Not every `isMeta` record: channel messages are `isMeta` too, and they do start a turn.
+ */
+function userKind(record: Json): "no-reply" | "local-output" | "command" | undefined {
+  if (record.type !== "user") return undefined;
+  if (record.isCompactSummary === true) return "no-reply";
+  const text = textOf(asObject(record.message)).trimStart();
+  if (LOCAL_OUTPUT_TAGS.some((tag) => text.startsWith(tag))) return "local-output";
+  return text.startsWith("<command-name>") || text.startsWith("<command-message>") ? "command" : undefined;
+}
+
+function textOf(message: Json | null): string {
+  if (typeof message?.content === "string") return message.content;
+  const first = blocks(message).find((block) => block.type === "text");
+  return first === undefined ? "" : (str(first, "text") ?? "");
+}
+
 function idleAt(record: Json): TurnState {
   const sinceMs = Date.parse(str(record, "timestamp") ?? "");
   return Number.isFinite(sinceMs) ? { kind: "idle", sinceMs } : { kind: "unknown", reason: "turn end has no timestamp" };
@@ -65,9 +95,7 @@ function idleAt(record: Json): TurnState {
 
 /** An interrupted turn ends on the user's interrupt marker, with no assistant reply after it. */
 function isInterrupt(record: Json): boolean {
-  const message = asObject(record.message);
-  if (typeof message?.content === "string") return message.content.startsWith(INTERRUPTED);
-  return blocks(message).some((block) => block.type === "text" && (str(block, "text") ?? "").startsWith(INTERRUPTED));
+  return textOf(asObject(record.message)).startsWith(INTERRUPTED);
 }
 
 /** Reads the transcript's tail and classifies it; an unreadable file is `unknown`, never `idle`. */

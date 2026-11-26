@@ -59,7 +59,9 @@ wakes the seat exactly once, when it exits.
 ## Compaction and teleport
 
 - **Compaction.** The beat runs outside the seat's context, so a `/compact` or an automatic
-  compaction does not touch it, and it keeps no state file. The re-arm command arrives in the
+  compaction does not touch it, and it keeps no state file. The records a compaction or a
+  local slash command writes (the compact summary, `<local-command-stdout>`) get no reply,
+  so the reader skips them and the idle clock keeps running from the last real turn. The re-arm command arrives in the
   wake line itself, so a compacted seat does not need to remember it.
 - **Teleport.** The successor is a new session with a new `CLAUDE_CODE_SESSION_ID`; the old
   beat ends when the old session exits. Arm the beat in the boot steps, as above, and the

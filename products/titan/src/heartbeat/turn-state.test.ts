@@ -44,6 +44,36 @@ describe("claudeTurnState", () => {
     expect(claudeTurnState([prompt(1), toolUse(2), interrupt])).toEqual({ kind: "idle", sinceMs: Date.parse(at(9)) });
   });
 
+  it("reads a compaction after the last turn as still idle since that turn", () => {
+    const boundary = { type: "system", subtype: "compact_boundary", timestamp: at(30) };
+    const summary = { type: "user", isCompactSummary: true, isVisibleInTranscriptOnly: true, timestamp: at(30), message: { role: "user", content: "This session is being continued from a previous conversation." } };
+
+    expect(claudeTurnState([prompt(1), endTurn(4), system(5), boundary, summary])).toEqual({ kind: "idle", sinceMs: Date.parse(at(4)) });
+  });
+
+  it("reads a local slash command and its output after the last turn as still idle", () => {
+    const user = (second: number, content: string, fields = {}) => ({ type: "user", timestamp: at(second), message: { role: "user", content }, ...fields });
+    const local = [
+      user(20, "<local-command-caveat>Caveat: placeholder</local-command-caveat>", { isMeta: true }),
+      user(20, "<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args></command-args>"),
+      user(21, "<local-command-stdout>placeholder output</local-command-stdout>"),
+    ];
+
+    expect(claudeTurnState([prompt(1), endTurn(4), ...local])).toEqual({ kind: "idle", sinceMs: Date.parse(at(4)) });
+  });
+
+  it("reads a slash command with no local output yet as busy, since it may be a prompt command", () => {
+    const command = { type: "user", timestamp: at(20), message: { content: "<command-name>/review</command-name>\n<command-message>review</command-message>" } };
+
+    expect(claudeTurnState([endTurn(4), command])).toEqual({ kind: "busy" });
+  });
+
+  it("reads a channel message after the last turn as busy, though it is marked meta", () => {
+    const channel = { type: "user", isMeta: true, timestamp: at(20), message: { content: '<channel source="synthetic" from="peer">hello</channel>' } };
+
+    expect(claudeTurnState([endTurn(4), channel])).toEqual({ kind: "busy" });
+  });
+
   it("reads a tail with no conversational record as unknown", () => {
     expect(claudeTurnState([system(1), { type: "custom-title" }]).kind).toBe("unknown");
   });
