@@ -81,10 +81,22 @@ const hasFamily = (rows: readonly string[] | undefined, families: readonly strin
 const releaseRef = (ref: string | undefined): boolean => RELEASE_REFS.has((ref ?? "").trim().replace(REF_PREFIX, ""));
 
 /**
- * Authority and guard files: the authority package, g10 rules, hold and policy files, CI workflows, merge-lint,
- * CODEOWNERS, settings, and this policy itself.
+ * A repo path with its `.` and empty segments dropped, since git resolves `./x` to `x`; undefined when what remains
+ * could leave the repo or alias another file.
  */
-export function isGuardPath(path: string): boolean {
+function canonicalPath(path: string): string | undefined {
+  if (path.includes("\\") || path.trim().startsWith("/")) return undefined;
+  const segments = path.trim().split("/").filter((segment) => segment !== "" && segment !== ".");
+  return segments.length === 0 || segments.includes("..") ? undefined : segments.join("/");
+}
+
+/**
+ * Authority and guard files: the authority package, g10 rules, hold and policy files, CI workflows, merge-lint,
+ * CODEOWNERS, settings, and this policy itself. A path that does not canonicalize counts as guard.
+ */
+export function isGuardPath(rawPath: string): boolean {
+  const path = canonicalPath(rawPath);
+  if (path === undefined) return true;
   const base = lower(path.split("/").pop());
   if (lower(path).startsWith(AUTHORITY_PACKAGE) || CI_AND_SETTINGS.test(lower(path))) return true;
   if (base.startsWith("g10-") || base.startsWith("by-rec")) return true;
@@ -150,7 +162,30 @@ export const BY_REC_FLOOR: readonly FloorRule[] = [
   ["answer-unsound", answerUnsound],
 ];
 
+const foldEach = (values: readonly string[] | undefined, fold: (value: string) => string): string[] | undefined => values?.map(fold);
+const upper = (value: string): string => value.trim().toUpperCase();
+
+/**
+ * The subject with every string a rule or exclusion compares put in one form: paths without `.` segments, D-rows and
+ * authority rows upper case, hold, owner-at-head, table, category and kind lower case, all trimmed. A sweep reads these
+ * facts raw, so without this step a spelling variant of a refused fact reads as allowed. Idempotent.
+ */
+export function canonicalSubject(subject: ByRecSubject): ByRecSubject {
+  const canonical: ByRecSubject = { ...subject };
+  if (subject.paths) canonical.paths = subject.paths.map((path) => canonicalPath(path) ?? path);
+  if (subject.decisionClass !== undefined) canonical.decisionClass = upper(subject.decisionClass);
+  if (subject.authorityRows) canonical.authorityRows = foldEach(subject.authorityRows, upper);
+  if (subject.authorityTable !== undefined) canonical.authorityTable = lower(subject.authorityTable);
+  if (subject.holdClasses) canonical.holdClasses = foldEach(subject.holdClasses, lower);
+  if (subject.ownerAtHead) canonical.ownerAtHead = foldEach(subject.ownerAtHead, lower);
+  if (subject.category !== undefined) canonical.category = lower(subject.category);
+  if (subject.kind !== undefined) canonical.kind = lower(subject.kind);
+  if (subject.headRef !== undefined) canonical.headRef = subject.headRef.trim();
+  return canonical;
+}
+
 /** The first floor class the subject falls in, or undefined when none does. */
 export function floorReason(subject: ByRecSubject): string | undefined {
-  return BY_REC_FLOOR.find(([, refuses]) => refuses(subject))?.[0];
+  const canonical = canonicalSubject(subject);
+  return BY_REC_FLOOR.find(([, refuses]) => refuses(canonical))?.[0];
 }

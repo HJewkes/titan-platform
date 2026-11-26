@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { floorReason, type ByRecSubject } from "./by-rec-floor.js";
+import { canonicalSubject, floorReason, type ByRecSubject } from "./by-rec-floor.js";
 import type { ByRecExclusion, ByRecPolicy } from "./by-rec-schema.js";
 import type { OwnerItem } from "./schema.js";
 
@@ -26,9 +26,12 @@ function valuesOf(subject: ByRecSubject, field: ByRecExclusion["field"]): readon
   return fields[field];
 }
 
+const fold = (value: string): string => value.trim().toLowerCase();
+
+/** Case-insensitive, like the floor, so an exclusion written `d5` still excludes a `D5` subject. */
 function excludedBy(subject: ByRecSubject, policy: ByRecPolicy): ByRecExclusion | undefined {
   return policy.exclude.find((rule) =>
-    valuesOf(subject, rule.field).some((value) => (PREFIX_FIELDS.has(rule.field) ? value.startsWith(rule.value) : value === rule.value)),
+    valuesOf(subject, rule.field).some((value) => (PREFIX_FIELDS.has(rule.field) ? fold(value).startsWith(fold(rule.value)) : fold(value) === fold(rule.value))),
   );
 }
 
@@ -74,7 +77,8 @@ function clockDecision(subject: ByRecSubject, now: Date, policy: ByRecPolicy): B
  * logs. Shadow mode decides the same way as live; only the sweep's action differs. A skip that is only waiting on the
  * clock carries `at`, so a countdown can show when it becomes eligible.
  */
-export function byRecDecision(subject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision {
+export function byRecDecision(rawSubject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision {
+  const subject = canonicalSubject(rawSubject);
   const reason = policyReason(subject, policy);
   if (reason !== undefined) return { eligible: false, reason };
   const at = clockDecision(subject, now, policy);
