@@ -1,5 +1,31 @@
 # @titan-design/session-read
 
+## 0.18.0
+
+### Minor Changes
+
+- 0de5073: An adversary Authority label glued to an identifier character is still a reading (TP-6624). `Authority-gate: widened` and
+  `Authority_level: widened` read widened, and any other line whose fold starts `authority` (`Authority-widens: ...`, an
+  `authorityLevel` lead) reads malformed, so it can never sit beside `Authority: unchanged` unread. session-read exports
+  `foldLabelledLine`; its CI-policy reading does not change. Factory bumps `sh-await-verdict`, whose output changes for such
+  replies.
+- bbe129b: Restore the `built_on` relation (pr --built_on--> branch). The `pr_create` event's command half now carries `headRef` and `base`, read from `gh pr create --head`/`-H` and `--base`/`-B`, or from the checked-out branch when no head is named and nothing in the command switches it; `RELATIONS.BUILT_ON` documents the relation. session-graph migration 16 stores the head, base and call time on `pr_create_observation`, and `reconcile` writes one live `built_on` edge per create whose result named a PR, with the base in `attrs` and a `builtOn` count. A failed create writes no edge. Rows indexed before migration 16 gain edges on the next rebuild.
+- a56d49d: `recoverSession` reports `compactions: { count, lastSummaries }`: how many times the session compacted and the last three compaction summaries, oldest first. A compaction with no summary text is counted but not listed, and compactions copied in from a parent conversation are skipped.
+- 83ed2aa: Export `transcriptFromPath` from session-read, beside `discoverTranscripts`; active-work's copy is removed.
+
+### Patch Changes
+
+- f012a1b: Dedupe Codex message projections in either order through one shared matcher, so a canonical message that precedes its projection no longer yields a duplicate.
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- Updated dependencies [81668be]
+- Updated dependencies [bd68bea]
+- Updated dependencies [a411d70]
+- Updated dependencies [b937077]
+- Updated dependencies [5c8299f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/anthropic-account@0.5.0
+
 ## 0.17.0
 
 ### Minor Changes

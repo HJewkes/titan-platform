@@ -1,5 +1,20 @@
 # @titan-design/agent-dispatch
 
+## 0.11.0
+
+### Minor Changes
+
+- d8294fb: `listAgents`, `listAgentLineage`, `retire`, `messageAgent` and `parkAgent` take an optional trailing `AbortSignal`. Aborting it kills the `agent-chat` child and rejects with `DispatchError`, as `askHuman` already does.
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [beff4cb]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+  - @titan-design/store-sqlite@0.6.0
+
 ## 0.10.0
 
 ### Minor Changes
