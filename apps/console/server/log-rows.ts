@@ -7,6 +7,7 @@
  * have done. A gate row whose PR has not merged is a decision row of its own.
  */
 import type { ByRecRow } from "@titan-design/owner-queue";
+import type { LogFrames } from "./log-frames.js";
 
 export type Approval = "owner" | "reviewer" | "plan" | "auto-by-rec" | "unrecorded";
 
@@ -22,6 +23,8 @@ export interface ShipInput {
   approval: Approval;
   /** The authority rule a reviewer release recorded, such as MRG-AU-RV. */
   rule?: string;
+  /** The head Shepherd merged, whose pr-visual artifact holds the row's frames. */
+  head?: string;
 }
 
 type Reverse = { kind: "revert"; href: string } | { kind: "overrule"; task: string } | { kind: "none"; reason: string };
@@ -44,9 +47,9 @@ export interface LogRow {
   resolver: string;
   result?: ByRecRow["result"];
   reverse: Reverse;
-  /** A tier-2 visual gate (D2); slice G (TP-6777) fills `frames` with its before/after pair. */
+  /** A tier-2 visual gate (D2); a ship row's `frames` hold its before and after pairs once captured (TP-6777). */
   visual: boolean;
-  frames: null;
+  frames: LogFrames | null;
 }
 
 interface LogInput {
@@ -61,7 +64,7 @@ interface LogInput {
 const SHOWN_RESULTS = new Set<ByRecRow["result"]>(["resolved", "would-resolve", "failed"]);
 const RESOLVERS: Record<Approval, string> = { owner: "owner", reviewer: "reviewer", plan: "plan approval", "auto-by-rec": "auto-by-rec", unrecorded: "not recorded" };
 
-const prKeyOf = (repo: string, pr: number): string => `${repo.toLowerCase()}#${pr}`;
+export const prKeyOf = (repo: string, pr: number): string => `${repo.toLowerCase()}#${pr}`;
 const prUrl = (repo: string, pr: number): string => `https://github.com/${repo}/pull/${pr}`;
 
 function prOfRow(row: ByRecRow): { repo: string; pr: number } | undefined {

@@ -1471,6 +1471,12 @@ A sweep holds `visual-feedback-notes.lock` in the state dir, so a second one sta
 exits 75. A note's key is written to the ledger before its task is added and removed again if
 the add fails, so a failed ledger write never files a note twice.
 
+**Frames for the log.** `titan-factory shepherd log-frames --repo <owner/repo> --pr <n> --head <sha> --dir <dir>`
+writes one shipped PR's changed pr-visual pairs and its `manifest.json` into `--dir`, through the reader the Ship rounds
+use. The console's Decisions and ships log runs it for visual ship rows. It refuses a `--dir` that does not end in
+`log-frames/<owner>/<repo>/<pr>` for that PR. `--json` reports the packet line, the reason when no pair was written, and
+`failed` when the read itself failed and is worth trying again.
+
 ### Visual tiers {#visual-tiers}
 
 `shepherd.visualTier` in the factory config sorts a head that the visual-path row would gate
