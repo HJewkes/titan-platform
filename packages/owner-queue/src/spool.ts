@@ -94,6 +94,11 @@ export function withdrawnFileName(id: string): string {
   return checkedName(`${encodeNamePart(id)}${WITHDRAWN_SUFFIX}`);
 }
 
+/** A sitting step's outcome marker: `<id>.step-<n>` beside the deposit, with no `.json` suffix, as for withdrawal. */
+export function stepFileName(id: string, step: number): string {
+  return checkedName(`${encodeNamePart(id)}.step-${step}`);
+}
+
 /**
  * Every name this deposit may already be filed under: the current name, then the name a spool
  * written before A-Z was escaped gave it, when that differs. Readers accept both; writers only

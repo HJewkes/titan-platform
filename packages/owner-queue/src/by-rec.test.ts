@@ -1,9 +1,16 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { byRecDecision, byRecSubjectOfItem } from "./by-rec.js";
 import { BY_REC_FLOOR, isGuardPath, type ByRecSubject } from "./by-rec-floor.js";
 import { BY_REC_RESOLVER, byRecPolicySchema, byRecRowSchema, type ByRecPolicy } from "./by-rec-schema.js";
 import type { OwnerItem } from "./schema.js";
 import { item } from "./test-fixtures.js";
+
+const AUTHORITY_TABLE = new URL("../../authority/src/table.json", import.meta.url);
+const AUTO_RESOLVABLE = new Set(["SPN", "RET", "UNT", "ANS"]);
+const tableSchema = z.object({ rules: z.array(z.object({ id: z.string() })) });
+const tableRowIds = (): string[] => tableSchema.parse(JSON.parse(readFileSync(AUTHORITY_TABLE, "utf8"))).rules.map((rule) => rule.id);
 
 const OPENED = "2026-03-01T00:00:00.000Z";
 const HOUR = 3_600_000;
@@ -38,13 +45,22 @@ const FLOOR_CASES: [string, Partial<ByRecSubject>][] = [
   ["guard-path", { paths: ["packages/authority/src/table.json"] }],
   ["guard-path", { guardPath: true }],
   ["release", { headRef: "changeset-release/main" }],
+  ["release", { headRef: "refs/heads/changeset-release/main" }],
   ["release", { category: "Release" }],
   ["release", { authorityRows: ["REL-1"] }],
   ["publish", { authorityRows: ["PUB-PRIV"] }],
   ["publish", { authorityRows: ["EXT-POST"] }],
   ["secret", { authorityRows: ["SEC-READ"] }],
-  ["hardware", { authorityRows: ["HW-ACT"] }],
+  ["hardware", { authorityRows: ["HW-AU"] }],
+  ["hardware", { authorityRows: ["HWS-OT"] }],
   ["money", { category: "spend" }],
+  ["money", { authorityRows: ["SPD-OT"] }],
+  ["authority-row", { authorityRows: ["MRG-AU"] }],
+  ["authority-row", { authorityRows: ["CFG-OT"] }],
+  ["authority-row", { authorityRows: ["DSX-OT"] }],
+  ["authority-row", { authorityRows: ["SPN-AU", "ZZZ-FUTURE"] }],
+  ["authority-row", { authorityRows: ["dead-end/stuck"] }],
+  ["authority-row", { authorityRows: ["SPN-AU"], authorityTable: "other-table" }],
   ["money", { text: ["Upgrade the plan for $ 40 a month"] }],
   ["one-way", { door: "one-way" }],
   ["irreversible", { irreversible: true }],
@@ -61,6 +77,8 @@ const FLOOR_CASES: [string, Partial<ByRecSubject>][] = [
   ["plan-approval", { planApproval: true }],
   ["answer-unsound", { options: ["b", "c"] }],
   ["answer-unsound", { default: "b" }],
+  ["answer-unsound", { options: undefined }],
+  ["answer-unsound", { options: [] }],
 ];
 
 describe("byRecDecision floor", () => {
@@ -70,6 +88,12 @@ describe("byRecDecision floor", () => {
     const decision = byRecDecision(subject(overrides), after(720 * HOUR), permissive);
 
     expect(decision).toEqual({ eligible: false, reason: `floor:${reason}` });
+  });
+
+  it.each(tableRowIds())("refuses authority row %s unless its family may auto-resolve", (row) => {
+    const decision = byRecDecision(subject({ authorityRows: [row] }), after(720 * HOUR), policy());
+
+    expect(decision.eligible).toBe(AUTO_RESOLVABLE.has(row.split("-")[0] ?? ""));
   });
 
   it("has a case for every floor class", () => {
@@ -113,8 +137,18 @@ describe("byRecDecision clock", () => {
     expect(decision).toEqual({ eligible: false, reason: "floor:on-silence-wait" });
   });
 
-  it("refuses an unreadable open time", () => {
-    expect(byRecDecision(subject({ openedAt: "yesterday" }), after(48 * HOUR), policy())).toEqual({ eligible: false, reason: "bad-opened-at" });
+  it.each(["yesterday", "0", "1", "2026-03-01", "2026-03-01T00:00:00"])("refuses an open time that is not a strict ISO date-time with offset: %s", (openedAt) => {
+    expect(byRecDecision(subject({ openedAt }), after(48 * HOUR), policy())).toEqual({ eligible: false, reason: "bad-opened-at" });
+  });
+
+  it("accepts an open time with a non-Z offset", () => {
+    const decision = byRecDecision(subject({ openedAt: "2026-03-01T01:00:00+01:00" }), after(24 * HOUR), policy());
+
+    expect(decision).toMatchObject({ eligible: true, at: "2026-03-02T00:00:00.000Z" });
+  });
+
+  it("refuses when the current time is invalid", () => {
+    expect(byRecDecision(subject(), new Date("garbage"), policy())).toEqual({ eligible: false, reason: "bad-now" });
   });
 
   it("names the recommender when no rationale was given", () => {
@@ -171,6 +205,12 @@ describe("isGuardPath", () => {
     ["products/factory/src/shepherd/hold-reason.ts", true],
     ["packages/owner-queue/src/by-rec-floor.ts", true],
     [".codewatch/merge-policy.json", true],
+    [".github/workflows/release.yml", true],
+    [".github/merge-lint.json", true],
+    ["CODEOWNERS", true],
+    [".github/CODEOWNERS", true],
+    [".claude/settings.json", true],
+    [".claude/settings.local.json", true],
     ["packages/metrics/src/threshold.ts", false],
     ["apps/console/web/inbox.tsx", false],
   ])("reads %s as guard: %s", (path, guard) => {
@@ -195,17 +235,61 @@ describe("byRecSubjectOfItem", () => {
     });
   });
 
-  it.each<[string, Partial<OwnerItem>]>([
+  const owner = (ruleId: string, table = "authority"): Partial<OwnerItem> => ({ authority: { table, ruleId, resolvers: ["owner-terminal"] } });
+  const ITEM_FLOOR_CASES: [string, Partial<OwnerItem>][] = [
     ["closed", { status: "answered" }],
-    ["blind", { recommended: { optionId: "a", by: "example-seat", hidden: true } }],
-    ["owner-op", { op: { kind: "close-pr", repo: "example-org/example-repo", pr: 1, headSha: "a".repeat(40) } }],
+    ["no-recommendation", { recommended: undefined }],
+    ["security-class", { class: "D1" }],
+    ["guard-class", { class: "D21" }],
+    ["guard-path", { anchors: ["head/.github/workflows/release.yml#L1"] }],
+    ["guard-path", { anchors: ["diff/packages/authority/src/table.json#L4-L9"] }],
+    ["guard-path", { options: [{ id: "a", label: "Keep", anchors: ["base/CODEOWNERS#L2"] }, { id: "b", label: "Raise" }] }],
+    ["release", { category: "release" }],
+    ["publish", owner("PUB-PRIV")],
+    ["secret", owner("SEC-AU")],
+    ["hardware", owner("HW-AU")],
     ["money", { context: "This costs $120 a year" }],
-    ["ship", { kind: "approve", sources: [{ system: "round", ref: "r1#q1" }] }],
+    ["authority-row", owner("MRG-AU")],
+    ["authority-row", owner("SPN-AU", "other-table")],
+    ["one-way", { door: "one-way" }],
     ["irreversible", { irreversible: "Deletes the archive" }],
-  ])("carries the %s floor over from the item", (reason, overrides) => {
+    ["on-silence-wait", { onSilence: { action: "wait" } }],
+    ["on-silence-expire", { onSilence: { action: "expire", afterHours: 6 } }],
+    ["blind", { recommended: { optionId: "a", by: "example-seat", hidden: true } }],
+    ["change-requested", { answer: { changeRequested: true, by: { class: "owner", id: "owner", channel: "console" }, at: OPENED } }],
+    ["personal", { personal: true }],
+    ["not-a-decision", { kind: "do" }],
+    ["operator-audience", { audience: "operator" }],
+    ["owner-op", { op: { kind: "close-pr", repo: "example-org/example-repo", pr: 1, headSha: "a".repeat(40) } }],
+    ["ship", { kind: "approve", sources: [{ system: "round", ref: "r1#q1" }] }],
+    ["answer-unsound", { options: undefined }],
+    ["answer-unsound", { default: "b" }],
+  ];
+  /** Floor facts an OwnerItem has no field for; the sweep that knows them sets them on the subject. */
+  const NOT_ITEM_FACTS = ["g10-hold", "owner-at-head", "plan-approval"];
+
+  it.each(ITEM_FLOOR_CASES)("carries the %s floor over from the item", (reason, overrides) => {
     const decision = byRecDecision(byRecSubjectOfItem({ ...deposit, ...overrides }), after(48 * HOUR), policy());
 
     expect(decision).toEqual({ eligible: false, reason: `floor:${reason}` });
+  });
+
+  it("has an item case for every floor class an item can carry", () => {
+    const covered = new Set([...ITEM_FLOOR_CASES.map(([reason]) => reason), ...NOT_ITEM_FACTS]);
+
+    expect(covered).toEqual(new Set(BY_REC_FLOOR.map(([reason]) => reason)));
+  });
+
+  it("keeps an item eligible when its anchors touch no guard path", () => {
+    const anchored = { ...deposit, anchors: ["head/apps/console/web/inbox.tsx#L10-L20"] };
+
+    expect(byRecDecision(byRecSubjectOfItem(anchored), after(48 * HOUR), policy())).toMatchObject({ eligible: true });
+  });
+
+  it("keeps an item eligible on an auto-resolvable row of the authority table", () => {
+    const decision = byRecDecision(byRecSubjectOfItem({ ...deposit, ...owner("SPN-AU") }), after(48 * HOUR), policy());
+
+    expect(decision).toMatchObject({ eligible: true });
   });
 });
 

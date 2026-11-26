@@ -192,6 +192,29 @@ await withdrawMatching(dir, { asker: "agent-a", actor: "agent-b", keys: ["my-ala
   malformed one. A marker written before actors were recorded has no `actor`.
 - `WithdrawnItem` carries an optional `actor`, so a read model can show who withdrew an item.
 
+### Sittings
+
+A sitting is one `do` deposit holding ordered owner steps, so a multi-step terminal session
+counts once against an asker's cap. Each step is `{ title, command, op?, verify? }`, 1 to 20 of
+them; a sitting refuses `options` and an item-level `op`.
+
+```ts
+import { recordStep, withStepOutcomes } from "@titan-design/owner-queue/sitting";
+
+await recordStep(dir, "deposit:<32 hex>", 1, { outcome: "done", as: "agent-a", actor: "agent-a" });
+// { id, step: 1, outcome: "done", result: "recorded", closed: false }
+const item = await withStepOutcomes(dir, filed); // each step carries its outcome, if recorded
+```
+
+- `recordStep` writes `<id>.step-<n>` beside the deposit once; a second record of the step keeps
+  the first outcome and returns `already-recorded`. Only the asker records, and a withdrawn or
+  answered sitting is refused with `StepRefusedError`.
+- Each record appends `{ op: "step", id, step, outcome, by, actor, at }` to `sittings.jsonl`
+  (`SITTING_LOG`).
+- The last outcome writes the answer `sitting complete: <n> done, <n> skipped`, by class `asker`
+  on channel `inbox-step` (`SITTING_CLOSE_CHANNEL`), so every reader that treats an answered
+  deposit as closed treats a finished sitting the same way.
+
 `collapseRepeats(items)` in the root export folds open items that one asker filed with the same
 `alarm:<source>` key (`alarmKey(source)`) into the newest, which carries `repeats`, the count.
 
@@ -536,13 +559,17 @@ const decision = byRecDecision(byRecSubjectOfItem(item), new Date(), policy);
   `path`, `authority` (prefix). The file can only add exclusions.
 - **Floor** (`BY_REC_FLOOR`, in code, checked before the file): closed items, no
   recommendation, any `g10*` hold, D1, D21, owner-at-head rows, guard paths (`isGuardPath`:
-  the authority package, `g10-*`, hold, policy and `by-rec*` files), release (the
-  version-packages branch, a release or publish category, `REL-*`), `PUB-*` and `EXT-*`,
-  `SEC-*`, `HW-*`, money (a spend, money or account category, or a dollar amount in the
-  text), one-way doors, `irreversible`, `onSilence` wait or expire, blind picks, change
+  the authority package, CI workflows, `merge-lint.json`, `CODEOWNERS`, `.claude/settings*`,
+  `g10-*`, hold, policy and `by-rec*` files), release (the version-packages branch, bare or
+  under `refs/heads/`, a release or publish category, `REL-*`), `PUB-*` and `EXT-*`,
+  `SEC-*`, `HW-*` and `HWS-*`, money (a spend, money or account category, `SPD-*`, or a
+  dollar amount in the text), any authority row whose family is not `SPN`, `RET`, `UNT` or
+  `ANS` (so a new family, or a row from another table, refuses), one-way doors, `irreversible`, `onSilence` wait or expire, blind picks, change
   requests, personal items, `do` and sitting items, the operator audience, any `op`, Ship and
-  plan-approval questions, and a recommendation that is not an offered option or that the
-  item's `default` contradicts.
+  plan-approval questions, and a recommendation with no options to check it against, that is
+  not an offered option, or that the item's `default` contradicts. `byRecSubjectOfItem`
+  carries the item's `authority.ruleId` as its authority row and `authority.table` as its
+  table, and the paths of every anchor on the item and its options as changed paths.
 - **Clock.** Eligible at `openedAt + afterHours`; a deposit's own `onSilence: apply-default`
   wait replaces the policy's. A skip that only waits on the clock is `too-early` with `at`.
   Shadow and live decide the same; only the sweep's action differs.

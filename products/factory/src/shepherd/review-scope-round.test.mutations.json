@@ -29,6 +29,15 @@
         "fixRoundOf leaves out the findings a MERGE answered and the fix-proof's NO_REPRO records",
         "fixRoundOf does not scope a retry, D8's convergence head, a head with no open finding, or the finding's own head"
       ]
+    },
+    {
+      "name": "the adversary round is recorded as scoped",
+      "file": "products/factory/src/shepherd/review-scope-round.ts",
+      "find": "  if (shape === \"adversary\") return adversaryFocusOf(rereview).scopedRereview ? { scopeFocus: true } : {};\n",
+      "replace": "",
+      "kills": [
+        "the adversary member on a fix round records its round as focused, never as scoped, so review stats count it apart from the narrowed correctness round"
+      ]
     }
   ]
 }

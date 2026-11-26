@@ -477,6 +477,31 @@ id alone. On a refusal it prints the console's reason and exits 1; it never echo
   Open deposits from one asker with the same alarm key show as one item, the newest, with
   `repeats` set to how many there are. The rest stay in the spool, untouched.
 
+### Sittings: several owner steps as one deposit
+
+A sitting is a `do` deposit with `steps`: 1 to 20 ordered owner steps, each with a `title`, the
+`command` to paste, an optional typed `op` and an optional one-line `verify` hint. It counts once
+against the 5-per-asker cap, however many steps it holds, so a multi-step terminal session goes
+in the inbox, not in a script or ledger.
+
+```sh
+titan-console inbox file '{"depositId":"sitting-1","asker":"my-agent","kind":"do","door":"two-way","summary":"Reinstall two tools","context":"Run in order.","steps":[{"title":"Reinstall the CLI","command":"example-cli install --global","verify":"example-cli --version prints 1.2.3"},{"title":"Restart the daemon","command":"example-daemon restart"}]}'
+titan-console inbox step deposit:<32 hex> 1 --done --as my-agent --actor my-agent
+titan-console inbox step deposit:<32 hex> 2 --skipped --as my-agent --actor my-agent
+```
+
+- **The page.** The inbox lists the steps in order, each with its status and a copy button for its
+  command. A sitting refuses `options` and an item-level `op`.
+- **Taps.** The item's tap is the current step's: the first step with no outcome. When that step
+  carries an `op` the console taps (a merge-at-head, say), the tap is the same one a deposit with
+  that `op` gets. Otherwise the owner can answer the sitting in a word, which closes it.
+- **Outcomes.** Only the asker records a step, once: `<id>.step-<n>` beside the deposit, and a line
+  in `sittings.jsonl`. A second record of the same step keeps the first outcome. When every step is
+  done or skipped, the sitting is answered `sitting complete: <n> done, <n> skipped`, by class
+  `asker` on channel `inbox-step`, and it stops counting against the cap.
+- **No auto-resolve.** A sitting is a `do` item with nothing to pick, so it never resolves by
+  recommendation.
+
 ### Withdrawing a deposit
 
 A seat takes back a deposit, without an answer, from a shell on the console's machine:
