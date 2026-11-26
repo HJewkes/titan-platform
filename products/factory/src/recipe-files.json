@@ -11,6 +11,7 @@
   "shepherd/auto-pass.ts",
   "shepherd/await-pr.ts",
   "shepherd/carry-merge.ts",
+  "shepherd/check-candidates-step.ts",
   "shepherd/ci-unread.ts",
   "shepherd/conflict-check.ts",
   "shepherd/correct-verdict.ts",

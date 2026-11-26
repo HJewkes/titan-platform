@@ -1,0 +1,34 @@
+# Camera-path QA (TP-5887): the L0 rows read off a sampled camera track, with no render.
+#
+# The track eases between camera stations: each camera event on the map track moves the camera to its station over
+# the camera op's duration, starting from wherever the camera is when the event fires, so a move that interrupts a
+# move starts from the current pose. Speeds are frame-relative: a pan in frame widths and heights, a zoom in log width.
+#
+# Every row is a warning (TP-5887 D5). No in-repo explainer fixture carries layout geometry, so no fixture can show an
+# error line with zero false positives; the jerk limit rests on an assumed easing (below); and the pipeline-explainer's
+# "fit every station, then reveal each" beat trips seen-before-reveal by construction, since a fit box contains every
+# box it fits. The rows stay dormant until a caller passes a camera track (D4).
+schema: explainer.camera-path/v1
+# Samples per rendered frame: 4x a 30 fps render is 120 Hz, so a spike between two frames is still sampled.
+sampleRateMultiple: 4
+# The easing between camera stations. ASSUMPTION: titan-design has no camera layer yet, so the renderer's easing is
+# undefined; this is the model's guess and the jerk limit depends on it. Smootherstep keeps acceleration continuous,
+# so only a real kink spikes. Replace it, and recalibrate jerk, when a camera layer fixes the easing.
+easing:
+  model: smootherstep
+  assumed: true
+# The top of the caption strip as a fraction of the frame's height; must equal CAPTION_KEEP_OUT in camera.ts.
+captionTop: 0.83
+# Calibration, one station move of one frame width over 1 s, through cameraMotionRows at 120 Hz:
+#   easing        peak velocity (fw/s)   peak jerk (fw/s^3)
+#   smootherstep  1.875                  55.6 sampled, 60 in theory
+#   smoothstep    1.5                    358 sampled (the acceleration steps at each end)
+#   linear        1.0                    14400 sampled (a hard start)
+# So the velocity limit passes a one-frame-width move a second, and the jerk limit passes smootherstep only.
+rows:
+  camera:velocity: { severity: warning, max: 2 }
+  camera:jerk: { severity: warning, max: 100 }
+  # A focus box leaving the frame or dipping into the caption strip from its focus cue until the beat's next focus.
+  camera:key-in-frame: { severity: warning }
+  # A revealed object held whole in frame from its beat's start until its reveal cue.
+  camera:seen-before-reveal: { severity: warning }

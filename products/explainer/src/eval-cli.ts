@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError, Option } from "commander";
+import { readCameraTrack } from "./camera-track-file.js";
 import { calibrateCommand } from "./eval-calibrate-cli.js";
 import { coldCommand } from "./eval-cold-cli.js";
 import { failedChecks, L0_CHECKS, l0HardPass, runL0, type L0Check, type L0Result } from "./eval-l0.js";
@@ -9,9 +10,10 @@ import { listenerCommand } from "./listener-cli.js";
 import { l1Command, l2Command, smokeCommand } from "./eval-judge-cli.js";
 import { paceCommand } from "./eval-pace-cli.js";
 import { appendRun, appendTsv, benchLayout, deterministicRun, freezeScript, rulesSha, STRUCTURE_COLUMNS, type StructureRow } from "./eval-store.js";
+import { sheetCommand } from "./eval-sheet-cli.js";
 import { migrateSpike } from "./migrate.js";
 import { skippedSpineChecks } from "./lint-spine.js";
-import { MAX_SENTENCE_WORDS, vettableSentences } from "./lint-voice.js";
+import { vettableSentences } from "./lint-voice.js";
 import { MapLayoutSchema } from "./map-state.js";
 import { DEFAULT_RULES_PATH, parseRuleRegistry, unimplementedL0Rules, type RuleRegistry } from "./rules.js";
 import { parseScript } from "./script-load.js";
@@ -39,6 +41,7 @@ interface L0Flags {
   spine?: string;
   facts?: string;
   coverage?: string;
+  cameraTrack?: string;
   failOnGhosts?: boolean;
   speechVet?: boolean;
   format: ScriptFormat;
@@ -77,13 +80,13 @@ const errorText = (error: unknown): string => (error instanceof Error ? error.me
 
 /**
  * The L0 checks, with Q-V9 reading speech-vet verdicts under `--speech-vet`. Without the flag, or when no vetter
- * can be built, a sentence over 25 words keeps the 25-word cap, and one stderr line says so.
+ * can be built, a sentence between the Q-V9 caps passes pending a hand vet, and one stderr line says how many.
  */
 async function l0Checks(script: ScriptV1, flags: L0Flags, deps: EvalCliDeps): Promise<readonly L0Check[]> {
   const checks = deps.checks ?? L0_CHECKS;
   const pending = vettableSentences(script.beats).length;
   if (pending === 0) return checks;
-  const capped = `${pending} sentence(s) of ${VETTED_RANGE} words keep the ${MAX_SENTENCE_WORDS}-word Q-V9 cap`;
+  const capped = `${pending} sentence(s) of ${VETTED_RANGE} words pass Q-V9 pending a hand vet`;
   if (!flags.speechVet) {
     console.error(`speech-vet: off; ${capped} (pass --speech-vet to vet them)`);
     return checks;
@@ -117,7 +120,8 @@ async function evalL0(file: string, flags: L0Flags, deps: EvalCliDeps): Promise<
   const facts = flags.facts ? claimFacts(readFileSync(flags.facts, "utf8")) : undefined;
   const coverage = flags.coverage ? parseCoverage(readFileSync(flags.coverage, "utf8")) : undefined;
   const checks = withCoverage(withClaimFacts(await l0Checks(script, flags, deps), facts), coverage, facts);
-  const results = runL0(script, layout, checks, timing, spine);
+  const camera = flags.cameraTrack ? readCameraTrack(readJson(flags.cameraTrack)) : undefined;
+  const results = runL0(script, layout, checks, timing, spine, camera);
   const rows: StructureRow[] = results.map((result) => ({ config_id: flags.config, script_sha: sha, rules_sha: rules, ...result }));
   appendTsv(bench.structure, STRUCTURE_COLUMNS, rows);
   appendRun(bench, deterministicRun({ configId: flags.config, scriptSha: sha, parentSha: flags.parent ?? null, rulesSha: rules, evalId: L0_EVAL_ID, started, finished: now() }));
@@ -141,9 +145,10 @@ function l0Command(deps: EvalCliDeps, onResult: (code: number) => void): Command
     .option("--spine <file>", "story spine markdown (the script-method template); the spine lints Q-E15 and Q-E18 and the ledger lints read it")
     .option("--facts <file>", "the gather's digest.json or facts pack (facts.md or facts.jsonl); without it Q-E20 reports that it did not run")
     .option("--coverage <file>", "the daily gather's coverage.json; without it Q-E21 reports that it did not run")
+    .option("--camera-track <file>", "an explainer.camera-track/v1 file; without it the camera:* rows do not run")
     .addOption(new Option("--format <format>", "script format: a script/v1 file, or a motion-spike script.json migrated to script/v1 first").choices(SCRIPT_FORMATS).default("v1"))
     .option("--fail-on-ghosts", "exit 1 when a rule claims a check id that no L0 check emits; by default each is a warning")
-    .option("--speech-vet", "vet each 26-32 word sentence with speech-vet (local Kokoro and Whisper; the first run downloads them) so Q-V9 can pass it; off by default, which keeps the 25-word cap")
+    .option("--speech-vet", `vet each ${VETTED_RANGE} word sentence with speech-vet (local Kokoro and Whisper; the first run downloads them) so Q-V9 fails one that is unclean to speak; off by default, which passes them pending a hand vet`)
     .exitOverride()
     .action(async (file: string, flags: L0Flags) => {
       try {
@@ -174,6 +179,7 @@ export async function runEvalCli(argv: readonly string[], deps: EvalCliDeps = {}
     .addCommand(itemsCommand(deps, onResult))
     .addCommand(listenerCommand(deps, onResult))
     .addCommand(smokeCommand(deps, onResult))
+    .addCommand(sheetCommand(deps, onResult))
     .addCommand(calibrateCommand(onResult))
     .addCommand(writingCalibrateCommand(onResult))
     .addCommand(writingCommand(deps, onResult));

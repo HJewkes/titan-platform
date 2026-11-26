@@ -247,6 +247,7 @@ graph TD
   corpusQuery --> storeSqlite
   corpusQuery --> workflow
   evals --> agent
+  evals --> agentProtocol
   evals --> appPaths
   evals --> authority
   evals --> evidence
@@ -343,6 +344,7 @@ graph TD
   titan --> anthropicAccount
   titan --> daemon
   titan --> health
+  titan --> sessionRead
   ytScout --> agent
   ytScout --> appPaths
   ytScout --> ownerQueue

@@ -176,10 +176,11 @@ For zod schemas of agent-chat's spawn, resume, retire, agents and surface frames
 Key exports:
 
 - `lifecycle`: `EXECUTION_PHASES`, `TERMINAL_EXECUTION_PHASES`
-- `lifecycle-correlations`: `CORRELATION_KEY_PATTERN`, `MAX_CORRELATION_VALUE_LENGTH`, `correlationKey`, `validateCorrelations`
+- `lifecycle-correlations`: `CORRELATION_KEY_PATTERN`, `correlationKey`, `validateCorrelations`
 - `lifecycle-validation`: `ExecutionTransitionError`
 - `lifecycle-reducer`: `isTerminalExecutionPhase`, `reduceExecutionTransition`
 - `usage-fold`: `foldUsage`
+- `canonical-json`: `canonicalJson`
 - `index`: `conversationRef`, `conversationItemRef`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/agent-protocol)
 
@@ -514,8 +515,7 @@ You are storing anything in SQLite and want an edge graph, a contentless FTS5 in
 Key exports:
 
 - `open`: `SchemaTooNewError`, `assertSchemaVersion`, `hasColumn`, `hasTable`, `nowIso`, `openDatabase`, `quoteIdent`
-- `migrations`: `MigrationDriftError`, `MigrationIdentityError`, `appliedVersions`, `runMigrations`
-- `ref`: `isRef`
+- `migrations`: `MigrationDriftError`, `MigrationIdentityError`, `appliedVersions`, `definitionHash`, `runMigrations`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/store-sqlite)
 
 <a id="cap-test-kit"></a>
@@ -574,7 +574,7 @@ Tier 1, `@titan-design/agent@0.7.0`. Headless agent triggering over the Claude A
 
 **Use this when:**
 
-You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). For retries, fan-out or durability, use workflow.
+You trigger one headless Claude Code or Codex run from code and want a typed result or typed failure under a hard budget. The default SDK harness needs `CLAUDE_CODE_OAUTH_TOKEN`; `harness: "claude-print"` runs one-turn structured calls on the CLI login instead (see Proven runtime paths). `images` attaches PNG or JPEG files to a claude-print run (proven on a subscription login, 2026-11-20); Codex exec takes them as `native.images` (one `-i` each), which is unverified against a live Codex. For retries, fan-out or durability, use workflow.
 
 Key exports:
 
@@ -1171,11 +1171,11 @@ You need to validate or type an active-work task record (id, title, priority, st
 
 Key exports:
 
-- `task`: `TaskSchema`
+- `task`: `TaskSchema`, `isoDate`
 - `visibility`: `InitiativeVisibilitySchema`, `agentAccess`, `isAgentVisible`
 - `task-key`: `resolveTaskKey`
 - `provenance`: `betProblem`, `TaskRequireSchema`
-- `planning`: `BetSchema`, `FreezeEndConditionSchema`, `FreezeSchema`, `IntentLineSchema`, `OutOfScopeSchema`
+- `planning`: `BetSchema`, `FreezeEndConditionSchema`, `FreezeSchema`, `IntentLineSchema`
 - More in the [reference page](https://hjewkes.github.io/titan-platform/reference/pm)
 
 <a id="cap-queue-mirror"></a>
@@ -1526,7 +1526,7 @@ You need a stable content hash for a unit of work, a workflow variant, an eval c
 Key exports:
 
 - `spec`: `CheckSpecSchema`, `EvalCaseSchema`, `ScorecardSchema`, `SuiteSpecSchema`, `UnitSpecSchema`, `TrialRecordSchema`, `VariantSpecSchema`, `parseSpec`, `parseTrialRecord`
-- `hash`: `canonicalJson`, `caseHash`, `hashCanonical`
+- `hash`: `caseHash`, `hashCanonical`, `judgesHash`
 - More in `products/evals/src/index.ts`
 
 <a id="cap-explainer"></a>
@@ -1546,11 +1546,12 @@ You are building a step of the explainer video pipeline and need its file contra
 `claimsCheckWith(facts)` (Q-E20) checks each pull request, task and count a script names against the gathered facts.
 `spokenTokenCheckWith(lexicon)` (Q-V14) fails a spoken line with a print device, or a path, code token, unit or acronym that no lexicon entry or phoneme override voices.
 `assertionCheckWith(tagger)` (Q-D7) fails a beat headline with no subject and finite verb, over ten words, or written after its narration.
-Only `explainer eval l1`, `l2`, `cold`, `items` and `smoke`, `explainer eval writing --judge` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
+`explainer eval sheet --sheets <dir>` judges a contact-sheet directory (four critique passes and a planted-glow canary) and prints the scores, caps, top three fixes and the usd spent.
+Only `explainer eval l1`, `l2`, `cold`, `items`, `sheet` and `smoke`, `explainer eval writing --judge` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
 `explainer rewrite` (`rewriteScript`) rewrites a drafted script's spoken lines toward the Q-V11 register bands, one call per chapter a round,
 keeps a beat's rewrite only when `guardBeat` accepts it,
 moves extra numbers to `visual.labels`, and
-with `--speech-vet` lets a vetted 26-32 word sentence through.
+with `--speech-vet` refuses a long sentence speech-vet finds unclean to speak.
 `explainer rewrite measure` runs it n times per input and reports each target row's mean, sd and n against the revised done-when, under a spend cap.
 Only these touch the filesystem:
 the eval store,
@@ -1570,6 +1571,7 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `lintMapBeats`, `lintMapCues` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat), and
 `toDiagramMapTimeline` turns it into titan-design's `MapTimeline` keyframes.
 `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out.
+`cameraPathFromMap` and `cameraPathRows` check a sampled camera track with no render: velocity and jerk spikes, key boxes in frame and above the captions, and reveals not seen whole before their cue. `eval l0 --camera-track <file>` runs them on an `explainer.camera-track/v1` file (`readCameraTrack`).
 `ScriptSchema` parses a two-track `script/v1` script (with optional layer, framing, anchor, scene, structure and signature-layer fields),
 `parseScript` also rejects a `structure` the registry lacks,
 `deriveEvalView` derives the view evals read from it, and
@@ -1799,7 +1801,7 @@ Tier product, private, `products/titan`. The titan host CLI: health sampling of 
 
 **Use this when:**
 
-You want this host's services sampled on a schedule and kept: `titan health sample` probes each target (by default the factory's loopback `/health`, with its pid file as identity), copies serve's own restart counters into the row, and writes every result plus a `self` row of the sampler's own CPU, fs blocks, context switches, RSS and wall time in one transaction. `titan health install` puts it on a minutely systemd user timer. `titan health uptime` reports up, down, unknown and missing slots, both up shares, the gaps and serve's restart and unclean-start deltas (with `--min` as a gate); `titan health cost` reports the sampler's per-tick cost and the store size; `titan health import` loads the old stopgap JSONL idempotently. `titan host doctor [--json]` runs the active-work, agent-chat and titan-factory doctors and reports each product and tool CLI's presence and version, warning when a linked product CLI differs from its checkout's package.json, then stats (never reads) every coordination inventory path for the platform, secrets included. `titan config report [--json]` lists this host's config surfaces as file facts (present, mode, mtime, size and sha256 for non-secrets), never values, and `--to` deposits them in the console's `config.report` over the LAN bearer. It makes no model or tool calls. The contract, probe, store and uptime fold live in the `health` package; to serve a health route, use daemon.
+You want this host's services sampled on a schedule and kept: `titan health sample` probes each target (by default the factory's loopback `/health`, with its pid file as identity), copies serve's own restart counters into the row, and writes every result plus a `self` row of the sampler's own CPU, fs blocks, context switches, RSS and wall time in one transaction. `titan health install` puts it on a minutely systemd user timer. `titan health uptime` reports up, down, unknown and missing slots, both up shares, the gaps and serve's restart and unclean-start deltas (with `--min` as a gate); `titan health cost` reports the sampler's per-tick cost and the store size; `titan health import` loads the old stopgap JSONL idempotently. `titan host doctor [--json]` runs the active-work, agent-chat and titan-factory doctors and reports each product and tool CLI's presence and version, warning when a linked product CLI differs from its checkout's package.json, then stats (never reads) every coordination inventory path for the platform, secrets included. `titan config report [--json]` lists this host's config surfaces as file facts (present, mode, mtime, size and sha256 for non-secrets), never values, and `--to` deposits them in the console's `config.report` over the LAN bearer. `titan heartbeat idle` wakes a Claude Code session once it has gone a set time without a turn, read from its own transcript tail, with an optional max interval and a stop command, instead of a fixed `CronCreate` heartbeat. It makes no model or tool calls. The contract, probe, store and uptime fold live in the `health` package; to serve a health route, use daemon.
 
 Key exports:
 

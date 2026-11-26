@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { l0HardPass } from "./eval-l0.js";
-import { voiceCheck, voiceCheckWith } from "./lint-voice.js";
+import { MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS, voiceCheck, voiceCheckWith } from "./lint-voice.js";
 import { lint, tour, withBeat, type BeatSpec } from "./voice-flow-fixtures.test-helpers.js";
+import { shippedGatePolicy } from "./writing-gate-fixtures.test-helpers.js";
 
 const voice = (beats = withBeat("w1", {}), checks = [voiceCheck]) => lint(tour(beats), checks);
 const spoken = (id: string, text: string, extra: Record<string, unknown> = {}) => withBeat(id, { spoken: text, extra });
@@ -135,8 +136,8 @@ describe("spoken register", () => {
     expect(voice(spoken("w2", text, cue)).get("Q-V8")?.pass).toBe(true);
   });
 
-  it("Q-V9 flags a sentence over twenty-five words", () => {
-    const long = `${Array.from({ length: 26 }, () => "scan").join(" ")}.`;
+  it("Q-V9 flags a sentence over the vetted cap", () => {
+    const long = `${Array.from({ length: MAX_VETTED_SENTENCE_WORDS + 1 }, () => "scan").join(" ")}.`;
 
     expect(voice(spoken("w2", long)).get("Q-V9")).toMatchObject({ value: 1, detail_beats: ["w2"] });
   });
@@ -147,20 +148,34 @@ describe("Q-V9 vetted cap", () => {
   const q9 = (n: number, speechClean?: (s: string) => boolean) =>
     voice(spoken("w2", sentence(n)), [voiceCheckWith([], { speechClean })]).get("Q-V9");
 
-  it("passes thirty words when speech-vet reports the sentence clean", () => {
-    expect(q9(30, () => true)?.pass).toBe(true);
+  it("reads both caps from doctrine/writing-gate.json (round tp5721-qv9-sentence-length-r1)", () => {
+    const { plainMax, vettedMax } = shippedGatePolicy()["sentence-cap"];
+
+    expect([MAX_SENTENCE_WORDS, MAX_VETTED_SENTENCE_WORDS]).toEqual([plainMax, vettedMax]);
   });
 
-  it("fails thirty words when speech-vet reports a failure", () => {
-    expect(q9(30, () => false)).toMatchObject({ pass: false, detail_beats: ["w2"] });
+  it("passes forty words when speech-vet did not run, pending a hand vet", () => {
+    expect(q9(40)?.pass).toBe(true);
   });
 
-  it("fails thirty words when speech-vet did not run", () => {
-    expect(q9(30)?.pass).toBe(false);
+  it("fails forty words when speech-vet reports a failure", () => {
+    expect(q9(40, () => false)).toMatchObject({ pass: false, detail_beats: ["w2"] });
   });
 
-  it("fails thirty-three words even when speech-vet reports clean", () => {
-    expect(q9(33, () => true)?.pass).toBe(false);
+  it("passes forty words when speech-vet reports the sentence clean", () => {
+    expect(q9(40, () => true)?.pass).toBe(true);
+  });
+
+  it("passes a sentence exactly at the vetted cap when speech-vet reports clean", () => {
+    expect(q9(MAX_VETTED_SENTENCE_WORDS, () => true)?.pass).toBe(true);
+  });
+
+  it("fails one word over the vetted cap even when speech-vet reports clean", () => {
+    expect(q9(MAX_VETTED_SENTENCE_WORDS + 1, () => true)?.pass).toBe(false);
+  });
+
+  it("fails one word over the vetted cap when speech-vet did not run", () => {
+    expect(q9(MAX_VETTED_SENTENCE_WORDS + 1)?.pass).toBe(false);
   });
 
   it("passes twenty words without consulting speech-vet", () => {

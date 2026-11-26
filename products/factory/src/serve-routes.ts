@@ -1,5 +1,7 @@
 import { activeWorkRoot } from "@titan-design/app-paths";
 import type { Logger, StartDaemonOptions } from "@titan-design/daemon";
+import { configPath } from "./config.js";
+import type { ConfigRef } from "./config-ref.js";
 import { mountConsoleAction } from "./console-action/route.js";
 import { systemPauseClearPorts } from "./deploy-ports.js";
 import { mountGateAnswer, type ConsoleAnswersOptions } from "./gate-answer-rpc.js";
@@ -22,7 +24,8 @@ interface ServeRoutesDeps extends ConsoleAnswersServeOptions {
   keys: OwnerKeys;
   aud: string;
   now: () => number;
-  routes: { shepherd?: ShepherdServices };
+  /** `config` is the ref serve's routes loaded from the config path the environment names; a factory-config-set writes that file. */
+  routes: { shepherd?: ShepherdServices; config?: ConfigRef };
   stateDir: string;
   /** Where the deployer keeps its lock and pause files; the XDG state dir unless a test moves it. */
   deployStateDir: string;
@@ -34,13 +37,16 @@ interface ServeRoutesDeps extends ConsoleAnswersServeOptions {
 /** The routes serve mounts beside the registry's; none of them is a command or an MCP tool. */
 export function mountServeRoutes(app: App, { routes, consoleAnswers, stateDir, deployStateDir, activeRoot = activeWorkRoot({ env: process.env }), ...deps }: ServeRoutesDeps): void {
   const { shepherd } = routes;
+  const config = routes.config === undefined ? undefined : { ref: routes.config, path: configPath(process.env) };
   mountResolveProof(app, { ...deps, port: shepherd?.port, store: shepherd?.store });
   if (consoleAnswers) mountGateAnswer(app, { host: deps.host, port: shepherd?.port, roundsDir: consoleAnswers.roundsDir, stateDir, now: deps.now, log: deps.log });
   if (consoleAnswers?.actionsDir === undefined) return;
   const { host, now, log } = deps;
-  const { actionsDir, agentChatBin } = consoleAnswers;
+  const { actionsDir, agentChatBin, branches } = consoleAnswers;
   const agentChat = agentChatBin === undefined ? undefined : agentChatRetirePort(agentChatBin);
   const deploy = { stateDir: deployStateDir, ports: systemPauseClearPorts() };
   const hostPorts = systemHostCommandPorts();
-  mountConsoleAction(app, { host, port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze, actionsDir, stateDir, deploy, now, log, agentChat, agentChatBin, hostPorts, activeRoot });
+  const policy = branches === undefined ? {} : { branches };
+  const services = { port: shepherd?.port, store: shepherd?.store, freeze: shepherd?.freeze };
+  mountConsoleAction(app, { host, ...services, actionsDir, stateDir, deploy, now, log, agentChat, agentChatBin, hostPorts, activeRoot, config, ...policy });
 }

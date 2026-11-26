@@ -3,6 +3,7 @@ import { usePreCalibrationStatuses } from "./writing-statuses-fixtures.test-help
 import type { JudgeHarness } from "./eval-harness.js";
 import { runL0, type L0Result } from "./eval-l0.js";
 import { registerCheck } from "./lint-register.js";
+import type { SpeechVerdict } from "./lint-voice.js";
 import { sonnet } from "./judge-fakes.test-helpers.js";
 import { bandDistance, chapterRefusal, rewriteScript } from "./rewrite-pass.js";
 import { REWRITE_TARGET_ROWS } from "./rewrite-plan.js";
@@ -15,7 +16,7 @@ usePreCalibrationStatuses();
 
 const isRoundTwo = (prompt: string): boolean => prompt.includes("Change only what the lines above name");
 
-const rewrite = (script: ScriptV1, fake = fakeRewriter(), options: { rounds?: number } = {}) =>
+const rewrite = (script: ScriptV1, fake = fakeRewriter(), options: { rounds?: number; speechClean?: SpeechVerdict } = {}) =>
   rewriteScript(script, { harness: fake.harness, judge: sonnet, ...options });
 
 const targets = (s: ScriptV1) => runL0(s, undefined, [registerCheck]).filter((row) => (REWRITE_TARGET_ROWS as readonly string[]).includes(row.check_id));
@@ -276,7 +277,7 @@ describe("rewriteScript rounds", () => {
     };
     const fake = fakeRewriter(refusesH3KeepsC2);
 
-    const { report } = await rewrite(cuedChoppy(), fake);
+    const { report } = await rewrite(cuedChoppy(), fake, { speechClean: () => false });
 
     const sectionOf = (id: string): string => fake.prompts.filter(isRoundTwo).flatMap((prompt) => prompt.split("\n\n")).find((part) => part.startsWith(`## ${id}\n`))!;
     expect(report.rounds[0]!.rejected.map((r) => [r.beat, r.rejections.map((rejection) => rejection.rule)])).toEqual([["h3", ["sentence-cap"]]]);
@@ -303,15 +304,15 @@ describe("rewriteScript rounds", () => {
 describe("rewriteScript with a speech verdict", () => {
   const LONG = "The desk refuses ghost labels. When a courier at the front counter asks for a label, the desk looks for the parcel row in the ledger and waits for that answer before it prints.";
 
-  it("keeps a vetted long sentence that the plain cap would refuse", async () => {
+  it("keeps a long sentence speech-vet calls clean, which an unclean verdict refuses", async () => {
     const longH1: Rewriter = (id, prompt) => (id === "h1" ? { id, spoken: LONG, labels_added: [] } : compliant(id, prompt));
 
     // LONG is 34 words, so h1 gets the seconds to speak it.
     const roomy = (): ScriptV1 => cuedChoppy({ h1: { plannedS: 13 } });
-    const plain = await rewrite(roomy(), fakeRewriter(longH1), { rounds: 1 });
+    const unclean = await rewrite(roomy(), fakeRewriter(longH1), { rounds: 1, speechClean: () => false });
     const vetted = await rewriteScript(roomy(), { harness: fakeRewriter(longH1).harness, judge: sonnet, rounds: 1, speechClean: () => true });
 
-    expect(plain.report.rounds[0]!.rejected.map((r) => r.beat)).toEqual(["h1"]);
+    expect(unclean.report.rounds[0]!.rejected.map((r) => r.beat)).toEqual(["h1"]);
     expect(spokenOf(vetted.script, "h1")).toBe(LONG);
     expect(vetted.report.rounds[0]!.reverted).toEqual([]);
   });

@@ -42,6 +42,7 @@ import type { MachineStopWatch } from "./machine-stop.js";
 import type { VisualReadsWiring } from "./visual-tier-guard.js";
 import { REVIEW_STEP } from "./review-steps.js";
 import { FOLLOW_UPS_STEPS, followUpsRoute, type FollowUpsWiring } from "./follow-ups-step.js";
+import { CHECK_CANDIDATES_STEPS, checkCandidatesRoute, type CheckCandidatesWiring } from "./check-candidates-step.js";
 import { REVIEW_STOP_STEPS, reviewStopRoute } from "./review-stop.js";
 import type { HoldMember, PanelMode } from "./review-panel-plan.js";
 import { PANEL_STEPS, PROOF_PLAN_FIELDS, panelVerdictRoute, plannedPanel, proofPlanFields, type PanelOnPlan, type ProfileCheck } from "./review-panel-step.js";
@@ -76,9 +77,8 @@ export const REVIEW_STEPS: readonly StepDeclaration[] = [
   ...CI_UNREAD_STEPS,
   ...PANEL_STEPS,
   ...NO_REVIEWER_STEPS,
-  ...SCOPE_CHECK_STEPS,
-  { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
-  ...FOLLOW_UPS_STEPS,
+  ...SCOPE_CHECK_STEPS, { id: REVIEW_SHADOW_STEP, kind: "dispatch" },
+  ...FOLLOW_UPS_STEPS, ...CHECK_CANDIDATES_STEPS,
 ];
 
 export const DEFAULT_VERDICT_TIMEOUT_MS = 30 * 60_000;
@@ -171,7 +171,7 @@ const resumedSince = (intent: ReviewIntent) => (agent: ReviewerAgent) =>
   holds(intent)(agent) && (agent.presence !== "exited" || (agent.lastWrittenAt !== undefined && agent.lastWrittenAt >= intent.at));
 
 export interface ReviewWiring
-  extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, OwnerValidateTasksWiring, VisualReadsWiring, FollowUpsWiring, OwnDiffWiring {
+  extends ProfileCheck, ScopedRereviewWiring, ScopeCheckWiring, AttestSkewWiring, OldPathWiring, OwnerValidateTasksWiring, VisualReadsWiring, FollowUpsWiring, CheckCandidatesWiring, OwnDiffWiring {
   reader: ReviewerReader;
   /** Absent means no reviewer is dispatched and the owner gate decides. */
   dispatch?: ReviewerDispatch;
@@ -298,7 +298,7 @@ const dispatchReview: BrokerStepBody<ReviewDispatchInput, ReviewDispatchResult> 
     return onlyTimedOut ? rosterUnreadAfterAsk(timing.timeoutMs, waits) : notStartedInTime(intent.reviewer, rosterError);
   }
   const spawnedAs = profile ?? (roles && reviewerRoleFor(facts, roles));
-  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }), ...scopedResultFields(scopedRereview) };
+  return { kind: "dispatched", ...intent, agentId: started.agentId, sessionId: started.sessionId, startedAt: deps.now(), ...(intent.mode === "spawn" && spawnedAs !== undefined && { profile: spawnedAs }), ...busyWaits(waits), ...(asking?.codewatch && { codewatch: asking.codewatch }), ...scopedResultFields(scopedRereview, shape) };
 };
 
 /** The body of the sh-correct-verdict step, with the same session-start and busy budgets as sh-review; an adversary is resumed under its own account. */
@@ -332,7 +332,7 @@ export const reviewRoutes = (deps: ShepherdDeps, wiring?: ReviewWiring): readonl
     ...noReviewerRoutes(deps, wiring?.accounts?.alert),
     scopeCheckRoute(deps.now),
     reviewShadowRoute(deps.now, wiring),
-    followUpsRoute(deps.now, wiring?.followUps),
+    followUpsRoute(deps.now, wiring?.followUps), checkCandidatesRoute(deps, wiring),
   ];
 };
 

@@ -1,9 +1,4 @@
-import type { Box } from "./camera.js";
-
-export interface CameraSample {
-  t: number;
-  box: Box;
-}
+import type { CameraSample } from "./camera.js";
 
 export interface CameraMotionLimits {
   /** Frame-normalised centre or zoom speed, per second. */
@@ -56,13 +51,15 @@ function spikeTimes(track: readonly CameraSample[], order: number, limit: number
   const times: number[] = [];
   for (let i = order; i < track.length; i++) {
     const t = track[i]!.t;
-    if (shakes.some((s) => t >= s.from && t <= s.to)) continue;
+    // A difference reads samples i-order..i, so a shake edge inside that span contaminates it.
+    const windowStart = track[i - order]!.t;
+    if (shakes.some((s) => t >= s.from && windowStart <= s.to)) continue;
     if (derivative(series, track, i, order) > limit) times.push(t);
   }
   return times;
 }
 
-/** Velocity and jerk rows over a track sampled at 4x the frame rate; a time inside a declared shake window is excused. */
+/** Velocity and jerk rows over a track sampled at 4x the frame rate; a time whose finite-difference window overlaps a declared shake window is excused. */
 export function cameraMotionRows(track: readonly CameraSample[], limits: CameraMotionLimits, shakes: readonly ShakeWindow[] = []): CameraMotionRow[] {
   const velocity = track.length > 1 ? spikeTimes(track, 1, limits.velocity, shakes) : [];
   const jerk = track.length > 3 ? spikeTimes(track, 3, limits.jerk, shakes) : [];

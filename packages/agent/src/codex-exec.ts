@@ -14,6 +14,7 @@ import {
   type CodexVersionInspectionOptions,
 } from "./codex-process.js";
 import { capabilityRecord } from "./capability-record.js";
+import { readImageAttachments } from "./image-attachments.js";
 import type {
   CapabilityAssessment,
   CodexRunRequest,
@@ -169,6 +170,8 @@ function validateAdapterRequest<T>(request: CodexRunRequest<T>): HarnessRunFailu
   if (request.native.approvalPolicy && request.native.approvalPolicy !== "never") {
     return { kind: "invalid_request", reason: "Codex exec supports only the noninteractive never approval policy" };
   }
+  const images = readImageAttachments(request.native.images ?? []);
+  if ("reason" in images) return { kind: "invalid_request", reason: images.reason };
   return undefined;
 }
 
@@ -265,6 +268,8 @@ export function buildCodexExecArgs<T>(request: CodexRunRequest<T>, schemaPath?: 
   const args = ["exec"];
   if (request.target.kind === "resume") args.push("resume");
   args.push("--json", "--strict-config", "--ignore-user-config", "--model", native.model!);
+  // -i takes several values, so each image sits before other flags and never swallows the resume id.
+  for (const image of native.images ?? []) args.push("-i", image);
   args.push("--config", `approval_policy=${JSON.stringify(native.approvalPolicy ?? "never")}`);
   args.push("--config", `sandbox_mode=${JSON.stringify(native.sandbox ?? "read-only")}`);
   if (native.reasoningEffort) {

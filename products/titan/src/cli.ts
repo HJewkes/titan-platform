@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { registerConfig, type ReportPorts } from "./config/report.js";
 import { registerHealth } from "./health/cli-health.js";
+import { registerHeartbeat } from "./heartbeat/cli-heartbeat.js";
 import { registerHost } from "./host/cli-host.js";
 import { realHostPorts, type HostPorts } from "./host/ports.js";
 import type { UnitWriter } from "./host/services/install.js";
@@ -44,6 +45,7 @@ export async function runCli(argv: string[], io: CliIo = defaultIo): Promise<num
   const titanBin = io.titanBin ?? resolve(process.argv[1] ?? "titan");
   registerHealth(program, { ...shared, stderr: io.stderr, titanBin });
   registerHost(program, { ...shared, stderr: io.stderr, titanBin, ports: io.hostPorts ?? realHostPorts(env), writeUnit: io.writeUnit });
+  registerHeartbeat(program, { ...shared, stderr: io.stderr, titanBin });
   registerConfig(program, { ...shared, stderr: io.stderr, reportPorts: io.reportPorts, fetch: io.fetch });
   try {
     await program.parseAsync(argv, { from: "user" });

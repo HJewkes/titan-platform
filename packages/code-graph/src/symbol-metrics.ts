@@ -130,9 +130,14 @@ function maxProps(a: PropStats | null, b: PropStats | null): PropStats | null {
 }
 
 /** `fn` is the function node, `body` its body, `lines` the file's content split on newlines. */
-export function functionShapeStats(fn: Node, body: Node, lines: readonly string[]): FunctionShapeStats {
+export function functionShapeStats(
+  fn: Node,
+  body: Node,
+  lines: readonly string[],
+  commentRatioMinBodyLines?: number,
+): FunctionShapeStats {
   return {
-    ...commentLineStats(fn, body, lines),
+    ...commentLineStats(fn, body, lines, commentRatioMinBodyLines),
     narratingComments: countNarratingComments(fn, body),
     passThrough: isPassThrough(fn, body) ? 1 : 0,
   };

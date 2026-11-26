@@ -12,12 +12,14 @@ import { classRulesFor, intentPlan, panelFacts, panelPolicyFor, withoutPlan, typ
 import { isAdversaryHold } from "./hold-slots.js";
 import { CORRECT_VERDICT_STEP, correctOnce } from "./correct-verdict.js";
 import { AuthoritySchema, Awaited, Dispatched } from "./review-schemas.js";
+import { recordCheckCandidatesAt } from "./check-candidates-step.js";
 import { fileFollowUpsAt } from "./follow-ups-step.js";
 import { freshReviewerBase } from "./cleanup.js";
 import { MAX_NOT_STARTED_REVIEWS, REVIEW_STEP } from "./review-steps.js";
 import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
 import type { ScopeRound } from "./scope-check-round.js";
+import { adversaryFocusOf, type ScopedRereview } from "./review-scope-round.js";
 
 /** Records the aggregate once, so a replay reads the verdict the panel gave rather than one recomputed over source that has since moved. */
 const PANEL_VERDICT_STEP = "sh-review-panel";
@@ -132,6 +134,8 @@ export interface MemberBase extends ReviewTarget {
   fixProofUnverified?: FixProofUnverified;
   fixProofWaivedAt?: string;
   workflowCiProof?: WorkflowCiProof;
+  /** A fix round's scope under `on`; only the adversary member's dispatch carries it, as a focus section (TP-6412). */
+  scopedRereview?: ScopedRereview;
 }
 
 interface DispatchedMember {
@@ -146,12 +150,12 @@ function memberIntent(intent: PanelIntent, reviewer: string): Record<string, unk
 }
 
 /** One `sh-review:<head>:<shape>` per member but correctness, in plan order, each at its planned profile and with its shape's brief. */
-async function dispatchMembers(ctx: WorkflowContext, intent: PanelIntent, base: MemberBase): Promise<DispatchedMember[]> {
+async function dispatchMembers(ctx: WorkflowContext, intent: PanelIntent, { scopedRereview, ...base }: MemberBase): Promise<DispatchedMember[]> {
   const members: DispatchedMember[] = [];
   for (const { shape, profile } of intent.plan.members) {
     const reviewer = intent.panelReviewers[shape];
     if (!isOverlay(shape) || reviewer === undefined) continue;
-    const input = { ...base, intent: memberIntent(intent, reviewer), shape, profile };
+    const input = { ...base, intent: memberIntent(intent, reviewer), shape, profile, ...(shape === "adversary" && adversaryFocusOf(scopedRereview)) };
     members.push({ shape, dispatched: await step(ctx, `${REVIEW_STEP}:${base.head}:${shape}`, input, Dispatched) });
   }
   return members;
@@ -185,6 +189,7 @@ async function awaitMembers(ctx: WorkflowContext, target: ReviewTarget, members:
     const awaiting = { ...target, shape, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
     const awaited = await awaitMember(ctx, target, shape, awaiting);
     await fileFollowUpsAt(ctx, target, awaited, `:${shape}`);
+    await recordCheckCandidatesAt(ctx, target, awaited, `:${shape}`, shape);
     results.push({ shape, result: memberResultOf(awaited) });
   }
   return results;
@@ -276,7 +281,7 @@ function proofShortfall(verdict: PanelVerdictRecord, head: string, line: string 
 }
 
 /** Names the seat that withheld the verdict, so a round where every dispatched member answered never reads as a silent reviewer. */
-function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Verdict {
+function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Extract<Verdict, { kind: "none" }> {
   if (verdict.outcome === "timeout") return { kind: "none", cause: "timeout", reason: "a blocking panel member gave no verdict" };
   const shortfall = "every dispatched panel member answered, but the fix-proof needs a tests member the panel never planned";
   const reason = verdict.fixProofShortfall === true ? shortfall : "a blocking panel member gave no verdict";
@@ -340,11 +345,14 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   const shortfall = proofShortfall(verdict, target.head, base.fixProof);
   if (shortfall) return shortfall;
   const retryable = ctx.iteration(`${PANEL_VERDICT_STEP}:${target.head}`) < MAX_NOT_STARTED_REVIEWS;
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results));
   const merged = panelMerge(verdict, results, memberProfiles(members));
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results)), ...adversaryMerged(merged) };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;
 }
+
+/** A withheld panel keeps its members only when the adversary said MERGE, the one verdict a g10-adversary release reads from it (TP-6767). */
+const adversaryMerged = (merged: PanelMerge): { panel?: PanelMerge } => (merged.members.some((m) => m.shape === "adversary" && m.verdict === "MERGE") ? { panel: merged } : {});
 
 /** The adversary member's MERGE as the evidence step judges its `Attests:` and `Authority:` lines, and whether the plan had an adversary at all. */
 function adversaryAttest(intent: PanelIntent, merged: PanelMerge): Omit<AttestVerdicts, "attests"> {

@@ -1,24 +1,22 @@
-import type { GitHubPort, PrFile, RepoSlug } from "@titan-design/github";
+import type { GitHubPort, RepoSlug } from "@titan-design/github";
 import type { StepResult, StepRoute, WorkflowContext } from "@titan-design/workflow";
-import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
-import { isObjectLike } from "@titan-design/rpc-protocol/narrow";
 import type { StepDeclaration } from "../definition.js";
 import type { GateDecision, PolicyRule } from "../gate-policy.js";
 import { codeRoute, step, type LandOptions } from "../workflows/land.js";
 import type { FreezeGuard } from "./freeze.js";
 import type { FixTasks } from "./main-red.js";
-import { isGithubPath } from "./merge-facts.js";
 import type { ShepherdDeps, Verdict } from "./phases.js";
 import { publishReview } from "./publish-review.js";
 import { RELEASE_AUTHOR_STEP, releaseAuthorRoute } from "./release-author.js";
 import type { EffectivePolicy, MergeMode } from "./policy-schema.js";
 import { RELEASE_FOLLOW_STEP, followRelease, npmVersionRegistry, type VersionRegistry } from "./release-follow.js";
+import { registryGet } from "./registry-get.js";
 import type { ShepherdStore } from "./store.js";
 import { readPath } from "../narrow.js";
+import { VERSION_PACKAGES_BRANCH, manifestEditBlockers, nonReleaseFiles, readManifests, type ManifestPair } from "./release-diff.js";
 
-/** The branch the changesets action opens its "Version Packages" pull request from. */
-export const VERSION_PACKAGES_BRANCH = "changeset-release/main";
+export { VERSION_PACKAGES_BRANCH, nonReleaseFiles } from "./release-diff.js";
 /** The registration's implementer: no agent writes this PR, so a wake for it is never handled. */
 export const RELEASE_IMPLEMENTER = "changesets";
 const RELEASE_PREFLIGHT_STEP = "sh-release-preflight";
@@ -42,16 +40,13 @@ export function releaseTask(repo: RepoSlug): string {
 type NpmPresence = "missing" | "untrusted" | "trusted";
 export type PackageRegistry = (name: string) => Promise<NpmPresence>;
 
-const REGISTRY_TIMEOUT_MS = 10_000;
-
 const LatestVersion = z.looseObject({ _npmUser: z.looseObject({ trustedPublisher: z.unknown().optional() }).optional() });
 const TrustedPublisher = z.looseObject({ id: z.string().min(1) });
 
 export function npmRegistry(fetchImpl: typeof fetch = fetch): PackageRegistry {
   return async (name) => {
-    const response = await fetchImpl(`https://registry.npmjs.org/${name.replace("/", "%2f")}/latest`, { signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS) });
-    if (response.status === 404) return "missing";
-    if (!response.ok) throw new Error(`registry.npmjs.org answered ${response.status} for ${name}`);
+    const response = await registryGet(name, "latest", fetchImpl);
+    if (!response) return "missing";
     const latest = LatestVersion.parse(await response.json());
     return TrustedPublisher.safeParse(latest._npmUser?.trustedPublisher).success ? "trusted" : "untrusted";
   };
@@ -72,35 +67,6 @@ export function retryingRegistry(registry: PackageRegistry, sleep: (ms: number, 
     }
     return registry(name);
   };
-}
-
-const MANIFEST_FILE = /^(?:[^/]+\/)*package\.json$/;
-const CHANGELOG_FILE = /^(?:[^/]+\/)*CHANGELOG\.md$/;
-const CONSUMED_CHANGESET = /^\.changeset\/[^/]+\.md$/;
-const CATALOG_FILES = new Set(["CAPABILITIES.md", "site/guides/capabilities.md"]);
-
-/**
- * What `pnpm version-packages` writes: bumped manifests, changelogs, the regenerated catalog, and consumed changesets.
- * GitHub reports a type or mode change, a symlink swap among them, as `changed`, which no release writes. A release
- * adds a CHANGELOG.md only beside a manifest it bumps, so an added one needs its directory's package.json modified.
- */
-function isReleaseFile(file: PrFile, bumpedManifests: ReadonlySet<string>): boolean {
-  if (isGithubPath(file.path) || file.previousPath !== undefined) return false;
-  if (CONSUMED_CHANGESET.test(file.path)) return file.status === "removed";
-  if (MANIFEST_FILE.test(file.path)) return file.status === "modified";
-  if (CATALOG_FILES.has(file.path)) return file.status === "modified" || file.status === "added";
-  if (!CHANGELOG_FILE.test(file.path)) return false;
-  return file.status === "modified" || (file.status === "added" && bumpedManifests.has(siblingManifest(file.path)));
-}
-
-function siblingManifest(path: string): string {
-  return path.replace(/CHANGELOG\.md$/, "package.json");
-}
-
-/** The PR's files `pnpm version-packages` would not write; empty means the diff is release-only. */
-export function nonReleaseFiles(files: readonly PrFile[]): PrFile[] {
-  const bumped = new Set(files.filter((file) => file.status === "modified" && file.previousPath === undefined && MANIFEST_FILE.test(file.path)).map((file) => file.path));
-  return files.filter((file) => !isReleaseFile(file, bumped));
 }
 
 interface ReleaseTarget {
@@ -159,69 +125,6 @@ function headBlockers(target: ReleaseTarget, headRef: string, headRepo: string |
   if (headRef !== VERSION_PACKAGES_BRANCH || headRepo?.toLowerCase() !== target.repo.toLowerCase()) blockers.push(`its head is not ${VERSION_PACKAGES_BRANCH} in ${target.repo}`);
   if (headSha !== target.head) blockers.push(`its head moved from ${target.head} to ${headSha}`);
   return blockers;
-}
-
-const Manifest = z.looseObject({ name: z.string().optional(), version: z.string().optional(), private: z.boolean().optional() });
-type Manifest = z.infer<typeof Manifest>;
-
-interface ManifestPair {
-  path: string;
-  base: Manifest;
-  head: Manifest;
-}
-
-/** Each changed manifest at the merge base and at the head; one that cannot be read blocks the release rather than failing the run. */
-async function readManifests(port: GitHubPort, target: ReleaseTarget, baseRef: string, files: readonly PrFile[]): Promise<{ pairs: ManifestPair[]; blockers: string[] }> {
-  const paths = files.filter((file) => file.status === "modified" && MANIFEST_FILE.test(file.path)).map((file) => file.path);
-  if (paths.length === 0) return { pairs: [], blockers: [] };
-  const { mergeBaseSha } = await port.compareFiles(target.repo, baseRef, target.head);
-  const pairs: ManifestPair[] = [];
-  const blockers: string[] = [];
-  for (const path of paths) {
-    const [base, head] = [await readManifest(port, target.repo, path, mergeBaseSha), await readManifest(port, target.repo, path, target.head)];
-    if (base && head) pairs.push({ path, base, head });
-    else blockers.push(`${path} is not a readable package manifest at ${base ? target.head : mergeBaseSha}`);
-  }
-  return { pairs, blockers };
-}
-
-async function readManifest(port: GitHubPort, repo: RepoSlug, path: string, ref: string): Promise<Manifest | null> {
-  const read = await port.getFile(repo, path, ref);
-  if (!read) return null;
-  try {
-    const parsed = Manifest.safeParse(JSON.parse(read.content));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
-}
-
-const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
-
-/** A release may change a manifest's `version`, and a dependency range only for a package this release bumps; any other edit is not changesets'. */
-function manifestEditBlockers(pairs: readonly ManifestPair[]): string[] {
-  const bumped = new Set(pairs.filter((pair) => pair.base.version !== pair.head.version).map((pair) => pair.head.name));
-  return pairs.flatMap((pair) => {
-    const edits = [...outsideDependencyEdits(pair), ...DEPENDENCY_FIELDS.flatMap((field) => dependencyEdits(pair, field, bumped))];
-    return edits.length > 0 ? [`${pair.path} changes more than versions: ${edits.join(", ")}`] : [];
-  });
-}
-
-function outsideDependencyEdits({ base, head }: ManifestPair): string[] {
-  const keys = new Set([...Object.keys(base), ...Object.keys(head)]);
-  return [...keys].filter((key) => key !== "version" && !(DEPENDENCY_FIELDS as readonly string[]).includes(key) && !isDeepStrictEqual(base[key], head[key]));
-}
-
-function dependencyEdits({ base, head }: ManifestPair, field: (typeof DEPENDENCY_FIELDS)[number], bumped: ReadonlySet<string | undefined>): string[] {
-  const [from, to] = [dependencyMap(base[field]), dependencyMap(head[field])];
-  if (!from || !to) return isDeepStrictEqual(base[field], head[field]) ? [] : [field];
-  const names = new Set([...Object.keys(from), ...Object.keys(to)]);
-  return [...names].filter((name) => from[name] !== to[name] && !(bumped.has(name) && name in from && name in to)).map((name) => `${field}.${name}`);
-}
-
-function dependencyMap(value: unknown): Record<string, unknown> | null {
-  if (value === undefined) return {};
-  return isObjectLike(value) && !Array.isArray(value) ? value : null;
 }
 
 function publicPackages(pairs: readonly ManifestPair[]): string[] {

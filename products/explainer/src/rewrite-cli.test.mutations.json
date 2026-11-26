@@ -9,6 +9,15 @@
       "kills": [
         "explainer rewrite writes the rewritten script and its report, prints the row deltas and exits 0 when every target row passes"
       ]
+    },
+    {
+      "name": "the guard reads every vetted sentence as clean",
+      "file": "products/explainer/src/rewrite-cli.ts",
+      "find": "speechClean: (sentence) => verdicts.get(sentence)?.clean === true,",
+      "replace": "speechClean: () => true,",
+      "kills": [
+        "explainer rewrite --speech-vet splits that sentence at a clause joint when speech-vet does not accept it"
+      ]
     }
   ]
 }

@@ -35,6 +35,7 @@
     "@titan-design/anthropic-account": "workspace:^",
     "@titan-design/daemon": "workspace:^",
     "@titan-design/health": "workspace:^",
+    "@titan-design/session-read": "workspace:^",
     "commander": "^14.0.3",
     "zod": "^4.4.3"
   },

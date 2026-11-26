@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "Q-V9 ignores speech-vet's unclean verdict between the caps",
+      "file": "products/explainer/src/lint-voice.ts",
+      "find": "return speechClean !== undefined && !speechClean(text);",
+      "replace": "return false;",
+      "kills": [
+        "Q-V9 vetted cap fails forty words when speech-vet reports a failure"
+      ]
+    },
+    {
+      "name": "Q-V9 fails an unvetted sentence between the caps, as decision 517 did",
+      "file": "products/explainer/src/lint-voice.ts",
+      "find": "return speechClean !== undefined && !speechClean(text);",
+      "replace": "return !speechClean?.(text);",
+      "kills": [
+        "Q-V9 vetted cap passes forty words when speech-vet did not run, pending a hand vet"
+      ]
+    },
+    {
+      "name": "the vetted cap is off by one at the ceiling",
+      "file": "products/explainer/src/lint-voice.ts",
+      "find": "return words > MAX_SENTENCE_WORDS && words <= vettedCeiling;",
+      "replace": "return words > MAX_SENTENCE_WORDS && words < vettedCeiling;",
+      "kills": [
+        "Q-V9 vetted cap passes a sentence exactly at the vetted cap when speech-vet reports clean"
+      ]
+    },
+    {
+      "name": "the vetted cap is a number in code, not doctrine data",
+      "file": "products/explainer/src/lint-voice.ts",
+      "find": "export const MAX_VETTED_SENTENCE_WORDS = SENTENCE_CAP.vettedMax;",
+      "replace": "export const MAX_VETTED_SENTENCE_WORDS = 32;",
+      "kills": [
+        "Q-V9 vetted cap reads both caps from doctrine/writing-gate.json (round tp5721-qv9-sentence-length-r1)"
+      ]
+    }
+  ]
+}

@@ -11,11 +11,12 @@ You are building a step of the explainer video pipeline and need its file contra
 `claimsCheckWith(facts)` (Q-E20) checks each pull request, task and count a script names against the gathered facts.
 `spokenTokenCheckWith(lexicon)` (Q-V14) fails a spoken line with a print device, or a path, code token, unit or acronym that no lexicon entry or phoneme override voices.
 `assertionCheckWith(tagger)` (Q-D7) fails a beat headline with no subject and finite verb, over ten words, or written after its narration.
-Only `explainer eval l1`, `l2`, `cold`, `items` and `smoke`, `explainer eval writing --judge` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
+`explainer eval sheet --sheets <dir>` judges a contact-sheet directory (four critique passes and a planted-glow canary) and prints the scores, caps, top three fixes and the usd spent.
+Only `explainer eval l1`, `l2`, `cold`, `items`, `sheet` and `smoke`, `explainer eval writing --judge` and `explainer rewrite` (and `rewrite measure`) call a model, through the judge a config file names.
 `explainer rewrite` (`rewriteScript`) rewrites a drafted script's spoken lines toward the Q-V11 register bands, one call per chapter a round,
 keeps a beat's rewrite only when `guardBeat` accepts it,
 moves extra numbers to `visual.labels`, and
-with `--speech-vet` lets a vetted 26-32 word sentence through.
+with `--speech-vet` refuses a long sentence speech-vet finds unclean to speak.
 `explainer rewrite measure` runs it n times per input and reports each target row's mean, sd and n against the revised done-when, under a spend cap.
 Only these touch the filesystem:
 the eval store,
@@ -35,6 +36,7 @@ Motion primitives and beat components live in `@titan-design/react-ui`, not here
 `lintMapBeats`, `lintMapCues` and `compileMapTimeline` check and time the repo-map track (`visual.map_state`, optional per beat), and
 `toDiagramMapTimeline` turns it into titan-design's `MapTimeline` keyframes.
 `cameraStation` fits a 16:9 camera box around focus ids, clear of the 83 % caption keep-out.
+`cameraPathFromMap` and `cameraPathRows` check a sampled camera track with no render: velocity and jerk spikes, key boxes in frame and above the captions, and reveals not seen whole before their cue. `eval l0 --camera-track <file>` runs them on an `explainer.camera-track/v1` file (`readCameraTrack`).
 `ScriptSchema` parses a two-track `script/v1` script (with optional layer, framing, anchor, scene, structure and signature-layer fields),
 `parseScript` also rejects a `structure` the registry lacks,
 `deriveEvalView` derives the view evals read from it, and

@@ -49,6 +49,9 @@ export interface DiagramMapOptions {
   cameraBox?: CameraBoxResolver;
 }
 
+/** How long a camera keyframe takes to reach its box; camera-path QA samples the same move. */
+export const CAMERA_MOVE_S = 1;
+
 // Durations follow titan-design's fixture; camera, annotate and pin are TP's picks until
 // titan-design's camera and flow layers set them.
 // A flow's 0 leaves its timing to the flow layer, which knows each hop's route length.
@@ -61,7 +64,7 @@ const DUR_S: Record<DiagramMapKeyframe["op"], number> = {
   lit: 0.4,
   "card-in": 0.25,
   "card-out": 0.25,
-  camera: 1,
+  camera: CAMERA_MOVE_S,
   annotate: 0.4,
   pin: 0.25,
   flow: 0,

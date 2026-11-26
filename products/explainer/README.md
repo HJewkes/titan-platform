@@ -100,6 +100,17 @@ last was. `map-pins.ts` places each segment's pins at build time with graph-layo
 `camera.ts` computes each beat's `camera/<beat>.json` station: a 16:9 box around the beat's
 focus boxes that keeps them above the 83 % caption line.
 
+`camera-path.ts` checks the motion between stations without a render (TP-5887).
+`cameraPathFromMap` samples a compiled map track at 4× the frame rate, easing between stations
+over the camera op's duration from the current pose. It also reads each focus id as a key box until
+the beat's next focus, and checks each reveal from its beat's start. `cameraPathRows` feeds that track to
+`cameraMotionRows`, `keyBoxRows` and `revealRows` and reports four L0 rows: `camera:velocity`,
+`camera:jerk`, `camera:key-in-frame` and `camera:seen-before-reveal`. Limits, severities, the sample
+multiple and the assumed easing live in `doctrine/qa/camera-path.yaml`. Every row is a warning,
+and `runL0` reports them only when a caller passes a camera track. `eval l0 --camera-track <file>` passes one:
+`camera-track-file.ts` parses an `explainer.camera-track/v1` file (strict; `fps`, `sampleRateMultiple`, `easeName`
+and the camera-path input) with `readCameraTrack`.
+
 `script-schema.ts` parses `script/v1`, a two-track script: per beat, a narration track
 (`spoken`, `why`, `fact_ids`) and a visual track whose `map_state` is the map track's schema
 unchanged. Every cue must be a word the beat speaks. The optional profile fields (`visual.layer`,
@@ -177,11 +188,12 @@ or a `[w](/phonemes/)` override. No G2P runs here, so a declared reading is trus
 skipped without it), freezes the script and appends its rows and run record. `--timing` takes a words.json, or a
 durations-only extract, and the pace lints then read heard durations instead of `plannedS`. A rule that claims
 a check id no run check emits is a ghost: each prints one warning on stderr, and
-`--fail-on-ghosts` turns them into exit 1. `--speech-vet` runs speech-vet's `vet` on each sentence of 26 to 32
-words before the checks, over local Kokoro and Whisper (no cost, but the first run downloads both models). Q-V9
-passes such a sentence only when the verdict is `accepted`; a vet error counts as not clean. It is off by
-default, and then, or when the models cannot load, those sentences keep the 25-word cap and one stderr line
-says so. `doctrine/rules.yaml` holds which rules are
+`--fail-on-ghosts` turns them into exit 1. Q-V9 fails a sentence over the vetted cap, the human 99th percentile
+(`sentence-cap` in `doctrine/writing-gate.json`, owner round tp5721-qv9-sentence-length-r1). `--speech-vet` runs
+speech-vet's `vet` on each sentence between the plain cap and the vetted one before the checks, over local Kokoro
+and Whisper (no cost, but the first run downloads both models). Q-V9 then fails such a sentence unless the verdict
+is `accepted`; a vet error counts as not clean. It is off by default, and then, or when the models cannot load,
+those sentences pass pending a hand vet and one stderr line counts them. `doctrine/rules.yaml` holds which rules are
 implemented or pending. `--rules` defaults to the shipped registry and must parse as
 `rules/v1`. It exits 0 on a pass, 1 when an error-severity check fails (warnings never fail)
 and 2 on bad input. L0 filters only: never rank scripts by how many checks they pass.
@@ -209,8 +221,9 @@ noun ("5000 rows"), whose words then no longer count as dropped terms. Numbers c
 and a round that does not bring the rows closer to band is discarded. Remaining digits are spelled for the voice. It
 writes the script/v1 result to `--out` (a spike input is migrated first) and the full report to `--report`, and
 prints one JSON line: each target row before and after, what each round kept, rejected and reverted, the call count
-and the spend. `--speech-vet` vets each 26-32 word sentence of the input and of every reply with local Kokoro and
-Whisper, so the pass may keep it under Q-V9's vetted cap; it is off by default, which keeps the 25-word cap. Exit 0
+and the spend. `--speech-vet` vets each sentence between Q-V9's caps in the input and in every reply with local Kokoro
+and Whisper, so the guard refuses one that is unclean to speak; it is off by default, and then such a sentence
+passes pending a hand vet. Exit 0
 when the result is written and every target row passes, 1 when it is written but a target row is still red, 2 on
 usage or an input or judge config that does not parse. Run `explainer eval smoke --judge <judge.json>` first.
 
@@ -909,6 +922,14 @@ canaries, questions and answer key a run used, so changing any of them starts fr
   sentence. It exits 1 when a chapter is above `--threshold` or a call fails.
 - `explainer eval smoke --judge <judge.json>` makes one tiny call through the configured
   judge, and skips a codex judge whose binary or cached login is missing, saying which.
+- `explainer eval sheet --sheets <dir> [--judge <judge.json>] [--json] [--min-overall <n>] [--gate]` judges a
+  contact-sheet directory (`cells.json` and the sheet PNGs from `explainer sheets`) with `runSheetCritique`: four
+  passes over every sheet, then a planted-glow canary. The judge defaults to claude-print opus; a judge config that
+  names the script model (sonnet) is a usage error. It prints `sheet:overall` (a warning, an error under `--gate`),
+  `sheet:design`, `sheet:clarity`, `sheet:idea` and `sheet:content` (report), `sheet:caps`, the top three fixes, the
+  findings voided for naming no listed cell, and the total `usd`. Token counts are not printed: they under-report
+  image tokens. `--min-overall` and `--gate` (minimum 7 unless `--min-overall` says otherwise) make a low overall
+  exit 1; a run whose judge missed the canary exits 1 whatever its score, and a missing `cells.json` exits 2.
 
 Every verdict and answer must quote the beat it cites, verbatim and at least two words long.
 A verdict with no quote, or a quote not in that beat's text on that track, is void (L1) or

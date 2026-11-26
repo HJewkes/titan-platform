@@ -30,6 +30,14 @@ function fakeCodex(answer: CodexAnswer) {
   return { adapter, requests };
 }
 
+/** A claude-print runner that records its config and answers `{ ok: true }`. */
+function recordingRun(seen: AgentRunConfig<unknown>[]): typeof runAgent {
+  return async function run<T>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> {
+    seen.push(config);
+    return { ok: true, output: config.outputSchema!.parse({ ok: true }), sessionId: "s", usage: partialFake<AgentUsage>(), init: partialFake<AgentInit>() };
+  };
+}
+
 function usage(input: number, output: number, sequence: number) {
   return {
     model: "gpt-x",
@@ -47,7 +55,7 @@ function usage(input: number, output: number, sequence: number) {
 describe("createJudgeHarness", () => {
   it("runs a claude-print judge as one bounded, schema-bound turn on the configured model", async () => {
     const seen: AgentRunConfig<unknown>[] = [];
-    const fakeRun: typeof runAgent = async <T>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> => {
+    const fakeRun: typeof runAgent = async <T,>(config: AgentRunConfig<T>): Promise<AgentRunResult<T>> => {
       seen.push(config);
       const output = config.outputSchema!.parse({ ok: true });
       const modelUsage = { haiku: partialFake<AgentUsage["modelUsage"][string]>({ inputTokens: 40, outputTokens: 5 }) };
@@ -70,6 +78,35 @@ describe("createJudgeHarness", () => {
     expect(requests[0]).toMatchObject({ harness: "codex", wallTimeMs: 60_000, native: { model: "gpt-x", reasoningEffort: "high", sandbox: "read-only" } });
     expect(requests[0]!.native!.outputSchema!.jsonSchema).not.toHaveProperty("$schema");
     expect(reply).toEqual({ ok: true, output: { ok: true }, usd: 0.02, tokensIn: 30, tokensOut: 4 });
+  });
+
+  it("claude-print judge forwards the call's images to runAgent", async () => {
+    const seen: AgentRunConfig<unknown>[] = [];
+    const config = JudgeConfigSchema.parse({ provider: "claude-print", model: "haiku" });
+
+    await createJudgeHarness(config, { runAgent: recordingRun(seen), cwd: "/work" })({ prompt: "p", schema, images: ["/sheets/a.png", "/sheets/b.png"] });
+
+    expect(seen[0]!.images).toEqual(["/sheets/a.png", "/sheets/b.png"]);
+  });
+
+  it("codex judge forwards the call's images", async () => {
+    const { adapter, requests } = fakeCodex({ output: { kind: "structured", value: { ok: true } }, usage: [] });
+    const config = JudgeConfigSchema.parse({ provider: "codex", model: "gpt-x" });
+
+    await createJudgeHarness(config, { codexAdapter: () => adapter, cwd: "/work" })({ prompt: "p", schema, images: ["/sheets/a.png", "/sheets/b.png"] });
+
+    expect(requests[0]!.native!.images).toEqual(["/sheets/a.png", "/sheets/b.png"]);
+  });
+
+  it("a call with no images is unchanged", async () => {
+    const seen: AgentRunConfig<unknown>[] = [];
+    const { adapter, requests } = fakeCodex({ output: { kind: "structured", value: { ok: true } }, usage: [] });
+
+    await createJudgeHarness(JudgeConfigSchema.parse({ provider: "claude-print", model: "haiku" }), { runAgent: recordingRun(seen) })({ prompt: "p", schema });
+    await createJudgeHarness(JudgeConfigSchema.parse({ provider: "codex", model: "gpt-x" }), { codexAdapter: () => adapter })({ prompt: "p", schema });
+
+    expect(seen[0]).not.toHaveProperty("images");
+    expect(requests[0]!.native).not.toHaveProperty("images");
   });
 
   it("parses a codex text answer through the schema and reports a failed run with its kind", async () => {

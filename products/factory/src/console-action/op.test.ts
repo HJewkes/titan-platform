@@ -50,6 +50,19 @@ describe("actOnOp", () => {
     expect(outcome).toEqual(answer);
   });
 
+  // Kills: mapping delete-branch onto a class whose owner-remote row allows it before the owner has answered for one.
+  it("refuses a delete-branch op with class under DSR-OR, though its effect is wired, running nothing", async () => {
+    const effect = vi.fn<OpEffect<undefined>>();
+    const ledger = memoryLedger();
+
+    const outcome = await act({ kind: "delete-branch", repo: REPO, branch: "scratch/spike", tipSha: H }, effect, ledger);
+
+    expect(OP_EFFECTS).toHaveProperty("delete-branch");
+    expect(outcome).toMatchObject({ outcome: "refused", reason: "class", detail: expect.stringContaining("DSR-OR denies destructive-remote by owner-remote") });
+    expect(effect).not.toHaveBeenCalled();
+    expect(ledger.entries).toEqual([]);
+  });
+
   // Kills: mapping a planning op onto authority-config, whose CFG-OR row denies the console every planning tap.
   it.each<OwnerOp>([
     { kind: "plan-bet-select", initiative: "alpha", week: "2026-W47", bets: ["alpha/B1"] },

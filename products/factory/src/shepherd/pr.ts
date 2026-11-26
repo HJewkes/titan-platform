@@ -193,7 +193,7 @@ async function woken(run: ShepherdRun, kind: WakeRequest["kind"], headSha: strin
   return afterWake(run, kind, headSha, payload, outcome, (left) => new LeaveLand(left));
 }
 
-const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: run.target, ownerGateReason: () => run.policy.ownerGateReason });
+const packetRunOf = (run: ShepherdRun): PacketRun => ({ ctx: run.ctx, target: run.target, state: run.state, ownerGateReason: () => run.policy.ownerGateReason });
 
 /** Runs the review at every green head `land` reads, before `land` asks the policy or the owner about that head. */
 function reviewingContext(run: ShepherdRun): WorkflowContext {

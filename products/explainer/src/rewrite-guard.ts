@@ -370,7 +370,7 @@ function capRejections(before: string, spoken: string, { speechClean, maxVettedS
   const inherited = new Set(sentencesOf(before).map(norm));
   return sentencesOf(spoken)
     .filter((sentence) => !inherited.has(norm(sentence)) && overlongSentence(sentence, speechClean, ceiling))
-    .map((sentence) => ({ rule: "sentence-cap", detail: `a sentence runs past ${MAX_SENTENCE_WORDS} words without a clean speech verdict: "${sentence.slice(0, 40)}"` }));
+    .map((sentence) => ({ rule: "sentence-cap", detail: `a sentence runs past ${ceiling} words, or past ${MAX_SENTENCE_WORDS} with an unclean speech verdict: "${sentence.slice(0, 40)}"` }));
 }
 
 /** A dropped entity moved to an appended label still reaches the screen, and one that was part of an id may go with it. */

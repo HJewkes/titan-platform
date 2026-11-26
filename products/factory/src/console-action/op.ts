@@ -1,6 +1,8 @@
 import type { OwnerOpKind } from "@titan-design/owner-queue";
 import { opAuthority } from "../owner-ops/authority.js";
 import { closePr, type ClosePrDeps } from "../owner-ops/close-pr.js";
+import { setFactoryConfig, type ConfigSetDeps } from "../owner-ops/config-set.js";
+import { deleteBranch, type DeleteBranchDeps } from "../owner-ops/delete-branch.js";
 import { runHostCommand, type HostCommandDeps } from "../owner-ops/host-command.js";
 import { runLogged, type OwnerOpsLedger } from "../owner-ops/ledger.js";
 import { mergeAtHead, type MergeAtHeadDeps } from "../owner-ops/merge-at-head.js";
@@ -10,8 +12,8 @@ import { retireAgent, type RetireAgentDeps } from "../owner-ops/retire-agent.js"
 import { refused, type Outcome } from "./outcome.js";
 import type { OpRead } from "./record.js";
 
-/** What an effect may read and write: the host, GitHub, Shepherd's store and freezes, the standing answers, the ledger, agent-chat, the deploy state, active-work's plan store and the user's systemd manager. */
-type OpContext = MergeAtHeadDeps & ClosePrDeps & RetireAgentDeps & PauseClearDeps & PlanOpDeps & HostCommandDeps;
+/** What an effect may read and write: the host, GitHub, Shepherd's store and freezes, the standing answers, the ledger, agent-chat, the console's branch policy, the deploy state, active-work's plan store, the factory config file and the user's systemd manager. */
+type OpContext = MergeAtHeadDeps & ClosePrDeps & RetireAgentDeps & DeleteBranchDeps & PauseClearDeps & PlanOpDeps & ConfigSetDeps & HostCommandDeps;
 export type OpEffect<C = OpContext> = (actionId: string, read: OpRead, context: C) => Promise<Outcome>;
 type OpEffects<C = OpContext> = Readonly<Partial<Record<OwnerOpKind, OpEffect<C>>>>;
 
@@ -20,10 +22,12 @@ export const OP_EFFECTS: OpEffects = Object.freeze({
   "merge-at-head": mergeAtHead,
   "retire-agent": retireAgent,
   "close-pr": closePr,
+  "delete-branch": deleteBranch,
   "deploy-pause-clear": clearPause,
   "plan-bet-select": selectBets,
   "plan-outcome-edit": editOutcome,
   "plan-freeze-set": setFreeze,
+  "factory-config-set": setFactoryConfig,
   "host-command": runHostCommand,
 });
 

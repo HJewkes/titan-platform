@@ -2,6 +2,12 @@ import type { AgentChatAgents } from "./agents.js";
 
 export type VisualPacketMode = "off" | "shadow" | "on";
 
+/**
+ * The head's rendered pr-visual frame count, or why it could not be read (TP-6776). Declared here, not beside its reader,
+ * so the merge guard's import closure never reaches the artifact reader (pr-visual-evidence-isolation.test.ts).
+ */
+export type PrVisualFrames = (repo: string, head: string) => Promise<number | string>;
+
 /** `shepherd.visualPacket` and what an `on` spawn needs; absent reads as `off`. */
 export interface VisualPacketPorts {
   mode: VisualPacketMode;

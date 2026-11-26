@@ -8,7 +8,7 @@ import type { RepoFreeze, RepoFreezes } from "./repo-freeze.js";
 const Actor = z.string().min(1).max(100).default("unknown");
 const RepoFreezeArgs = z.discriminatedUnion("action", [
   z.object({ action: z.literal("freeze"), repo: RepoArg, reason: z.string().trim().min(1, "a freeze needs a non-empty --reason").max(500), actor: Actor }),
-  z.object({ action: z.literal("unfreeze"), repo: RepoArg }),
+  z.object({ action: z.literal("unfreeze"), repo: RepoArg, actor: Actor }),
   z.object({ action: z.literal("list") }),
 ]);
 type RepoFreezeArgs = z.infer<typeof RepoFreezeArgs>;
@@ -34,7 +34,7 @@ function changeOf(args: Exclude<RepoFreezeArgs, { action: "list" }>, table: Repo
     const frozen = table.freeze(args.repo, args.reason, args.actor);
     return { changed: true, detail: `${frozen.repo} is frozen: no Shepherd run merges into it until shepherd unfreeze` };
   }
-  const changed = table.unfreeze(args.repo);
+  const changed = table.unfreeze(args.repo, args.actor);
   return { changed, detail: changed ? `${args.repo} is unfrozen: waiting runs merge on their next step` : `${args.repo} was not frozen; nothing changed` };
 }
 

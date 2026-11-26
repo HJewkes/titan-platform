@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cameraMotionRows, type CameraSample } from "./camera-motion.js";
+import type { CameraSample } from "./camera.js";
+import { cameraMotionRows } from "./camera-motion.js";
 
 const RATE = 120;
 const LIMITS = { velocity: 1, jerk: 20 };
@@ -53,5 +54,22 @@ describe("cameraMotionRows", () => {
     const rows = cameraMotionRows(teleport, LIMITS, [{ from: 0.45, to: 0.6 }]);
 
     expect(rows.map((r) => r.pass)).toEqual([true, true]);
+  });
+
+  it("excuses the jerk a jump on a shake's last sample leaves in the samples after it", () => {
+    const jumpAtEdge = track(1, (t) => (t >= 0.5 ? 0.5 : 0));
+
+    const jerk = rowFor(cameraMotionRows(jumpAtEdge, LIMITS, [{ from: 0.2, to: 0.5 }]), "camera:jerk");
+
+    expect(jerk.times.filter((t) => t > 0.5)).toEqual([]);
+  });
+
+  it("still fires for a jump whose window starts after the shake ends", () => {
+    const jumpAfterShake = track(1, (t) => (t >= 0.53 ? 0.5 : 0));
+
+    const jerk = rowFor(cameraMotionRows(jumpAfterShake, LIMITS, [{ from: 0.2, to: 0.5 }]), "camera:jerk");
+
+    expect(jerk.pass).toBe(false);
+    expect(jerk.times[0]).toBeCloseTo(64 / RATE);
   });
 });
