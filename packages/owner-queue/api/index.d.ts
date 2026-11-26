@@ -1,5 +1,5 @@
 import { O as OwnerItem, A as Audience, a as OnSilence, I as ItemStatus, S as SourceRef, b as OwnerAnswer } from './schema.js';
-export { c as AUDIENCES, D as DOORS, d as ITEM_KINDS, e as ITEM_STATUSES, L as LENSES, f as LocatorCite, g as ON_SILENCE_ACTIONS, R as ROUTE_TARGETS, h as SOURCE_SYSTEMS, l as locatorCiteSchema, o as ownerItemSchema, s as sourceRefSchema } from './schema.js';
+export { c as AUDIENCES, D as DOORS, d as ITEM_KINDS, e as ITEM_STATUSES, L as LENSES, f as LocatorCite, g as ON_SILENCE_ACTIONS, R as ROUTE_TARGETS, h as SOURCE_SYSTEMS, i as SittingStep, j as StepOutcome, l as locatorCiteSchema, o as ownerItemSchema, s as sourceRefSchema } from './schema.js';
 import * as zod_v4_core from 'zod/v4/core';
 import * as zod from 'zod';
 import { z } from 'zod';
@@ -103,6 +103,11 @@ declare const ownerCardSchema: zod.ZodObject<{
         pr: zod.ZodNumber;
         headSha: zod.ZodString;
     }, zod_v4_core.$strict>, zod.ZodObject<{
+        kind: zod.ZodLiteral<"delete-branch">;
+        repo: zod.ZodString;
+        branch: zod.ZodString;
+        tipSha: zod.ZodString;
+    }, zod_v4_core.$strict>, zod.ZodObject<{
         kind: zod.ZodLiteral<"factory-config-set">;
         path: zod.ZodString;
         value: zod.ZodJSONSchema;
@@ -180,6 +185,125 @@ declare const ownerCardSchema: zod.ZodObject<{
             "broker-restart-window": "broker-restart-window";
         }>;
     }, zod_v4_core.$strict>], "kind">>;
+    steps: zod.ZodOptional<zod.ZodArray<zod.ZodObject<{
+        title: zod.ZodString;
+        command: zod.ZodString;
+        op: zod.ZodOptional<zod.ZodDiscriminatedUnion<[zod.ZodObject<{
+            kind: zod.ZodLiteral<"resolve-gate">;
+            gateId: zod.ZodString;
+            headSha: zod.ZodString;
+            decision: zod.ZodString;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"release-hold">;
+            repo: zod.ZodString;
+            pr: zod.ZodNumber;
+            headSha: zod.ZodString;
+            holdClass: zod.ZodEnum<{
+                g10: "g10";
+                "owner-asked": "owner-asked";
+            }>;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"merge-at-head">;
+            repo: zod.ZodString;
+            pr: zod.ZodNumber;
+            headSha: zod.ZodString;
+            waitFor: zod.ZodOptional<zod.ZodEnum<{
+                "adversary-loop": "adversary-loop";
+            }>>;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"close-pr">;
+            repo: zod.ZodString;
+            pr: zod.ZodNumber;
+            headSha: zod.ZodString;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"delete-branch">;
+            repo: zod.ZodString;
+            branch: zod.ZodString;
+            tipSha: zod.ZodString;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"factory-config-set">;
+            path: zod.ZodString;
+            value: zod.ZodJSONSchema;
+            expectFrom: zod.ZodOptional<zod.ZodJSONSchema>;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"deploy-pause-clear">;
+            pausedAt: zod.ZodISODateTime;
+            target: zod.ZodString;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"retire-agent">;
+            name: zod.ZodString;
+            agentId: zod.ZodString;
+            force: zod.ZodBoolean;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"plan-bet-select">;
+            initiative: zod.ZodString;
+            week: zod.ZodString;
+            bets: zod.ZodArray<zod.ZodString>;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"plan-outcome-edit">;
+            outcome: zod.ZodString;
+            to: zod.ZodObject<{
+                statement: zod.ZodOptional<zod.ZodString>;
+                measure: zod.ZodOptional<zod.ZodString>;
+            }, zod_v4_core.$strict>;
+            from: zod.ZodOptional<zod.ZodObject<{
+                statement: zod.ZodString;
+                measure: zod.ZodString;
+            }, zod_v4_core.$strict>>;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"plan-freeze-set">;
+            initiative: zod.ZodString;
+            freeze: zod.ZodDiscriminatedUnion<[zod.ZodObject<{
+                intent_ref: zod.ZodString;
+                quote_ref: zod.ZodString;
+                action: zod.ZodLiteral<"set">;
+                tag: zod.ZodOptional<zod.ZodString>;
+                selector: zod.ZodOptional<zod.ZodString>;
+                reason: zod.ZodString;
+                end_condition: zod.ZodDiscriminatedUnion<[zod.ZodObject<{
+                    kind: zod.ZodLiteral<"date">;
+                    date: zod.ZodString;
+                }, zod_v4_core.$strict>, zod.ZodObject<{
+                    kind: zod.ZodLiteral<"task-done">;
+                    task: zod.ZodString;
+                }, zod_v4_core.$strict>, zod.ZodObject<{
+                    kind: zod.ZodLiteral<"measure">;
+                    metric: zod.ZodString;
+                    direction: zod.ZodEnum<{
+                        decrease: "decrease";
+                        increase: "increase";
+                    }>;
+                    threshold: zod.ZodNumber;
+                }, zod_v4_core.$strict>, zod.ZodObject<{
+                    kind: zod.ZodLiteral<"owner">;
+                }, zod_v4_core.$strict>], "kind">;
+            }, zod_v4_core.$strict>, zod.ZodObject<{
+                action: zod.ZodLiteral<"end">;
+                id: zod.ZodString;
+            }, zod_v4_core.$strict>], "action">;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"start-session">;
+            name: zod.ZodString;
+            profile: zod.ZodString;
+            host: zod.ZodString;
+            account: zod.ZodUnion<readonly [zod.ZodLiteral<"least-used">, zod.ZodString]>;
+            cwd: zod.ZodString;
+            surface: zod.ZodString;
+            remoteControl: zod.ZodBoolean;
+            briefPath: zod.ZodString;
+            briefSha256: zod.ZodOptional<zod.ZodString>;
+        }, zod_v4_core.$strict>, zod.ZodObject<{
+            kind: zod.ZodLiteral<"host-command">;
+            command: zod.ZodEnum<{
+                "broker-restart-window": "broker-restart-window";
+            }>;
+        }, zod_v4_core.$strict>], "kind">>;
+        verify: zod.ZodOptional<zod.ZodString>;
+        outcome: zod.ZodOptional<zod.ZodEnum<{
+            done: "done";
+            skipped: "skipped";
+        }>>;
+    }, zod_v4_core.$strict>>>;
     evidenceRef: zod.ZodOptional<zod.ZodString>;
     anchors: zod.ZodOptional<zod.ZodArray<zod.ZodString>>;
     pins: zod.ZodOptional<zod.ZodObject<{
@@ -303,6 +427,11 @@ declare const ownerOpSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
     repo: z.ZodString;
     pr: z.ZodNumber;
     headSha: z.ZodString;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"delete-branch">;
+    repo: z.ZodString;
+    branch: z.ZodString;
+    tipSha: z.ZodString;
 }, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"factory-config-set">;
     path: z.ZodString;
@@ -513,6 +642,8 @@ interface ByRecSubject {
     /** The decision-routing D-row. */
     decisionClass?: string;
     authorityRows?: readonly string[];
+    /** The table the authority rows come from; any table but `authority` refuses. */
+    authorityTable?: string;
     ownerAtHead?: readonly string[];
     paths?: readonly string[];
     /** Set by a sweep whose own guard-path table matched a changed path. */
@@ -533,11 +664,15 @@ interface ByRecSubject {
     text?: readonly string[];
 }
 type FloorRule = readonly [reason: string, refuses: (subject: ByRecSubject) => boolean];
-/** Authority and guard files: the authority package, g10 rules, hold and policy files, and this policy itself. */
+/**
+ * Authority and guard files: the authority package, g10 rules, hold and policy files, CI workflows, merge-lint,
+ * CODEOWNERS, settings, and this policy itself.
+ */
 declare function isGuardPath(path: string): boolean;
 /**
  * The exclusion floor, in code: a policy file can add exclusions but never remove one of these. Every rule refuses on
- * presence, and the g10 and authority-row rules match by prefix, so a new class under a known prefix fails closed.
+ * presence. The g10 rule matches by prefix, so a new g10 class fails closed, and the authority-row rule refuses every
+ * family not on the auto-resolvable list, so a new table family fails closed.
  */
 declare const BY_REC_FLOOR: readonly FloorRule[];
 /** The first floor class the subject falls in, or undefined when none does. */
@@ -559,7 +694,11 @@ type ByRecDecision = {
  * clock carries `at`, so a countdown can show when it becomes eligible.
  */
 declare function byRecDecision(subject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision;
-/** An owner-queue item (a deposit, or a round question read back) as a by-rec subject. */
+/**
+ * An owner-queue item (a deposit, or a round question read back) as a by-rec subject. The floor refuses only on facts
+ * that are present, so every item field a floor rule keys on is mapped here. Hold classes, owner-at-head rows, the head
+ * ref and plan approval are not item fields; a sweep that knows them sets them itself.
+ */
 declare function byRecSubjectOfItem(item: OwnerItem): ByRecSubject;
 
 interface ByRecRoundContext {
@@ -632,7 +771,9 @@ interface Recheck {
  * other-head answer on the same `ask:` key flags `conflict` when it is not the item's
  * recommendation and `reasked` when it is or there is none. Sharing only a `component:`,
  * `token:` or `topic:` key flags `related-answer` and never drops. Answers are the items
- * carrying an `answer`; others are ignored. Output is sorted, so input order never changes it.
+ * carrying an `answer`; others are ignored. An answer the item's own asker wrote (`ASKER_ANSWER_CLASS`, a sitting's
+ * closing tally) is no one's decision, so it neither drops nor flags anything. Output is sorted, so input order never
+ * changes it.
  */
 declare function recheck(open: readonly OwnerItem[], answered: readonly OwnerItem[]): Recheck;
 
@@ -913,11 +1054,14 @@ declare function fromRoundQuestions(manifest: ManifestInput, roundId: string, co
 declare function answeredFromFeedback(feedback: FeedbackInput, manifest: ManifestInput, context: AnsweredContext): OwnerItem[];
 
 type Answerer = OwnerAnswer["by"];
+/** Whether an answer is the owner's own, the only kind that may settle another item or lift a change request. */
+declare const isOwnerAnswer: (answer: Pick<OwnerAnswer, "by">) => boolean;
 /** feedback@1 does not say who answered; a round answer is the owner's unless its feedback carries the by-rec mark. */
 declare const ROUND_ANSWERER: Answerer;
 /**
  * The `general` the by-rec sweep's feedback carries (TP-6773). feedback@1 is strict and has no answerer field, so this
- * mark is the one place the file says who answered, and every reader takes the answerer from it through `feedbackAnswerer`.
+ * mark is the one place the file says who answered. A reader that names who answered takes it through `feedbackAnswerer`,
+ * and one that acts as the owner refuses an answer `isOwnerAnswer` rejects; the console's reader census lists which.
  */
 declare const BY_REC_FEEDBACK_GENERAL = "auto-by-rec: every question was answered with its recommendation after the round went unanswered past the by-rec wait";
 /** Who answered a round, read from its feedback's `general`. A mark anyone else wrote only takes the owner's credit away. */
@@ -1025,7 +1169,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, BY_REC_EXCLUDE_FIELDS, BY_REC_FEEDBACK_GENERAL, BY_REC_FLOOR, BY_REC_MODES, BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_RESULTS, BY_REC_ROW_SCHEMA, BY_REC_SOURCES, type ByRecDecision, type ByRecExclusion, type ByRecPolicy, type ByRecPolicyInput, type ByRecRecommendation, type ByRecRoundContext, type ByRecRow, type ByRecSource, type ByRecSubject, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OnSilence, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, byRecDecision, byRecPolicySchema, byRecRoundSubject, byRecRowSchema, byRecSubjectOfItem, cardLint, collapseRepeats, componentKey, consolidate, feedbackAnswerer, floorReason, forAudience, fromRoundQuestions, influenceEdges, isGuardPath, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, BY_REC_EXCLUDE_FIELDS, BY_REC_FEEDBACK_GENERAL, BY_REC_FLOOR, BY_REC_MODES, BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_RESULTS, BY_REC_ROW_SCHEMA, BY_REC_SOURCES, type ByRecDecision, type ByRecExclusion, type ByRecPolicy, type ByRecPolicyInput, type ByRecRecommendation, type ByRecRoundContext, type ByRecRow, type ByRecSource, type ByRecSubject, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OnSilence, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, byRecDecision, byRecPolicySchema, byRecRoundSubject, byRecRowSchema, byRecSubjectOfItem, cardLint, collapseRepeats, componentKey, consolidate, feedbackAnswerer, floorReason, forAudience, fromRoundQuestions, influenceEdges, isGuardPath, isMergeKey, isOwnerAnswer, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -1112,6 +1256,11 @@ declare const ownerItemDepositSchema: z.ZodObject<{
         pr: z.ZodNumber;
         headSha: z.ZodString;
     }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"delete-branch">;
+        repo: z.ZodString;
+        branch: z.ZodString;
+        tipSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"factory-config-set">;
         path: z.ZodString;
         value: z.ZodJSONSchema;
@@ -1189,6 +1338,121 @@ declare const ownerItemDepositSchema: z.ZodObject<{
             "broker-restart-window": "broker-restart-window";
         }>;
     }, z.core.$strict>], "kind">>;
+    steps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        title: z.ZodString;
+        command: z.ZodString;
+        op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"resolve-gate">;
+            gateId: z.ZodString;
+            headSha: z.ZodString;
+            decision: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"release-hold">;
+            repo: z.ZodString;
+            pr: z.ZodNumber;
+            headSha: z.ZodString;
+            holdClass: z.ZodEnum<{
+                g10: "g10";
+                "owner-asked": "owner-asked";
+            }>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"merge-at-head">;
+            repo: z.ZodString;
+            pr: z.ZodNumber;
+            headSha: z.ZodString;
+            waitFor: z.ZodOptional<z.ZodEnum<{
+                "adversary-loop": "adversary-loop";
+            }>>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"close-pr">;
+            repo: z.ZodString;
+            pr: z.ZodNumber;
+            headSha: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"delete-branch">;
+            repo: z.ZodString;
+            branch: z.ZodString;
+            tipSha: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"factory-config-set">;
+            path: z.ZodString;
+            value: z.ZodJSONSchema;
+            expectFrom: z.ZodOptional<z.ZodJSONSchema>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"deploy-pause-clear">;
+            pausedAt: z.ZodISODateTime;
+            target: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"retire-agent">;
+            name: z.ZodString;
+            agentId: z.ZodString;
+            force: z.ZodBoolean;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"plan-bet-select">;
+            initiative: z.ZodString;
+            week: z.ZodString;
+            bets: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"plan-outcome-edit">;
+            outcome: z.ZodString;
+            to: z.ZodObject<{
+                statement: z.ZodOptional<z.ZodString>;
+                measure: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+            from: z.ZodOptional<z.ZodObject<{
+                statement: z.ZodString;
+                measure: z.ZodString;
+            }, z.core.$strict>>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"plan-freeze-set">;
+            initiative: z.ZodString;
+            freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                intent_ref: z.ZodString;
+                quote_ref: z.ZodString;
+                action: z.ZodLiteral<"set">;
+                tag: z.ZodOptional<z.ZodString>;
+                selector: z.ZodOptional<z.ZodString>;
+                reason: z.ZodString;
+                end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                    kind: z.ZodLiteral<"date">;
+                    date: z.ZodString;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"task-done">;
+                    task: z.ZodString;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"measure">;
+                    metric: z.ZodString;
+                    direction: z.ZodEnum<{
+                        decrease: "decrease";
+                        increase: "increase";
+                    }>;
+                    threshold: z.ZodNumber;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"owner">;
+                }, z.core.$strict>], "kind">;
+            }, z.core.$strict>, z.ZodObject<{
+                action: z.ZodLiteral<"end">;
+                id: z.ZodString;
+            }, z.core.$strict>], "action">;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"start-session">;
+            name: z.ZodString;
+            profile: z.ZodString;
+            host: z.ZodString;
+            account: z.ZodUnion<readonly [z.ZodLiteral<"least-used">, z.ZodString]>;
+            cwd: z.ZodString;
+            surface: z.ZodString;
+            remoteControl: z.ZodBoolean;
+            briefPath: z.ZodString;
+            briefSha256: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"host-command">;
+            command: z.ZodEnum<{
+                "broker-restart-window": "broker-restart-window";
+            }>;
+        }, z.core.$strict>], "kind">>;
+        verify: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     pins: z.ZodOptional<z.ZodObject<{
@@ -1289,6 +1553,127 @@ declare const answerSchema: z.ZodObject<{
     at: z.ZodISODateTime;
     covers: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>;
+declare const STEP_OUTCOMES: readonly ["done", "skipped"];
+/** A step as the inbox reads it: the deposit's step plus the outcome its asker recorded, if any. */
+declare const itemStepSchema: z.ZodObject<{
+    title: z.ZodString;
+    command: z.ZodString;
+    op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        kind: z.ZodLiteral<"resolve-gate">;
+        gateId: z.ZodString;
+        headSha: z.ZodString;
+        decision: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"release-hold">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        holdClass: z.ZodEnum<{
+            g10: "g10";
+            "owner-asked": "owner-asked";
+        }>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"merge-at-head">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+        waitFor: z.ZodOptional<z.ZodEnum<{
+            "adversary-loop": "adversary-loop";
+        }>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"close-pr">;
+        repo: z.ZodString;
+        pr: z.ZodNumber;
+        headSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"delete-branch">;
+        repo: z.ZodString;
+        branch: z.ZodString;
+        tipSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"factory-config-set">;
+        path: z.ZodString;
+        value: z.ZodJSONSchema;
+        expectFrom: z.ZodOptional<z.ZodJSONSchema>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"deploy-pause-clear">;
+        pausedAt: z.ZodISODateTime;
+        target: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"retire-agent">;
+        name: z.ZodString;
+        agentId: z.ZodString;
+        force: z.ZodBoolean;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-bet-select">;
+        initiative: z.ZodString;
+        week: z.ZodString;
+        bets: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-outcome-edit">;
+        outcome: z.ZodString;
+        to: z.ZodObject<{
+            statement: z.ZodOptional<z.ZodString>;
+            measure: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>;
+        from: z.ZodOptional<z.ZodObject<{
+            statement: z.ZodString;
+            measure: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"plan-freeze-set">;
+        initiative: z.ZodString;
+        freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            intent_ref: z.ZodString;
+            quote_ref: z.ZodString;
+            action: z.ZodLiteral<"set">;
+            tag: z.ZodOptional<z.ZodString>;
+            selector: z.ZodOptional<z.ZodString>;
+            reason: z.ZodString;
+            end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                kind: z.ZodLiteral<"date">;
+                date: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"task-done">;
+                task: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"measure">;
+                metric: z.ZodString;
+                direction: z.ZodEnum<{
+                    decrease: "decrease";
+                    increase: "increase";
+                }>;
+                threshold: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                kind: z.ZodLiteral<"owner">;
+            }, z.core.$strict>], "kind">;
+        }, z.core.$strict>, z.ZodObject<{
+            action: z.ZodLiteral<"end">;
+            id: z.ZodString;
+        }, z.core.$strict>], "action">;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"start-session">;
+        name: z.ZodString;
+        profile: z.ZodString;
+        host: z.ZodString;
+        account: z.ZodUnion<readonly [z.ZodLiteral<"least-used">, z.ZodString]>;
+        cwd: z.ZodString;
+        surface: z.ZodString;
+        remoteControl: z.ZodBoolean;
+        briefPath: z.ZodString;
+        briefSha256: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"host-command">;
+        command: z.ZodEnum<{
+            "broker-restart-window": "broker-restart-window";
+        }>;
+    }, z.core.$strict>], "kind">>;
+    verify: z.ZodOptional<z.ZodString>;
+    outcome: z.ZodOptional<z.ZodEnum<{
+        done: "done";
+        skipped: "skipped";
+    }>>;
+}, z.core.$strict>;
 declare const ownerItemSchema: z.ZodObject<{
     id: z.ZodString;
     sources: z.ZodArray<z.ZodObject<{
@@ -1378,6 +1763,11 @@ declare const ownerItemSchema: z.ZodObject<{
         pr: z.ZodNumber;
         headSha: z.ZodString;
     }, z.core.$strict>, z.ZodObject<{
+        kind: z.ZodLiteral<"delete-branch">;
+        repo: z.ZodString;
+        branch: z.ZodString;
+        tipSha: z.ZodString;
+    }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"factory-config-set">;
         path: z.ZodString;
         value: z.ZodJSONSchema;
@@ -1455,6 +1845,125 @@ declare const ownerItemSchema: z.ZodObject<{
             "broker-restart-window": "broker-restart-window";
         }>;
     }, z.core.$strict>], "kind">>;
+    steps: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        title: z.ZodString;
+        command: z.ZodString;
+        op: z.ZodOptional<z.ZodDiscriminatedUnion<[z.ZodObject<{
+            kind: z.ZodLiteral<"resolve-gate">;
+            gateId: z.ZodString;
+            headSha: z.ZodString;
+            decision: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"release-hold">;
+            repo: z.ZodString;
+            pr: z.ZodNumber;
+            headSha: z.ZodString;
+            holdClass: z.ZodEnum<{
+                g10: "g10";
+                "owner-asked": "owner-asked";
+            }>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"merge-at-head">;
+            repo: z.ZodString;
+            pr: z.ZodNumber;
+            headSha: z.ZodString;
+            waitFor: z.ZodOptional<z.ZodEnum<{
+                "adversary-loop": "adversary-loop";
+            }>>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"close-pr">;
+            repo: z.ZodString;
+            pr: z.ZodNumber;
+            headSha: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"delete-branch">;
+            repo: z.ZodString;
+            branch: z.ZodString;
+            tipSha: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"factory-config-set">;
+            path: z.ZodString;
+            value: z.ZodJSONSchema;
+            expectFrom: z.ZodOptional<z.ZodJSONSchema>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"deploy-pause-clear">;
+            pausedAt: z.ZodISODateTime;
+            target: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"retire-agent">;
+            name: z.ZodString;
+            agentId: z.ZodString;
+            force: z.ZodBoolean;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"plan-bet-select">;
+            initiative: z.ZodString;
+            week: z.ZodString;
+            bets: z.ZodArray<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"plan-outcome-edit">;
+            outcome: z.ZodString;
+            to: z.ZodObject<{
+                statement: z.ZodOptional<z.ZodString>;
+                measure: z.ZodOptional<z.ZodString>;
+            }, z.core.$strict>;
+            from: z.ZodOptional<z.ZodObject<{
+                statement: z.ZodString;
+                measure: z.ZodString;
+            }, z.core.$strict>>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"plan-freeze-set">;
+            initiative: z.ZodString;
+            freeze: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                intent_ref: z.ZodString;
+                quote_ref: z.ZodString;
+                action: z.ZodLiteral<"set">;
+                tag: z.ZodOptional<z.ZodString>;
+                selector: z.ZodOptional<z.ZodString>;
+                reason: z.ZodString;
+                end_condition: z.ZodDiscriminatedUnion<[z.ZodObject<{
+                    kind: z.ZodLiteral<"date">;
+                    date: z.ZodString;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"task-done">;
+                    task: z.ZodString;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"measure">;
+                    metric: z.ZodString;
+                    direction: z.ZodEnum<{
+                        decrease: "decrease";
+                        increase: "increase";
+                    }>;
+                    threshold: z.ZodNumber;
+                }, z.core.$strict>, z.ZodObject<{
+                    kind: z.ZodLiteral<"owner">;
+                }, z.core.$strict>], "kind">;
+            }, z.core.$strict>, z.ZodObject<{
+                action: z.ZodLiteral<"end">;
+                id: z.ZodString;
+            }, z.core.$strict>], "action">;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"start-session">;
+            name: z.ZodString;
+            profile: z.ZodString;
+            host: z.ZodString;
+            account: z.ZodUnion<readonly [z.ZodLiteral<"least-used">, z.ZodString]>;
+            cwd: z.ZodString;
+            surface: z.ZodString;
+            remoteControl: z.ZodBoolean;
+            briefPath: z.ZodString;
+            briefSha256: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>, z.ZodObject<{
+            kind: z.ZodLiteral<"host-command">;
+            command: z.ZodEnum<{
+                "broker-restart-window": "broker-restart-window";
+            }>;
+        }, z.core.$strict>], "kind">>;
+        verify: z.ZodOptional<z.ZodString>;
+        outcome: z.ZodOptional<z.ZodEnum<{
+            done: "done";
+            skipped: "skipped";
+        }>>;
+    }, z.core.$strict>>>;
     evidenceRef: z.ZodOptional<z.ZodString>;
     anchors: z.ZodOptional<z.ZodArray<z.ZodString>>;
     pins: z.ZodOptional<z.ZodObject<{
@@ -1536,5 +2045,7 @@ type LocatorCite = z.infer<typeof locatorCiteSchema>;
 type ItemStatus = (typeof ITEM_STATUSES)[number];
 type Audience = (typeof AUDIENCES)[number];
 type OnSilence = z.infer<typeof onSilenceSchema>;
+type SittingStep = z.infer<typeof itemStepSchema>;
+type StepOutcome = (typeof STEP_OUTCOMES)[number];
 
-export { type Audience as A, DOORS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OnSilence as a, type OwnerAnswer as b, AUDIENCES as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, SOURCE_SYSTEMS as h, locatorCiteSchema as l, ownerItemSchema as o, sourceRefSchema as s };
+export { type Audience as A, DOORS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OnSilence as a, type OwnerAnswer as b, AUDIENCES as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, SOURCE_SYSTEMS as h, type SittingStep as i, type StepOutcome as j, locatorCiteSchema as l, ownerItemSchema as o, sourceRefSchema as s };
