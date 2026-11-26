@@ -5,7 +5,11 @@ import { recordedFailureClass, type FailureClass } from "./failure-class.js";
 /** Waits before each retry, so a step is tried once and then up to this many more times. */
 const GH_RETRY_BACKOFF_MS: readonly number[] = [5_000, 20_000, 60_000];
 
-/** A limit outlasting two waits is not a blip; the run fails as it did before, now filed gh-rate-limit. */
+/**
+ * A secondary or unexplained limit outlasting two waits is not a blip; the run fails, filed gh-rate-limit. A spent
+ * primary limit is exempt: it resets within the hour however many open runs drain it, and a failed run there only
+ * costs a manual re-register.
+ */
 const RATE_LIMIT_WAITS = 2;
 /** `x-ratelimit-reset` is GitHub's clock, in whole seconds, so the re-read lands a little after it. */
 const RESET_MARGIN_MS = 5_000;
@@ -49,9 +53,14 @@ export function rateLimitWaitMs(error: string, now: number): number | undefined 
   return Math.min(Math.max(failure.resetAt + margin - now, 0), MAX_RATE_LIMIT_WAIT_MS);
 }
 
+function spentPrimaryLimit(error: string): boolean {
+  return parseRateLimitMarker(error)?.headers["x-ratelimit-remaining"] === "0";
+}
+
 function waitFor(failureClass: FailureClass, error: string, done: number, timing: GhRetryTiming): number | undefined {
   if (failureClass === "gh-api-5xx") return (timing.backoffMs ?? GH_RETRY_BACKOFF_MS)[done];
-  if (failureClass === "gh-rate-limit" && done < RATE_LIMIT_WAITS) return rateLimitWaitMs(error, (timing.now ?? Date.now)());
+  const limitWaitsLeft = done < RATE_LIMIT_WAITS || spentPrimaryLimit(error);
+  if (failureClass === "gh-rate-limit" && limitWaitsLeft) return rateLimitWaitMs(error, (timing.now ?? Date.now)());
   return undefined;
 }
 
