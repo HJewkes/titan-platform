@@ -18,6 +18,7 @@
 import { createHash } from "node:crypto";
 import { open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
+import { feedbackAnswerer, isOwnerAnswer } from "@titan-design/owner-queue";
 import { z } from "zod";
 import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type GateAnswerRequest } from "./gate-answer.js";
 import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
@@ -69,6 +70,8 @@ export interface ListenerDeps {
   notify?: SeatNotifier;
   /** `rounds subscribe`'s store; absent, only the asker is told and an unclaimed answer goes nowhere. */
   subscriptionsDir?: string;
+  /** The console's state dir, whose by-rec policy names the wait a sweep answer's notice reports. */
+  stateDir?: string;
   now?: () => Date;
   logger?: { warn(fields: Record<string, unknown>, message: string): void };
 }
@@ -144,7 +147,7 @@ function verdictOf(question: ShipQuestion, merge: Merge, answer: Feedback["answe
   return others.length === 1 && others[0] === pick ? "send-back" : undefined;
 }
 
-/** One answer per merge-bound question the owner answered, in round order; none unless the packet is beside the round. */
+/** One answer per merge-bound question the owner answered, in round order; none unless the packet is beside the round, and none for an answer not the owner's. */
 async function readRoundAnswers(deps: ListenerDeps, roundId: string): Promise<RoundAnswer[]> {
   const dir = path.join(deps.roundsDir, roundId);
   const [round, feedback, packetBytes] = await Promise.all([
@@ -156,6 +159,11 @@ async function readRoundAnswers(deps: ListenerDeps, roundId: string): Promise<Ro
   const { manifest } = round;
   const tree = packetBytes && packetHeadTree(packetBytes);
   if (!manifest || !feedback || !packetBytes || tree === undefined) return [];
+  const by = feedbackAnswerer(feedback.general);
+  if (!isOwnerAnswer({ by })) {
+    deps.logger?.warn({ roundId }, `${roundId}: answer not relayed (answered by ${by.class}, not the owner)`);
+    return [];
+  }
   const packetSha = sha256(packetBytes);
   return manifest.questions.flatMap((question) => {
     const answer = feedback.answers.find((each) => each.questionId === question.id);
@@ -281,10 +289,10 @@ async function approvePlans(deps: ListenerDeps, roundId: string, live: boolean):
 
 async function tellSeats(deps: ListenerDeps, roundId: string, live: boolean): Promise<void> {
   if (deps.notify === undefined) return;
-  const { roundsDir, subscriptionsDir, notify } = deps;
+  const { roundsDir, subscriptionsDir, stateDir, notify } = deps;
   const now = (deps.now ?? (() => new Date()))();
   try {
-    const failures = await notifyRound({ roundsDir, ...(subscriptionsDir !== undefined && { subscriptionsDir }), notify, now, live }, roundId);
+    const failures = await notifyRound({ roundsDir, ...(subscriptionsDir !== undefined && { subscriptionsDir }), ...(stateDir !== undefined && { stateDir }), notify, now, live }, roundId);
     for (const { seat, reason } of failures) deps.logger?.warn({ roundId, seat }, `${roundId}: ${seat} was not told of the answer (${reason})`);
   } catch (error) {
     deps.logger?.warn({ roundId }, `${roundId}: no seat was told of the answer (${error instanceof Error ? error.message : String(error)})`);

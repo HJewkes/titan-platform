@@ -1,3 +1,4 @@
+import { feedbackAnswerer, isOwnerAnswer } from "@titan-design/owner-queue";
 import { z } from "zod";
 import { AGREEMENT_BAR, CALIBRATION_JUDGES, MIN_LABELS_PER_JUDGE, type CalibrationJudge, type ItemKind, type KeyEntry } from "./calibration-queue.js";
 
@@ -11,6 +12,7 @@ export type OwnerLabel = keyof (typeof LABEL_OPTIONS)["verdict"];
 
 const FeedbackSchema = z.object({
   schema: z.literal("titan-review/feedback@1"),
+  general: z.string().optional(),
   answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional() }).loose()),
 }).loose();
 
@@ -21,9 +23,14 @@ export const optionText = (label: OwnerLabel, item: string, kind: ItemKind = "ve
 
 const KINDS: readonly ItemKind[] = ["verdict", "pair", "listener"];
 
-/** The owner's labels from a round's feedback.json; a question left blank or answered off the options is unlabelled. */
+/**
+ * The owner's labels from a round's feedback.json; a question left blank or answered off the options is unlabelled.
+ * Throws on feedback answered by anyone but the owner, such as the by-rec sweep: its picks are recommendations, not labels.
+ */
 export function labelsFromFeedback(feedback: unknown): Map<string, OwnerLabel> {
-  const answers = FeedbackSchema.parse(feedback).answers;
+  const { general, answers } = FeedbackSchema.parse(feedback);
+  const by = feedbackAnswerer(general);
+  if (!isOwnerAnswer({ by })) throw new Error(`feedback.json was answered by ${by.class}, not the owner; its picks are no owner labels`);
   return new Map(answers.flatMap((a) => {
     const label = OWNER_LABELS.find((l) => KINDS.some((kind) => a.pick === optionText(l, a.questionId, kind)));
     return label ? [[a.questionId, label] as const] : [];

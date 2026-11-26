@@ -286,7 +286,9 @@ and a pick) or policy (a D-row `class`, or category `policy`) answer also gets o
 `## Queue answers <date>` in `TITAN_CONSOLE_DECISIONS_FILE`, which must already exist. A Ship
 approval is two-way, so it reaches the ledger only. A personal item, an item of a human-only
 initiative, or any answer while active-work cannot say which initiatives are human-only writes
-nothing. A failed log write never undoes the submit: the result's `log` array says what was
+nothing. An answer whose `by.class` is not `owner` or `owner-remote` (the by-rec sweep's) never
+reaches the ledger, whose rows the decider reads as the owner's precedent; its result says `ledger:
+"excluded"`, reason `not-owner`, and its decisions bullet names it. A failed log write never undoes the submit: the result's `log` array says what was
 written per question, with a reason that names no path, and the daemon log has the error.
 
 A submit that carries `liveViewed` (the variant keys whose live story rendered on the owner's page)
@@ -778,6 +780,44 @@ titan-console rounds nudge --json   # the same rounds as one JSON array
 ```
 
 A "rec" reply, or the tap, is `rounds.answer-rec`.
+
+### Auto-by-rec
+
+The daemon also sweeps rounds hourly, starting five minutes after it starts (`server/by-rec-rounds.ts`, TP-6773).
+A round still unanswered and not withdrawn after the policy's wait (24 h by default) is answered with its
+recommendations. The wait runs from the later of the `round.json` mtime and when the sweep first saw that round and
+manifest, kept in `<state dir>/auto-by-rec-seen/`, so an asker who backdates `round.json` gains nothing; a rewritten
+`round.json` starts a fresh wait. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
+and the asker's notice see it like any other answer. The pipeline writes owner-queue's `BY_REC_FEEDBACK_GENERAL`
+(`auto-by-rec: ...`) into the feedback's `general`, not `answered-by-rec`, which stays the owner's own tap. The
+readers that name who answered take it from that file through `feedbackAnswerer`: the decisions bullet credits
+`auto-by-rec`, the decider's ledger (`answers.jsonl`) gets no row, the owner queue shows the answer as the automation's,
+which never settles another item nor lifts a change request, and the asker's notice says the sweep answered and the
+owner has not seen it. The readers that act as the owner refuse it as "answered by automation, not the owner": the gate
+relay, the plan-approval record, the factory's Ship and Send back checks and the judge-calibration labels, and the
+planner's owner-contact probe does not count it. An agent's recommendation never returns as the owner's precedent. `server/feedback-readers.test.ts` is the census of every
+feedback.json reader and its label; a new reader fails it until it is listed.
+
+The sweep decides each question with owner-queue's `byRecDecision`, on the subject `byRecRoundSubject` builds. A
+round is skipped, with the reason in the daemon log, when any question:
+
+- names a cost in its prompt, its section's deciding text or context, an option or an option's details,
+- is in an after-answer round,
+- is a Ship,
+- records a plan approval,
+- has no recommendation that answers it,
+- or hits another floor class.
+
+A marker written with `wx` beside the round claims it once per mode: `auto-by-rec.json` in live mode and
+`auto-by-rec-shadow.json` in shadow mode. A restart therefore never answers a round twice. Each question the sweep
+acts on adds one `titan/auto-by-rec@1` row to `<state dir>/auto-by-rec.jsonl`.
+
+The mode comes from `<state dir>/auto-by-rec-policy.json` (`titan/auto-by-rec-policy@1`):
+
+- With no file, the sweep runs in **shadow**: it writes would-resolve rows and answers nothing.
+- `mode: live` answers rounds.
+- `mode: off` stops the next pass.
+- A file that does not parse also stops the sweep.
 
 - **Supersedes (automatic).** A round may list `supersedes: ["<round-id>", ...]` in its `round.json`,
   the earlier rounds it replaces. It is the console's own field, lifted off before review-schema's

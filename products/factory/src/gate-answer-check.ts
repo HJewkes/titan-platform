@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { GitHubPort } from "@titan-design/github";
 import type { GateRecord } from "@titan-design/hitl";
+import { feedbackAnswerer, isOwnerAnswer } from "@titan-design/owner-queue";
 import { z } from "zod";
 import { acceptSetNote, approvedSetOf, type AfterDigest, type ApprovedSet } from "./approved-set.js";
 import { MERGE_GATE, landGate, ownerAtHeadRow, pinnedHead, stepOf, type LandGate } from "./coordinator-evidence.js";
@@ -264,6 +265,8 @@ function choiceRefusal(inputs: AnswerInputs, land: GateHead): AnswerCheck | unde
 function feedbackChoice({ files, request, now }: AnswerInputs, land: GateHead): Answered | AnswerCheck {
   const feedback = parseJson(RoundFeedbackSchema, files.feedback);
   if (!feedback) return refused("feedback", "feedback.json does not read as round feedback");
+  const by = feedbackAnswerer(feedback.general);
+  if (!isOwnerAnswer({ by })) return refused("feedback", `answered by ${by.class}, not the owner`);
   const ship = shipAtHead(files.round, feedback, { repo: land.repo, pr: land.pr, headSha: request.headSha }, now, ROUND_SUBMIT_MAX_AGE_MS);
   if (ship.shipped) return "merge";
   return sendBackRequested(files.round, feedback.answers, land) ? "send-back" : refused("feedback", ship.reason);

@@ -173,6 +173,7 @@ function listenersOf(config: ConsoleConfig, shepherd: ShepherdSource, logger: Lo
     ...(config.inboxActions === true && { planApproval: { actionsDir: path.join(config.stateDir, OWNER_ACTIONS_DIR), client: factoryOwnerAction(config.factoryPort) } }),
     ...(config.agentChatBin !== undefined && { notify: seatNotifier(config.agentChatBin) }),
     subscriptionsDir: subscriptionsDirOf(config.stateDir),
+    stateDir: config.stateDir,
     logger,
   });
 }

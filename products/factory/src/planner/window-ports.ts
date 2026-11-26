@@ -1,3 +1,4 @@
+import { feedbackAnswerer } from "@titan-design/owner-queue";
 import { openDatabase } from "@titan-design/store-sqlite";
 import { z } from "zod";
 import type { Verbs } from "../cli-types.js";
@@ -60,18 +61,24 @@ function failingFields(error: z.ZodError): string {
   return `${fields.length === 1 ? "field" : "fields"} ${fields.join(", ")}`;
 }
 
+const General = z.object({ general: z.string() });
+
+/** Who answered, from the feedback's `general` even when the rest does not parse; unreadable, the owner as before. */
+const answererOf = (json: unknown): RoundAnswer["by"] => feedbackAnswerer(General.safeParse(json).data?.general);
+
 function answerOf(id: string, feedback: Uint8Array): RoundAnswer {
   let json: unknown;
   try {
     json = JSON.parse(Buffer.from(feedback).toString("utf8"));
   } catch {
-    return { id, submittedAt: undefined, why: "feedback.json is not valid JSON" };
+    return { id, by: answererOf(undefined), submittedAt: undefined, why: "feedback.json is not valid JSON" };
   }
+  const by = answererOf(json);
   const parsed = RoundFeedbackSchema.safeParse(json);
-  if (!parsed.success) return { id, submittedAt: undefined, why: `feedback.json has invalid ${failingFields(parsed.error)}` };
+  if (!parsed.success) return { id, by, submittedAt: undefined, why: `feedback.json has invalid ${failingFields(parsed.error)}` };
   const { submittedAt } = parsed.data;
-  if (!isIsoTime(submittedAt)) return { id, submittedAt: undefined, why: "submittedAt is not an ISO time" };
-  return { id, submittedAt };
+  if (!isIsoTime(submittedAt)) return { id, by, submittedAt: undefined, why: "submittedAt is not an ISO time" };
+  return { id, by, submittedAt };
 }
 
 /** Read-only, so a running serve is never disturbed; a missing store throws, which the wake reads as "run the review". */

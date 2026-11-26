@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestAuth } from "@titan-design/daemon";
+import { BY_REC_FEEDBACK_GENERAL } from "@titan-design/owner-queue";
 import { invokeCommand } from "@titan-design/registry";
 import { SHIP_OPTIONS as TD_SHIP_OPTIONS } from "@titan-design/review-schema";
 import type { AnswerOutcome, GateAnswerClient, GateAnswerRequest, Unreachable } from "./gate-answer.js";
@@ -122,6 +123,19 @@ describe("the gate-answer listener after rounds.submit", () => {
       outcome: { status: "resolved", gateId: "run-1/approve-merge:1", choice: "merge" },
     });
     expect((await stat(answerFile())).mode & 0o777).toBe(0o600);
+  });
+
+  it("a by-rec-marked merge-bound answer is not relayed to the gate", async () => {
+    await submit(createRoundListeners(deps({ enabled: false })));
+    const feedbackFile = path.join(dir, ROUND, "feedback.json");
+    const feedback = JSON.parse(await readFile(feedbackFile, "utf8"));
+    await writeFile(feedbackFile, JSON.stringify({ ...feedback, general: BY_REC_FEEDBACK_GENERAL }));
+    const warnings: string[] = [];
+
+    await createRoundListeners(deps({ logger: { warn: (_fields, message) => warnings.push(message) } })).sweep();
+
+    expect([posts, listCalls, await exists(answerFile())]).toEqual([[], 0, false]);
+    expect(warnings).toContain(`${ROUND}: answer not relayed (answered by automation, not the owner)`);
   });
 
   it("sends back when the owner picks the option that is not Ship", async () => {

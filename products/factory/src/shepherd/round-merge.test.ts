@@ -2,10 +2,11 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BY_REC_FEEDBACK_GENERAL } from "@titan-design/owner-queue";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { describe, expect, it } from "vitest";
 import type { PendingGate } from "../host.js";
-import { RoundFeedbackSchema, roundMergeDecisions, shipAtHead, type RoundFeedback } from "./round-merge.js";
+import { RoundFeedbackSchema, boundAnswerRefusal, roundMergeDecisions, shipAtHead, type RoundFeedback } from "./round-merge.js";
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "round-merge");
 const roundBytes = readFileSync(join(dir, "round.json"));
@@ -174,6 +175,16 @@ describe("shipAtHead", () => {
 
   it("a round.json that is not a round is no approval", () => {
     expect(shipAtHead("not json", feedbackWith(allShipped), at(101, H1), NOW)).toMatchObject({ shipped: false });
+  });
+});
+
+describe("boundAnswerRefusal", () => {
+  it("boundAnswerRefusal refuses feedback answered by auto-by-rec", () => {
+    const swept = feedbackWith(allShipped, { general: BY_REC_FEEDBACK_GENERAL });
+
+    expect(boundAnswerRefusal(roundBytes, feedbackWith(allShipped, { general: "Looks right." }))).toBeUndefined();
+    expect(boundAnswerRefusal(roundBytes, swept)).toBe("answered by automation, not the owner");
+    expect(roundMergeDecisions(roundBytes, swept, gates, runs, NOW)).toEqual({ refused: "answered by automation, not the owner", decisions: [] });
   });
 });
 

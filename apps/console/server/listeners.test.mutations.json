@@ -29,6 +29,15 @@
       "kills": [
         "the gate-answer listener after rounds.submit posts to the gate when Shepherd spells the repo and head in another case than the round, as the inbox folds it (TP-4356)"
       ]
+    },
+    {
+      "name": "the gate relay relays an answer the owner did not give",
+      "file": "apps/console/server/listeners.ts",
+      "find": "if (!isOwnerAnswer({ by })) {",
+      "replace": "if (by.class === \"nobody\") {",
+      "kills": [
+        "the gate-answer listener after rounds.submit a by-rec-marked merge-bound answer is not relayed to the gate"
+      ]
     }
   ]
 }

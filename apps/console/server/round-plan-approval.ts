@@ -7,11 +7,13 @@
  * Only the owner's own submit writes a record. It is named for its round and question and written once (O_EXCL, 0600, in the
  * 0700 actions dir), from a feedback.json bound to the round.json bytes on disk. The start-up sweep only reposts a record
  * that submit wrote while the factory was unreachable, so a feedback.json some other process put in the rounds dir, a
- * relayed or decided answer included, never becomes an approval.
+ * relayed or decided answer included, never becomes an approval. Nor does an answer the feedback credits to anyone but
+ * the owner (`feedbackAnswerer`), such as the by-rec sweep's.
  */
 import { createHash } from "node:crypto";
 import { access } from "node:fs/promises";
 import path from "node:path";
+import { feedbackAnswerer, isOwnerAnswer } from "@titan-design/owner-queue";
 import type { OwnerActionClient } from "./owner-action.js";
 import { outcomeFile, settleOutcome, writeRecord } from "./owner-tap.js";
 import type { Feedback, Manifest } from "./round-schema.js";
@@ -32,8 +34,15 @@ const sha256 = (text: string): string => createHash("sha256").update(text).diges
 /** Fits the factory's 64-character action id; a round id has no slash, so round and question never run together. */
 const actionIdOf = (roundId: string, questionId: string): string => `plan-${sha256(`${roundId}/${questionId}`).slice(0, 40)}`;
 
+/** Why an answer approves nothing: answered by someone other than the owner. Undefined for the owner's own answer. */
+function planApprovalRefusal(feedback: Pick<Feedback, "general">): string | undefined {
+  const by = feedbackAnswerer(feedback.general);
+  return isOwnerAnswer({ by }) ? undefined : `answered by ${by.class}, not the owner`;
+}
+
 /** One record per bound question the owner answered with its `approve` option; a revision request carries no pick, so approves nothing. */
 export function approvedPlans(roundId: string, manifest: Manifest, feedback: Feedback): ApprovedPlan[] {
+  if (planApprovalRefusal(feedback) !== undefined) return [];
   return (manifest.planApprovals ?? []).flatMap(({ questionId, approve, task, repo, gate, scope }) => {
     const answer = feedback.answers.find((each) => each.questionId === questionId);
     if (answer?.pick !== approve) return [];

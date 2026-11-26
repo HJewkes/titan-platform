@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BY_REC_FEEDBACK_GENERAL } from "@titan-design/owner-queue";
 import { createRoundListeners, type ListenerDeps } from "./listeners.js";
 import { answerNotice } from "./round-asker.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
@@ -68,6 +69,29 @@ describe("telling the asking seat its decision round was answered", () => {
     expect(answerNotice(ROUND, "/state/rounds/kiln-schedule-r2/feedback.json", "asker", true)).toBe(
       "titan-console: the owner answered round kiln-schedule-r2 (you filed it). The answers are in /state/rounds/kiln-schedule-r2/feedback.json (titan-review/feedback@1). The answer carries free text (a comment, note or written answer); read it.",
     );
+  });
+
+  it("an owner-submitted round keeps the owner-answered notice", async () => {
+    await fileAndAnswer({ general: "Looks right." });
+
+    await listeners().afterRoundSubmit(ROUND, { status: "submitted" });
+
+    expect(sent).toEqual([{ seat: SEAT, text: answerNotice(ROUND, feedbackPath(), "asker", true) }]);
+    expect(sent[0]?.text).toBe(
+      `titan-console: the owner answered round ${ROUND} (you filed it). The answers are in ${feedbackPath()} (titan-review/feedback@1). The answer carries free text (a comment, note or written answer); read it.`,
+    );
+  });
+
+  it("feedback carrying the by-rec mark gets the by-rec notice", async () => {
+    await fileAndAnswer({ general: BY_REC_FEEDBACK_GENERAL, answers: [] });
+
+    await listeners().afterRoundSubmit(ROUND, { status: "submitted" });
+
+    expect(sent).toEqual([{
+      seat: SEAT,
+      text: `titan-console: the auto-by-rec sweep answered round ${ROUND} (you filed it) with its recommendations after 24 h without an owner answer. The owner has not seen these answers; each is the question's recommendation. They are in ${feedbackPath()} (titan-review/feedback@1).`,
+    }]);
+    expect(sent[0]?.text).not.toContain("the owner answered");
   });
 
   it("tells no one about a round that has no asker record when subscriptions are off", async () => {

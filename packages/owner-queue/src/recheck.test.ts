@@ -30,6 +30,17 @@ describe("recheck", () => {
     expect(result.flags).toEqual([]);
   });
 
+  it("keeps an item open, flagged, when only the by-rec sweep or a delegate answered its ask", () => {
+    const asked = open("round:r2/q1");
+    const given = ["automation", "coordinator"].map((cls) => answer(`by-${cls}`, AFTER, [ASK], { optionId: "red", by: { class: cls, id: cls, channel: "round" } }));
+
+    const result = recheck([asked], given);
+
+    expect(result.open).toEqual([asked]);
+    expect(result.dropped).toEqual([]);
+    expect(result.flags.map(({ answerId, kind }) => ({ answerId, kind }))).toEqual([{ answerId: "by-automation", kind: "reasked" }, { answerId: "by-coordinator", kind: "reasked" }]);
+  });
+
   it("neither drops nor flags an item on an answer its own asker wrote, such as a sitting's closing tally", () => {
     const asked = open("round:r2/q1");
     const tally = answer("deposit:sitting", AFTER, [ASK], { text: "sitting complete: 1 done, 0 skipped", by: { class: "asker", id: "seat-a", channel: "inbox-step" } });
