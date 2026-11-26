@@ -7,7 +7,7 @@ type Answerer = OwnerAnswer["by"];
 const OWNER_CLASSES: ReadonlySet<string> = new Set(["owner", "owner-remote", "owner-terminal"]);
 
 /** Whether an answer is the owner's own, the only kind that may settle another item or lift a change request. */
-export const isOwnerAnswer = (answer: OwnerAnswer): boolean => OWNER_CLASSES.has(answer.by.class);
+export const isOwnerAnswer = (answer: Pick<OwnerAnswer, "by">): boolean => OWNER_CLASSES.has(answer.by.class);
 
 /** feedback@1 does not say who answered; a round answer is the owner's unless its feedback carries the by-rec mark. */
 export const ROUND_ANSWERER: Answerer = { class: "owner", id: "owner", channel: "round" };

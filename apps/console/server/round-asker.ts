@@ -9,10 +9,13 @@
  *
  * The notice is fixed text built from the round id, the feedback path and whether the answer carries free text. The
  * transport (`round-notice-transport.ts`) delivers it from the human seat, labelled `wake_source=console`, so nothing
- * the filing seat wrote (prompts, option labels) is ever relayed as if the owner sent it.
+ * the filing seat wrote (prompts, option labels) is ever relayed as if the owner sent it. Who answered comes from the
+ * feedback through `feedbackAnswerer`: an answer the by-rec sweep wrote says so and never that the owner answered.
  */
 import path from "node:path";
+import { BY_REC_POLICY_SCHEMA, byRecPolicySchema, feedbackAnswerer, isOwnerAnswer, ROUND_ANSWERER } from "@titan-design/owner-queue";
 import { z } from "zod";
+import { readByRecPolicy } from "./by-rec-log.js";
 import { clearNoticeFailure, recordNoticeFailure } from "./round-notice-gaps.js";
 import { SEAT_NAME, type SeatNotifier } from "./round-notice-transport.js";
 import { UNCLAIMED_SEAT, listSubscriptions, operatorSince, targetMatches, type RoundFacts } from "./round-subscriptions.js";
@@ -47,9 +50,27 @@ type NoticeReason = "asker" | "subscriber" | "unclaimed";
 
 const WHY: Record<NoticeReason, string> = { asker: "you filed it", subscriber: "you subscribed to it", unclaimed: "no seat filed or subscribed to it" };
 
-export const answerNotice = (roundId: string, feedbackPath: string, reason: NoticeReason, freeText: boolean): string =>
-  `titan-console: the owner answered round ${roundId} (${WHY[reason]}). The answers are in ${feedbackPath} (titan-review/feedback@1). ` +
-  (freeText ? "The answer carries free text (a comment, note or written answer); read it." : "The answer carries no free text.");
+type Answerer = ReturnType<typeof feedbackAnswerer>;
+
+/** Who answered, and for an answer not the owner's, the by-rec wait it went unanswered for. */
+interface AnsweredBy {
+  answerer: Answerer;
+  afterHours: number;
+}
+
+const OWNER_ANSWERED: AnsweredBy = { answerer: ROUND_ANSWERER, afterHours: 0 };
+
+const sweepNotice = (roundId: string, feedbackPath: string, reason: NoticeReason, afterHours: number): string =>
+  `titan-console: the auto-by-rec sweep answered round ${roundId} (${WHY[reason]}) with its recommendations after ${afterHours} h without an owner answer. ` +
+  `The owner has not seen these answers; each is the question's recommendation. They are in ${feedbackPath} (titan-review/feedback@1).`;
+
+export function answerNotice(roundId: string, feedbackPath: string, reason: NoticeReason, freeText: boolean, by: AnsweredBy = OWNER_ANSWERED): string {
+  if (!isOwnerAnswer({ by: by.answerer })) return sweepNotice(roundId, feedbackPath, reason, by.afterHours);
+  return (
+    `titan-console: the owner answered round ${roundId} (${WHY[reason]}). The answers are in ${feedbackPath} (titan-review/feedback@1). ` +
+    (freeText ? "The answer carries free text (a comment, note or written answer); read it." : "The answer carries no free text.")
+  );
+}
 
 const FreeTextFields = z.looseObject({
   general: z.string().optional(),
@@ -58,6 +79,16 @@ const FreeTextFields = z.looseObject({
 });
 
 const written = (text: string | undefined): boolean => text !== undefined && text.trim() !== "";
+
+const GeneralField = z.looseObject({ general: z.string().optional() });
+
+/** The by-rec wait is read only for an answer not the owner's, from the policy the sweep that wrote it ran under. */
+async function answeredBy(deps: NoticeDeps, feedback: StateFile): Promise<AnsweredBy> {
+  const answerer = feedbackAnswerer(parseStateJson(feedback, GeneralField)?.general);
+  if (isOwnerAnswer({ by: answerer })) return OWNER_ANSWERED;
+  const { policy } = deps.stateDir === undefined ? { policy: byRecPolicySchema.parse({ schema: BY_REC_POLICY_SCHEMA }) } : await readByRecPolicy(deps.stateDir);
+  return { answerer, afterHours: policy.afterHours };
+}
 
 function carriesFreeText(feedback: StateFile): boolean {
   const fields = parseStateJson(feedback, FreeTextFields);
@@ -87,6 +118,8 @@ interface NoticeDeps {
   now: Date;
   /** True when a submit just wrote the answer; the start-up sweep passes false. */
   live: boolean;
+  /** The console's state dir, whose by-rec policy names the wait a sweep answer reports; absent, the policy default. */
+  stateDir?: string;
 }
 
 interface Recipient {
@@ -132,7 +165,7 @@ interface NoticeFailure {
 
 async function sendNotice(deps: NoticeDeps, roundId: string, feedback: StateFile, { seat, reason }: Recipient): Promise<void> {
   const dir = path.join(deps.roundsDir, roundId);
-  await deps.notify(seat, answerNotice(roundId, path.join(dir, FEEDBACK_FILE), reason, carriesFreeText(feedback)));
+  await deps.notify(seat, answerNotice(roundId, path.join(dir, FEEDBACK_FILE), reason, carriesFreeText(feedback), await answeredBy(deps, feedback)));
   await writeJsonOnce(notifiedFile(dir, seat), { schema: NOTIFIED_SCHEMA_ID, seat, reason, at: deps.now.toISOString() });
   await clearNoticeFailure(dir, seat);
 }

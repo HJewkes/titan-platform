@@ -7,6 +7,8 @@ import { roundQueueItems } from "./approval-items.js";
 import { BY_REC_POLICY_FILE, BY_REC_ROWS_FILE } from "./by-rec-log.js";
 import { BY_REC_MARKERS, sweepByRecRounds } from "./by-rec-rounds.js";
 import { ANSWERS_FILE, createDecisionLog, type DecisionLog, type RoundDecisionLog } from "./decision-log.js";
+import { createRoundListeners } from "./listeners.js";
+import { recordAsker } from "./round-asker.js";
 import { settledListeners } from "./round-fixtures.js";
 import { ANSWERED_BY_REC } from "./round-nudge.js";
 import { readQueueRounds } from "./rounds.js";
@@ -122,6 +124,25 @@ describe("the rounds by-rec sweep, live", () => {
     expect((await rows()).map(({ subject, mode, result, resolver }) => ({ id: subject.id, mode, result, resolver }))).toEqual(
       ["round:kiln-r1/ramp", "round:kiln-r1/hold"].map((id) => ({ id, mode: "live", result: "resolved", resolver: { class: "automation", id: "auto-by-rec" } })),
     );
+  });
+
+  it("a live sweep answer tells the asker the by-rec sweep answered, not the owner", async () => {
+    await stageRound("kiln-r1", [RAMP]);
+    await recordAsker(path.join(dir, "kiln-r1"), { seat: "sample-seat", initiative: null }, new Date(NOW));
+    const sent: { seat: string; text: string }[] = [];
+    const unused = () => Promise.reject(new Error("no factory in this test"));
+    const listeners = settledListeners(createRoundListeners({
+      enabled: false, roundsDir: dir, stateDir, shepherd: { list: unused }, answer: { post: unused }, now: () => new Date(NOW),
+      notify: async (seat, text) => void sent.push({ seat, text }),
+    }));
+    const submit = submitPipeline({ dir }, createDecisionLog({ stateDir, decisionsFile: null, humanOnly: async () => ({ known: true, initiatives: new Set() }) }), listeners);
+
+    await sweepByRecRounds({ dir, stateDir, submit, now: new Date(NOW) });
+    await listeners.settled();
+
+    expect(sent.map(({ seat }) => seat)).toEqual(["sample-seat"]);
+    expect(sent[0]?.text).toContain("the auto-by-rec sweep answered round kiln-r1 (you filed it) with its recommendations after 24 h without an owner answer");
+    expect(sent[0]?.text).not.toContain("the owner answered");
   });
 
   it("leaves the decider's ledger empty when the real decision log records its answer", async () => {

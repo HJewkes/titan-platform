@@ -52,7 +52,7 @@ export { rank } from "./rank.js";
 export { recheck } from "./recheck.js";
 export type { Recheck, RecheckCite, RecheckDrop, RecheckFlag, RecheckFlagKind } from "./recheck.js";
 export { answeredFromFeedback, fromRoundQuestions, roundItemId } from "./round-items.js";
-export { BY_REC_FEEDBACK_GENERAL, feedbackAnswerer, ROUND_ANSWERER } from "./by-rec-answerer.js";
+export { BY_REC_FEEDBACK_GENERAL, feedbackAnswerer, isOwnerAnswer, ROUND_ANSWERER } from "./by-rec-answerer.js";
 export type { AnsweredContext, FeedbackInput, RoundItemsContext } from "./round-items.js";
 export { buildOwnerRounds } from "./rounds.js";
 export type { OwnerRound, OwnerRoundOptions, OwnerRounds, Principle, RoundQuestionBinding, SkipReason } from "./rounds.js";

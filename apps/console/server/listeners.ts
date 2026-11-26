@@ -69,6 +69,8 @@ export interface ListenerDeps {
   notify?: SeatNotifier;
   /** `rounds subscribe`'s store; absent, only the asker is told and an unclaimed answer goes nowhere. */
   subscriptionsDir?: string;
+  /** The console's state dir, whose by-rec policy names the wait a sweep answer's notice reports. */
+  stateDir?: string;
   now?: () => Date;
   logger?: { warn(fields: Record<string, unknown>, message: string): void };
 }
@@ -281,10 +283,10 @@ async function approvePlans(deps: ListenerDeps, roundId: string, live: boolean):
 
 async function tellSeats(deps: ListenerDeps, roundId: string, live: boolean): Promise<void> {
   if (deps.notify === undefined) return;
-  const { roundsDir, subscriptionsDir, notify } = deps;
+  const { roundsDir, subscriptionsDir, stateDir, notify } = deps;
   const now = (deps.now ?? (() => new Date()))();
   try {
-    const failures = await notifyRound({ roundsDir, ...(subscriptionsDir !== undefined && { subscriptionsDir }), notify, now, live }, roundId);
+    const failures = await notifyRound({ roundsDir, ...(subscriptionsDir !== undefined && { subscriptionsDir }), ...(stateDir !== undefined && { stateDir }), notify, now, live }, roundId);
     for (const { seat, reason } of failures) deps.logger?.warn({ roundId, seat }, `${roundId}: ${seat} was not told of the answer (${reason})`);
   } catch (error) {
     deps.logger?.warn({ roundId }, `${roundId}: no seat was told of the answer (${error instanceof Error ? error.message : String(error)})`);
