@@ -666,9 +666,9 @@ interface ByRecSubject {
 type FloorRule = readonly [reason: string, refuses: (subject: ByRecSubject) => boolean];
 /**
  * Authority and guard files: the authority package, g10 rules, hold and policy files, CI workflows, merge-lint,
- * CODEOWNERS, settings, and this policy itself.
+ * CODEOWNERS, settings, and this policy itself. A path that does not canonicalize counts as guard.
  */
-declare function isGuardPath(path: string): boolean;
+declare function isGuardPath(rawPath: string): boolean;
 /**
  * The exclusion floor, in code: a policy file can add exclusions but never remove one of these. Every rule refuses on
  * presence. The g10 rule matches by prefix, so a new g10 class fails closed, and the authority-row rule refuses every
@@ -693,7 +693,7 @@ type ByRecDecision = {
  * logs. Shadow mode decides the same way as live; only the sweep's action differs. A skip that is only waiting on the
  * clock carries `at`, so a countdown can show when it becomes eligible.
  */
-declare function byRecDecision(subject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision;
+declare function byRecDecision(rawSubject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision;
 /**
  * An owner-queue item (a deposit, or a round question read back) as a by-rec subject. The floor refuses only on facts
  * that are present, so every item field a floor rule keys on is mapped here. Hold classes, owner-at-head rows, the head
