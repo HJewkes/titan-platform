@@ -93,3 +93,10 @@ export function inboxReadCache({ factory, shepherd, rounds, now }: InboxSources,
     },
   };
 }
+
+/** Blocking before planning, newest first inside each; the id breaks a tie so a poll never reshuffles. */
+export function byInboxOrder(a: InboxItem, b: InboxItem): number {
+  if (a.section !== b.section) return a.section === "blocking" ? -1 : 1;
+  const opened = Date.parse(b.openedAt) - Date.parse(a.openedAt);
+  return opened !== 0 ? opened : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}

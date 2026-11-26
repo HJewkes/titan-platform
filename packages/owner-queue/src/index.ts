@@ -19,6 +19,24 @@ export { DEPOSIT_LENS, depositItemId, fromDeposit, ownerItemDepositSchema } from
 export type { OwnerItemDeposit } from "./deposit.js";
 export { HOLD_CLASSES, MERGE_WAITS, opKeys, ownerOpSchema } from "./op.js";
 export type { HostCommand, OwnerOp, OwnerOpKind } from "./op.js";
+export { byRecDecision, byRecSubjectOfItem } from "./by-rec.js";
+export type { ByRecDecision } from "./by-rec.js";
+export { byRecRoundSubject } from "./by-rec-round.js";
+export type { ByRecRoundContext } from "./by-rec-round.js";
+export { BY_REC_FLOOR, floorReason, isGuardPath } from "./by-rec-floor.js";
+export type { ByRecRecommendation, ByRecSubject } from "./by-rec-floor.js";
+export {
+  BY_REC_EXCLUDE_FIELDS,
+  BY_REC_MODES,
+  BY_REC_POLICY_SCHEMA,
+  BY_REC_RESOLVER,
+  BY_REC_RESULTS,
+  BY_REC_ROW_SCHEMA,
+  BY_REC_SOURCES,
+  byRecPolicySchema,
+  byRecRowSchema,
+} from "./by-rec-schema.js";
+export type { ByRecExclusion, ByRecPolicy, ByRecPolicyInput, ByRecRow, ByRecSource } from "./by-rec-schema.js";
 export { consolidate } from "./consolidate.js";
 export type { ConsolidateInput, Flow, FlowGroup, HeldItem, ShipBlock, ShipBlockReason } from "./consolidate.js";
 export { INFLUENCE_RULES, influenceEdges } from "./influence.js";
@@ -33,7 +51,8 @@ export type { PromptLineOptions } from "./prompt-text.js";
 export { rank } from "./rank.js";
 export { recheck } from "./recheck.js";
 export type { Recheck, RecheckCite, RecheckDrop, RecheckFlag, RecheckFlagKind } from "./recheck.js";
-export { answeredFromFeedback, fromRoundQuestions, ROUND_ANSWERER, roundItemId } from "./round-items.js";
+export { answeredFromFeedback, fromRoundQuestions, roundItemId } from "./round-items.js";
+export { BY_REC_FEEDBACK_GENERAL, feedbackAnswerer, ROUND_ANSWERER } from "./by-rec-answerer.js";
 export type { AnsweredContext, FeedbackInput, RoundItemsContext } from "./round-items.js";
 export { buildOwnerRounds } from "./rounds.js";
 export type { OwnerRound, OwnerRoundOptions, OwnerRounds, Principle, RoundQuestionBinding, SkipReason } from "./rounds.js";

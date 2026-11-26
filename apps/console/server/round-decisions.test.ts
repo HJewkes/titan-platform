@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { roundItemId } from "@titan-design/owner-queue";
+import { ROUND_ANSWERER, roundItemId } from "@titan-design/owner-queue";
 import { roundDecisions } from "./round-decisions.js";
 import { FIXTURE_ROUNDS } from "./round-fixtures.js";
 import { parseManifest } from "./rounds.js";
@@ -23,7 +23,7 @@ describe("roundDecisions", () => {
       { questionId: "ship", pick: "Ship" },
     ];
 
-    const decisions = roundDecisions({ roundId: ROUND, manifest: await strictManifest(), answers, openedAt: OPENED_AT, submittedAt: SUBMITTED_AT });
+    const decisions = roundDecisions({ roundId: ROUND, manifest: await strictManifest(), answers, openedAt: OPENED_AT, submittedAt: SUBMITTED_AT, answerer: ROUND_ANSWERER });
 
     expect(decisions.map(({ questionId, item, answer }) => ({ questionId, item, answer }))).toEqual([
       {

@@ -52,6 +52,7 @@ its upstreams uses, and on a port value that is not a number.
 | `TITAN_CONSOLE_AGENT_CHAT_TOKEN` | `$AGENT_CHAT_HOME/ui.token`, else `~/.agent-chat/ui.token` | The broker's 0600 token file, read on every agents call and refused (exit 78) if group or others have any access |
 | `TITAN_CONSOLE_EVENTS_DB` | `$AGENT_CHAT_HOME/events.db`, else `~/.agent-chat/events.db` | agent-chat's event log, opened read-only by `agents.messages`; when it will not open, that command falls back to the broker's history window |
 | `TITAN_CONSOLE_AGENT_CHAT_BIN` | `agent-chat` on the service's `PATH` | the agent-chat CLI that tells a seat its decision round was answered (`agent-chat debug send`); a send that fails is retried when the console next starts |
+| `TITAN_CONSOLE_FACTORY_BIN` | `titan-factory` on the service's `PATH` | the titan-factory CLI `#/log` reads Shepherd's auto-by-rec rows through (`shepherd by-rec --json`); not found, the page shows a gap line for them |
 | `TITAN_CONSOLE_EXPLAINER_BIN` | `explainer` on the service's `PATH` | the explainer CLI the theater's beat editor reads through (`explainer props`, `explainer edit check`); not found, the editor shows a gap line instead; a relative path gets its own "must be an absolute path" gap |
 | `TITAN_CONSOLE_SEATS` | none | `seat=prefix` pairs, comma separated; an agent named `<prefix>-...` belongs to that seat |
 | `TITAN_CONSOLE_SESSION_GRAPH` | `<active-work root>/.miner/graph.sqlite3` | Path of the session graph file |
@@ -286,7 +287,9 @@ and a pick) or policy (a D-row `class`, or category `policy`) answer also gets o
 `## Queue answers <date>` in `TITAN_CONSOLE_DECISIONS_FILE`, which must already exist. A Ship
 approval is two-way, so it reaches the ledger only. A personal item, an item of a human-only
 initiative, or any answer while active-work cannot say which initiatives are human-only writes
-nothing. A failed log write never undoes the submit: the result's `log` array says what was
+nothing. An answer whose `by.class` is not `owner` or `owner-remote` (the by-rec sweep's) never
+reaches the ledger, whose rows the decider reads as the owner's precedent; its result says `ledger:
+"excluded"`, reason `not-owner`, and its decisions bullet names it. A failed log write never undoes the submit: the result's `log` array says what was
 written per question, with a reason that names no path, and the daemon log has the error.
 
 A submit that carries `liveViewed` (the variant keys whose live story rendered on the owner's page)
@@ -778,6 +781,66 @@ titan-console rounds nudge --json   # the same rounds as one JSON array
 ```
 
 A "rec" reply, or the tap, is `rounds.answer-rec`.
+
+### Auto-by-rec
+
+The daemon also sweeps rounds hourly, starting five minutes after it starts (`server/by-rec-rounds.ts`, TP-6773).
+A round still unanswered and not withdrawn after the policy's wait (24 h by default) is answered with its
+recommendations. The wait runs from the later of the `round.json` mtime and when the sweep first saw that round and
+manifest, kept in `<state dir>/auto-by-rec-seen/`, so an asker who backdates `round.json` gains nothing; a rewritten
+`round.json` starts a fresh wait. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
+and the asker's notice see it like any other answer. The pipeline writes owner-queue's `BY_REC_FEEDBACK_GENERAL`
+(`auto-by-rec: ...`) into the feedback's `general`, not `answered-by-rec`, which stays the owner's own tap. Every reader
+takes the answerer from that file through `feedbackAnswerer`: the decisions bullet credits `auto-by-rec`, the decider's
+ledger (`answers.jsonl`) gets no row, and the owner queue shows the answer as the automation's, which never settles
+another item nor lifts a change request. An agent's recommendation never returns as the owner's precedent.
+
+The sweep decides each question with owner-queue's `byRecDecision`. A round is skipped, with the reason in the
+daemon log, when any question:
+
+- is in an after-answer round,
+- is a Ship,
+- records a plan approval,
+- has no recommendation that answers it,
+- or hits another floor class.
+
+A marker written with `wx` beside the round claims it once per mode: `auto-by-rec.json` in live mode and
+`auto-by-rec-shadow.json` in shadow mode. A restart therefore never answers a round twice. Each question the sweep
+acts on adds one `titan/auto-by-rec@1` row to `<state dir>/auto-by-rec.jsonl`.
+
+The mode comes from `<state dir>/auto-by-rec-policy.json` (`titan/auto-by-rec-policy@1`):
+
+- With no file, the sweep runs in **shadow**: it writes would-resolve rows and answers nothing.
+- `mode: live` answers rounds.
+- `mode: off` stops the next pass.
+- A file that does not parse also stops the sweep.
+
+### Decisions and ships (`#/log`)
+
+`#/log` (rail entry "Log", `log.list`, TP-6775) lists every PR Shepherd merged and every auto-by-rec decision, newest
+first, grouped by day (`?days=1` to `30`, default 7). It merges three sources and shows one row per PR:
+
+- **Ships**: Shepherd's finished runs merged in the window, as `coord.shipped` reads them. Each run's timeline says how it
+  was approved: an owner tap on approve-merge, a reviewer release (`MRG-AU-RV`), a plan approval, or "not recorded".
+- **Shepherd's by-rec rows**: approve-merge gates, read by running `titan-factory shepherd by-rec --json --since <n>d`
+  (`TITAN_CONSOLE_FACTORY_BIN`, else `titan-factory` on `PATH`). A live row folds into its PR's ship row as auto-by-rec,
+  under `MRG-AU-RB`. A shadow row tags the ship with what by-rec would have done. A gate whose PR has not merged is a
+  row of its own.
+- **The console's by-rec rows**: rounds and deposits, from `<state dir>/auto-by-rec.jsonl`.
+
+Each row shows its link, the recommendation and rationale, its opened and resolved times, its resolver and a way back.
+A merged PR links to its GitHub page, whose Revert button opens the revert PR. A live decision gets the overrule tap
+when TP-6778 lands. A tier-2 visual gate (D2) gets a frames slot, which TP-6777 fills.
+
+The header shows the policy's mode and wait, and the exclusions. The floor is owner-queue's `BY_REC_FLOOR`. It has no
+remove control, and each class names the owner-only change that removes it. The owner has not confirmed the floor yet,
+and the page says so. The policy file's own `exclude` entries are listed separately. A source that cannot be read is
+a gap line. The coordinator's "What shipped" section ends with today's counts in one line and a link to the page.
+
+The inbox shows "goes with rec at <time>" on each open round or deposit row that the console's sweeps would resolve.
+In shadow it says "would go". The time comes from the same `byRecDecision` the sweeps run, so a row the floor or a
+missing recommendation keeps from by-rec gets no line. Gates get no line, because Shepherd's sweep decides them on
+facts at the PR head under its own config.
 
 - **Supersedes (automatic).** A round may list `supersedes: ["<round-id>", ...]` in its `round.json`,
   the earlier rounds it replaces. It is the console's own field, lifted off before review-schema's

@@ -54,6 +54,8 @@ export interface InboxSource {
   capExemptAskers?: readonly string[];
   /** Checks a recommendation's locator cite against its transcript line; defaults to session-read's Claude transcripts. */
   events?: SessionEventTextSource;
+  /** Where the by-rec policy file lives; absent, no inbox row shows when it goes with its recommendation. */
+  byRecStateDir?: string;
 }
 
 class DepositRefusedError extends Error {
@@ -161,7 +163,7 @@ function assertUnderAskerCap(open: readonly FiledDeposit[], asker: string, exemp
   );
 }
 
-function assertUnderCaps(names: readonly string[], asker: string, { maxOpenDeposits, capExemptAskers }: Required<InboxSource>): void {
+function assertUnderCaps(names: readonly string[], asker: string, { maxOpenDeposits, capExemptAskers }: Required<Omit<InboxSource, "byRecStateDir">>): void {
   const open = openDeposits(names);
   assertUnderAskerCap(open, asker, capExemptAskers);
   if (open.length >= maxOpenDeposits) {
@@ -173,7 +175,7 @@ function assertUnderCaps(names: readonly string[], asker: string, { maxOpenDepos
  * A repeat of a filed depositId returns its id even at a cap, since it adds nothing to the spool.
  * The repeat still goes through writeDeposit, which proves the file under that name is this deposit.
  */
-async function fileOnce(source: Required<InboxSource>, deposit: OwnerItemDeposit): Promise<DepositResult> {
+async function fileOnce(source: Required<Omit<InboxSource, "byRecStateDir">>, deposit: OwnerItemDeposit): Promise<DepositResult> {
   const { dir, events } = source;
   assertNameable(deposit);
   const id = depositItemId(deposit.asker, deposit.depositId);

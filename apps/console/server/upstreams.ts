@@ -23,6 +23,7 @@ import { seatNotifier } from "./round-notice-transport.js";
 import { subscriptionsDirOf } from "./round-subscriptions.js";
 import { shepherdReader, type ShepherdSource } from "./shepherd.js";
 import { gitEvidenceReader } from "./repo-evidence.js";
+import { factoryGateRows } from "./log-gate-rows.js";
 import { shipLineageReader } from "./ship-lineage.js";
 import { videoCatalog } from "./videos.js";
 
@@ -152,7 +153,7 @@ function agentsOf(config: ConsoleConfig, recorder: UpstreamObserver | undefined)
 /** The sources that read dirs on this machine, which other processes write. */
 function localDirSourcesOf(config: ConsoleConfig, recorder: UpstreamObserver | undefined): Pick<ConsoleSources, "inbox" | "rounds" | "hostReports" | "videos" | "reviews"> {
   return {
-    inbox: { dir: config.inboxDir, capExemptAskers: config.capExemptAskers ?? DEFAULT_CAP_EXEMPT_ASKERS },
+    inbox: { dir: config.inboxDir, capExemptAskers: config.capExemptAskers ?? DEFAULT_CAP_EXEMPT_ASKERS, byRecStateDir: config.stateDir },
     rounds: {
       dir: config.roundsDir,
       lineage: shipLineageReader({ recorder }),
@@ -206,6 +207,7 @@ export function createSources(config: ConsoleConfig, logger: Logger = consoleLog
     ...(config.configStore ? { configStore: { stateDir: config.stateDir, ...config.configStore } } : {}),
     inboxActions: inboxActionsOf(config),
     shipped: { dir: config.shippedDir ?? path.join(config.stateDir, "shipped"), dayStart: dayStartFrom(config.dayStart) },
+    log: { stateDir: config.stateDir, gateRows: factoryGateRows(config.factoryBin), dayStart: dayStartFrom(config.dayStart) },
     ...(config.blockerHours !== undefined && { blockerHours: config.blockerHours }),
     ...(config.scorecardStore !== undefined && { scorecard: { storeFile: config.scorecardStore } }),
   };
