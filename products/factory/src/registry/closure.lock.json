@@ -12,6 +12,6 @@
   "sh-await-verdict": {
     "closure": "fe4fdcff26bcce7ea18204a383eb0de59e23dac60ab85b3260e43bb6b3c22aba",
     "schemaHash": "6f4d75d5cca4f78c055944d7c010146786701b94b787f8cdc950e3117fcb7dac",
-    "bump": 15
+    "bump": 16
   }
 }
