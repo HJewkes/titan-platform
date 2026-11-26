@@ -1,3 +1,4 @@
+import { BY_REC_FEEDBACK_GENERAL } from "@titan-design/owner-queue";
 import { describe, expect, it } from "vitest";
 import { agreement, AgreementRecordSchema, labelsFromFeedback, pooledAgreement, promotionRefusal, type AgreementRecord, type JudgeAgreement, type OwnerLabel } from "./calibration-agreement.js";
 import type { CalibrationJudge, KeyEntry } from "./calibration-queue.js";
@@ -24,6 +25,14 @@ describe("labelsFromFeedback", () => {
     ] };
 
     expect([...labelsFromFeedback(feedback)]).toEqual([["q07", "yes"], ["q08", "no"], ["q09", "unsure"]]);
+  });
+});
+
+describe("labelsFromFeedback on a by-rec answer", () => {
+  it("refuses feedback answered by auto-by-rec as owner labels", () => {
+    const feedback = { schema: "titan-review/feedback@1", general: BY_REC_FEEDBACK_GENERAL, answers: [{ questionId: "q01", pick: "Yes (q01)" }] };
+
+    expect(() => labelsFromFeedback(feedback)).toThrow("feedback.json was answered by automation, not the owner; its picks are no owner labels");
   });
 });
 

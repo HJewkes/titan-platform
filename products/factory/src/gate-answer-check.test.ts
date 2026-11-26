@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fakeGitHub, githubPort, type FakeGitHub } from "@titan-design/github";
+import { BY_REC_FEEDBACK_GENERAL } from "@titan-design/owner-queue";
 import { GATE_CANCELLED_SIGNAL } from "@titan-design/workflow";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineWorkflow } from "./definition.js";
@@ -234,6 +235,15 @@ describe("checkAnswer", () => {
     const outcome = await check(w, { pick: "Revise", comment: "fix the gap" }, { choice: "send-back" });
 
     expect(outcome).toEqual({ kind: "resolve", gateId: w.gateId, choice: "send-back", payload: { decision: "send-back", headSha: H, note: "fix the gap" } });
+  });
+
+  it("refuses a Ship or a Send back from feedback answered by auto-by-rec", async () => {
+    const w = await world();
+
+    const ship = await check(w, { general: BY_REC_FEEDBACK_GENERAL });
+    const sendBack = await check(w, { pick: "Revise", general: BY_REC_FEEDBACK_GENERAL }, { choice: "send-back" });
+
+    expect([ship, sendBack]).toEqual([0, 1].map(() => ({ kind: "refused", reason: "feedback", detail: "answered by automation, not the owner" })));
   });
 
   it("refuses a send-back pick that is not one of the question's options", async () => {
