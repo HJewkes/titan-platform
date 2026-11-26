@@ -642,6 +642,8 @@ interface ByRecSubject {
     /** The decision-routing D-row. */
     decisionClass?: string;
     authorityRows?: readonly string[];
+    /** The table the authority rows come from; any table but `authority` refuses. */
+    authorityTable?: string;
     ownerAtHead?: readonly string[];
     paths?: readonly string[];
     /** Set by a sweep whose own guard-path table matched a changed path. */
@@ -692,7 +694,11 @@ type ByRecDecision = {
  * clock carries `at`, so a countdown can show when it becomes eligible.
  */
 declare function byRecDecision(subject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision;
-/** An owner-queue item (a deposit, or a round question read back) as a by-rec subject. */
+/**
+ * An owner-queue item (a deposit, or a round question read back) as a by-rec subject. The floor refuses only on facts
+ * that are present, so every item field a floor rule keys on is mapped here. Hold classes, owner-at-head rows, the head
+ * ref and plan approval are not item fields; a sweep that knows them sets them itself.
+ */
 declare function byRecSubjectOfItem(item: OwnerItem): ByRecSubject;
 
 interface ByRecRoundContext {
