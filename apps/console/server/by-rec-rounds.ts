@@ -62,7 +62,7 @@ interface Judged {
 }
 
 /** `at` is when the round goes with its recommendations, set on an eligible round and on one waiting only on the clock. */
-export type RoundVerdict = { eligible: true; at: string; judged: Judged[]; answers: SubmittedAnswer[] } | { eligible: false; reason: string; waiting: boolean; at?: string };
+type RoundVerdict = { eligible: true; at: string; judged: Judged[]; answers: SubmittedAnswer[] } | { eligible: false; reason: string; waiting: boolean; at?: string };
 
 const clip = (text: string): string => text.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT);
 
@@ -79,7 +79,7 @@ const latest = (times: readonly string[]): string => times.reduce((a, b) => (Dat
  * eligible, and any refusal other than the clock names the round's skip; a round only waiting on the clock carries the
  * time it will go.
  */
-export function byRecRoundVerdict(round: QueueRound, openedAt: string, now: Date, policy: ByRecPolicy): RoundVerdict {
+function byRecRoundVerdict(round: QueueRound, openedAt: string, now: Date, policy: ByRecPolicy): RoundVerdict {
   const decisions = round.manifest.questions.map((question) => ({ question, decision: judgeQuestion(round, openedAt, question, now, policy) }));
   const refused = decisions.find(({ decision }) => !decision.eligible && decision.reason !== "too-early");
   if (refused !== undefined && !refused.decision.eligible) return { eligible: false, reason: `question "${refused.question.id}": ${refused.decision.reason}`, waiting: false };
@@ -128,7 +128,7 @@ async function sweepRound(options: SweepOptions, round: QueueRound, policy: ByRe
 }
 
 /** Open as the queue reads it and with no feedback.json at all: one the queue could not parse still answers the round. */
-export async function openRounds(dir: string): Promise<QueueRound[]> {
+async function openRounds(dir: string): Promise<QueueRound[]> {
   const candidates = (await readQueueRounds({ dir })).rounds.filter((round) => round.manifest.kind !== "feedback" && round.feedback === null && round.withdrawn === null);
   const unanswered = await Promise.all(candidates.map(async (round) => !(await exists(path.join(dir, round.id, FEEDBACK_FILE)))));
   return candidates.filter((_, index) => unanswered[index]);
