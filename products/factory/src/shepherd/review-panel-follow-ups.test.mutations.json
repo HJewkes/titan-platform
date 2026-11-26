@@ -4,7 +4,7 @@
     {
       "name": "awaitMembers never files a member's follow-ups",
       "file": "products/factory/src/shepherd/review-panel-step.ts",
-      "find": "    await fileFollowUpsAt(ctx, target, awaited, `:${shape}`);\n",
+      "find": "  await fileFollowUpsAt(ctx, target, awaited, `:${tag}`);\n",
       "replace": "",
       "kills": [
         "a panel's members and their follow-ups each panel member's follow-ups, correctness included, are filed under its own sh-follow-ups step and a title two members share is filed once"
