@@ -1,5 +1,5 @@
-import { O as OwnerItem, A as Audience, I as ItemStatus, S as SourceRef, a as OwnerAnswer } from './schema.js';
-export { b as AUDIENCES, D as DOORS, c as ITEM_KINDS, d as ITEM_STATUSES, L as LENSES, e as LocatorCite, f as ON_SILENCE_ACTIONS, g as OnSilence, R as ROUTE_TARGETS, h as SOURCE_SYSTEMS, i as SittingStep, j as StepOutcome, l as locatorCiteSchema, o as ownerItemSchema, s as sourceRefSchema } from './schema.js';
+import { O as OwnerItem, A as Audience, a as OnSilence, I as ItemStatus, S as SourceRef, b as OwnerAnswer } from './schema.js';
+export { c as AUDIENCES, D as DOORS, d as ITEM_KINDS, e as ITEM_STATUSES, L as LENSES, f as LocatorCite, g as ON_SILENCE_ACTIONS, R as ROUTE_TARGETS, h as SOURCE_SYSTEMS, i as SittingStep, j as StepOutcome, l as locatorCiteSchema, o as ownerItemSchema, s as sourceRefSchema } from './schema.js';
 import * as zod_v4_core from 'zod/v4/core';
 import * as zod from 'zod';
 import { z } from 'zod';
@@ -518,6 +518,189 @@ type OwnerOpKind = OwnerOp["kind"];
  */
 declare function opKeys(op: OwnerOp): string[];
 
+declare const BY_REC_POLICY_SCHEMA = "titan/auto-by-rec-policy@1";
+declare const BY_REC_ROW_SCHEMA = "titan/auto-by-rec@1";
+declare const BY_REC_MODES: readonly ["off", "shadow", "live"];
+declare const BY_REC_SOURCES: readonly ["gate", "round", "deposit"];
+declare const BY_REC_RESULTS: readonly ["would-resolve", "resolved", "skipped", "failed"];
+/** The fields a policy exclusion can name; `hold`, `path` and `authority` match by prefix, the rest exactly. */
+declare const BY_REC_EXCLUDE_FIELDS: readonly ["source", "id", "class", "hold", "category", "by", "path", "authority"];
+/** Who an auto-by-rec resolution is attributed to: never the owner, never a coordinator delegate. */
+declare const BY_REC_RESOLVER: Readonly<{
+    readonly class: "automation";
+    readonly id: "auto-by-rec";
+}>;
+declare const exclusionSchema: z.ZodObject<{
+    field: z.ZodEnum<{
+        authority: "authority";
+        by: "by";
+        category: "category";
+        class: "class";
+        hold: "hold";
+        id: "id";
+        path: "path";
+        source: "source";
+    }>;
+    value: z.ZodString;
+    note: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+/**
+ * The owner's policy file. It can turn the sweeps off, lengthen or shorten the wait, set a confidence floor and add
+ * exclusions. Strict, so a file that tries to allow or unlist a floor class fails to parse rather than being ignored.
+ */
+declare const byRecPolicySchema: z.ZodObject<{
+    schema: z.ZodLiteral<"titan/auto-by-rec-policy@1">;
+    mode: z.ZodDefault<z.ZodEnum<{
+        live: "live";
+        off: "off";
+        shadow: "shadow";
+    }>>;
+    afterHours: z.ZodDefault<z.ZodNumber>;
+    minConfidence: z.ZodOptional<z.ZodNumber>;
+    exclude: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        field: z.ZodEnum<{
+            authority: "authority";
+            by: "by";
+            category: "category";
+            class: "class";
+            hold: "hold";
+            id: "id";
+            path: "path";
+            source: "source";
+        }>;
+        value: z.ZodString;
+        note: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+/** One auto-by-rec decision, written once per subject and mode: the facts read, what was done and why. */
+declare const byRecRowSchema: z.ZodObject<{
+    schema: z.ZodLiteral<"titan/auto-by-rec@1">;
+    subject: z.ZodObject<{
+        source: z.ZodEnum<{
+            deposit: "deposit";
+            gate: "gate";
+            round: "round";
+        }>;
+        id: z.ZodString;
+        summary: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>;
+    recommendation: z.ZodObject<{
+        answer: z.ZodString;
+        by: z.ZodString;
+        rationale: z.ZodOptional<z.ZodString>;
+        confidence: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>;
+    openedAt: z.ZodISODateTime;
+    resolvedAt: z.ZodISODateTime;
+    facts: z.ZodRecord<z.ZodString, z.ZodJSONSchema>;
+    mode: z.ZodEnum<{
+        live: "live";
+        shadow: "shadow";
+    }>;
+    result: z.ZodEnum<{
+        failed: "failed";
+        resolved: "resolved";
+        skipped: "skipped";
+        "would-resolve": "would-resolve";
+    }>;
+    reason: z.ZodOptional<z.ZodString>;
+    resolver: z.ZodObject<{
+        class: z.ZodLiteral<"automation">;
+        id: z.ZodLiteral<"auto-by-rec">;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+type ByRecPolicy = z.infer<typeof byRecPolicySchema>;
+type ByRecPolicyInput = z.input<typeof byRecPolicySchema>;
+type ByRecExclusion = z.infer<typeof exclusionSchema>;
+type ByRecRow = z.infer<typeof byRecRowSchema>;
+type ByRecSource = (typeof BY_REC_SOURCES)[number];
+
+interface ByRecRecommendation {
+    answer: string;
+    by: string;
+    rationale?: string;
+    confidence?: number;
+}
+/**
+ * A gate, round question or deposit, normalized so one policy decides all three. The sweep that builds it reads every
+ * fact fresh; any field it cannot read it leaves out, and only fields that refuse on presence are optional.
+ */
+interface ByRecSubject {
+    source: ByRecSource;
+    id: string;
+    openedAt: string;
+    summary?: string;
+    recommendation?: ByRecRecommendation;
+    /** OwnerItem kind, or `sitting` for a sitting deposit. */
+    kind?: string;
+    door?: "one-way" | "two-way";
+    irreversible?: boolean;
+    onSilence?: OnSilence;
+    default?: string;
+    options?: readonly string[];
+    holdClasses?: readonly string[];
+    /** The decision-routing D-row. */
+    decisionClass?: string;
+    authorityRows?: readonly string[];
+    /** The table the authority rows come from; any table but `authority` refuses. */
+    authorityTable?: string;
+    ownerAtHead?: readonly string[];
+    paths?: readonly string[];
+    /** Set by a sweep whose own guard-path table matched a changed path. */
+    guardPath?: boolean;
+    headRef?: string;
+    category?: string;
+    op?: string;
+    audience?: Audience;
+    personal?: boolean;
+    changeRequested?: boolean;
+    /** A round with `recommendations: after-answer`, or a hidden pick. */
+    blind?: boolean;
+    ship?: boolean;
+    planApproval?: boolean;
+    /** Already answered, decided, expired, withdrawn or gone elsewhere. */
+    closed?: boolean;
+    /** Prompt, context and option text, scanned for a dollar amount. */
+    text?: readonly string[];
+}
+type FloorRule = readonly [reason: string, refuses: (subject: ByRecSubject) => boolean];
+/**
+ * Authority and guard files: the authority package, g10 rules, hold and policy files, CI workflows, merge-lint,
+ * CODEOWNERS, settings, and this policy itself. A path that does not canonicalize counts as guard.
+ */
+declare function isGuardPath(rawPath: string): boolean;
+/**
+ * The exclusion floor, in code: a policy file can add exclusions but never remove one of these. Every rule refuses on
+ * presence. The g10 rule matches by prefix, so a new g10 class fails closed, and the authority-row rule refuses every
+ * family not on the auto-resolvable list, so a new table family fails closed.
+ */
+declare const BY_REC_FLOOR: readonly FloorRule[];
+/** The first floor class the subject falls in, or undefined when none does. */
+declare function floorReason(subject: ByRecSubject): string | undefined;
+
+type ByRecDecision = {
+    eligible: true;
+    at: string;
+    answer: string;
+    rationale: string;
+} | {
+    eligible: false;
+    reason: string;
+    at?: string;
+};
+/**
+ * Whether a subject resolves to its recommendation now. Pure: the sweep re-reads every fact, calls this, and acts or
+ * logs. Shadow mode decides the same way as live; only the sweep's action differs. A skip that is only waiting on the
+ * clock carries `at`, so a countdown can show when it becomes eligible.
+ */
+declare function byRecDecision(rawSubject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision;
+/**
+ * An owner-queue item (a deposit, or a round question read back) as a by-rec subject. The floor refuses only on facts
+ * that are present, so every item field a floor rule keys on is mapped here. Hold classes, owner-at-head rows, the head
+ * ref and plan approval are not item fields; a sweep that knows them sets them itself.
+ */
+declare function byRecSubjectOfItem(item: OwnerItem): ByRecSubject;
+
 /**
  * Why A likely changes B: `base` (A is on B's base PR), `pr-decision` (A decides on B's PR),
  * `shared-unit` (A decides or is one-way on B's component or token), `unblocks` (A unblocks B's
@@ -958,7 +1141,7 @@ interface StaleLabel {
  */
 declare function staleLabel(item: OwnerItem, evidence: StaleEvidence): StaleLabel | null;
 
-export { type AnsweredContext, Audience, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, cardLint, collapseRepeats, componentKey, consolidate, forAudience, fromRoundQuestions, influenceEdges, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
+export { type AnsweredContext, Audience, BY_REC_EXCLUDE_FIELDS, BY_REC_FLOOR, BY_REC_MODES, BY_REC_POLICY_SCHEMA, BY_REC_RESOLVER, BY_REC_RESULTS, BY_REC_ROW_SCHEMA, BY_REC_SOURCES, type ByRecDecision, type ByRecExclusion, type ByRecPolicy, type ByRecPolicyInput, type ByRecRecommendation, type ByRecRow, type ByRecSource, type ByRecSubject, CARD_RULES, type CardRule, type CiPolicyPlanScope, type ClosedStatus, type ConsolidateInput, type FeedbackInput, type Flow, type FlowGroup, HOLD_CLASSES, type HeldItem, type HostCommand, INFLUENCE_RULES, type InfluenceContext, type InfluenceEdge, type InfluenceRule, ItemStatus, MERGE_WAITS, OnSilence, OwnerAnswer, OwnerItem, type OwnerOp, type OwnerOpKind, type OwnerRound, type OwnerRoundOptions, type OwnerRounds, PARKED, PROMPT_LINE_BREAK, type PathPlanScope, type PlanApproval, type PlanAsk, type PlanGate, type PlanGateScope, type PlanRound, type PlanRoundInput, type Principle, type PromptLineOptions, type QueueSource, RELATION_KEY_KINDS, ROUND_ANSWERER, type Recheck, type RecheckCite, type RecheckDrop, type RecheckFlag, type RecheckFlagKind, type RelationKeyKind, type ResolveResult, type RoundItemsContext, type RoundQuestionBinding, STALE_RULES, type ShipBlock, type ShipBlockReason, type SkipReason, type SourceEvent, SourceRef, type StackedItem, type StaleEvidence, type StaleLabel, type StaleRule, type Superseded, type TaskPlanScope, type WithdrawnItem, alarmKey, answeredFromFeedback, askKey, audienceOf, buildOwnerRounds, buildPlanRound, byRecDecision, byRecPolicySchema, byRecRowSchema, byRecSubjectOfItem, cardLint, collapseRepeats, componentKey, consolidate, floorReason, forAudience, fromRoundQuestions, influenceEdges, isGuardPath, isMergeKey, mergeByKeys, opKeys, ownerCardSchema, ownerOpSchema, parsePrKey, prKey, promptLine, rank, recheck, relationKind, roundAskKey, roundItemId, sessionKey, stackContext, staleLabel, supersede, tokenKey, topicKey };
 
 // ./dist/deposit.d.ts
 import { z } from 'zod';
@@ -1837,4 +2020,4 @@ type OnSilence = z.infer<typeof onSilenceSchema>;
 type SittingStep = z.infer<typeof itemStepSchema>;
 type StepOutcome = (typeof STEP_OUTCOMES)[number];
 
-export { type Audience as A, DOORS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OwnerAnswer as a, AUDIENCES as b, ITEM_KINDS as c, ITEM_STATUSES as d, type LocatorCite as e, ON_SILENCE_ACTIONS as f, type OnSilence as g, SOURCE_SYSTEMS as h, type SittingStep as i, type StepOutcome as j, locatorCiteSchema as l, ownerItemSchema as o, sourceRefSchema as s };
+export { type Audience as A, DOORS as D, type ItemStatus as I, LENSES as L, type OwnerItem as O, ROUTE_TARGETS as R, type SourceRef as S, type OnSilence as a, type OwnerAnswer as b, AUDIENCES as c, ITEM_KINDS as d, ITEM_STATUSES as e, type LocatorCite as f, ON_SILENCE_ACTIONS as g, SOURCE_SYSTEMS as h, type SittingStep as i, type StepOutcome as j, locatorCiteSchema as l, ownerItemSchema as o, sourceRefSchema as s };

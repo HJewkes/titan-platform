@@ -1,0 +1,133 @@
+import { z } from "zod";
+import { canonicalSubject, floorReason, type ByRecSubject } from "./by-rec-floor.js";
+import type { ByRecExclusion, ByRecPolicy } from "./by-rec-schema.js";
+import type { OwnerItem } from "./schema.js";
+
+export type ByRecDecision =
+  | { eligible: true; at: string; answer: string; rationale: string }
+  | { eligible: false; reason: string; at?: string };
+
+const HOUR_MS = 3_600_000;
+const strictTimestamp = z.iso.datetime({ offset: true });
+const PREFIX_FIELDS = new Set<ByRecExclusion["field"]>(["hold", "path", "authority"]);
+
+function valuesOf(subject: ByRecSubject, field: ByRecExclusion["field"]): readonly string[] {
+  const one = (value: string | undefined): string[] => (value === undefined ? [] : [value]);
+  const fields: Record<ByRecExclusion["field"], readonly string[]> = {
+    source: [subject.source],
+    id: [subject.id],
+    class: one(subject.decisionClass),
+    hold: subject.holdClasses ?? [],
+    category: one(subject.category),
+    by: one(subject.recommendation?.by),
+    path: subject.paths ?? [],
+    authority: subject.authorityRows ?? [],
+  };
+  return fields[field];
+}
+
+const fold = (value: string): string => value.trim().toLowerCase();
+
+/** Case-insensitive, like the floor, so an exclusion written `d5` still excludes a `D5` subject. */
+function excludedBy(subject: ByRecSubject, policy: ByRecPolicy): ByRecExclusion | undefined {
+  return policy.exclude.find((rule) =>
+    valuesOf(subject, rule.field).some((value) => (PREFIX_FIELDS.has(rule.field) ? fold(value).startsWith(fold(rule.value)) : fold(value) === fold(rule.value))),
+  );
+}
+
+/** The asker's own `apply-default afterHours` wins over the policy's wait. */
+function waitHours(subject: ByRecSubject, policy: ByRecPolicy): number {
+  return subject.onSilence?.action === "apply-default" ? subject.onSilence.afterHours : policy.afterHours;
+}
+
+function belowConfidence(subject: ByRecSubject, policy: ByRecPolicy): boolean {
+  if (policy.minConfidence === undefined) return false;
+  return (subject.recommendation?.confidence ?? -1) < policy.minConfidence;
+}
+
+function policyReason(subject: ByRecSubject, policy: ByRecPolicy): string | undefined {
+  if (policy.mode === "off") return "mode-off";
+  const floor = floorReason(subject);
+  if (floor !== undefined) return `floor:${floor}`;
+  const rule = excludedBy(subject, policy);
+  if (rule !== undefined) return `excluded:${rule.field}=${rule.value}`;
+  return belowConfidence(subject, policy) ? "below-confidence" : undefined;
+}
+
+/** `Date.parse` accepts junk such as "0" (2000-01-01), so only a strict ISO date-time with offset counts as a time. */
+function openedMs(openedAt: string): number | undefined {
+  return strictTimestamp.safeParse(openedAt).success ? Date.parse(openedAt) : undefined;
+}
+
+/**
+ * The time the subject became eligible, or the refusal. A NaN comparison is always false, so an unreadable time would
+ * otherwise fall through to eligible.
+ */
+function clockDecision(subject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision | string {
+  const nowMs = now.getTime();
+  if (!Number.isFinite(nowMs)) return { eligible: false, reason: "bad-now" };
+  const opened = openedMs(subject.openedAt);
+  if (opened === undefined || !Number.isFinite(opened)) return { eligible: false, reason: "bad-opened-at" };
+  const at = new Date(opened + waitHours(subject, policy) * HOUR_MS).toISOString();
+  return nowMs < Date.parse(at) ? { eligible: false, reason: "too-early", at } : at;
+}
+
+/**
+ * Whether a subject resolves to its recommendation now. Pure: the sweep re-reads every fact, calls this, and acts or
+ * logs. Shadow mode decides the same way as live; only the sweep's action differs. A skip that is only waiting on the
+ * clock carries `at`, so a countdown can show when it becomes eligible.
+ */
+export function byRecDecision(rawSubject: ByRecSubject, now: Date, policy: ByRecPolicy): ByRecDecision {
+  const subject = canonicalSubject(rawSubject);
+  const reason = policyReason(subject, policy);
+  if (reason !== undefined) return { eligible: false, reason };
+  const at = clockDecision(subject, now, policy);
+  if (typeof at !== "string") return at;
+  const recommendation = subject.recommendation ?? { answer: "", by: "" };
+  const rationale = recommendation.rationale?.trim() || `recommended by ${recommendation.by}`;
+  return { eligible: true, at, answer: recommendation.answer, rationale };
+}
+
+const ANCHOR_SIDE = /^(head|base|diff)\//;
+const ANCHOR_LINES = /#.*$/;
+
+/** Every path the item or its options anchor to, so the guard-path rule sees them. */
+function anchoredPaths(item: OwnerItem): string[] {
+  const anchors = [...(item.anchors ?? []), ...(item.options ?? []).flatMap((option) => option.anchors ?? [])];
+  return anchors.map((anchor) => anchor.replace(ANCHOR_SIDE, "").replace(ANCHOR_LINES, ""));
+}
+
+/**
+ * An owner-queue item (a deposit, or a round question read back) as a by-rec subject. The floor refuses only on facts
+ * that are present, so every item field a floor rule keys on is mapped here. Hold classes, owner-at-head rows, the head
+ * ref and plan approval are not item fields; a sweep that knows them sets them itself.
+ */
+export function byRecSubjectOfItem(item: OwnerItem): ByRecSubject {
+  const { recommended } = item;
+  const system = item.sources[0]?.system;
+  return {
+    source: system === "round" ? "round" : system === "hitl" ? "gate" : "deposit",
+    id: item.id,
+    openedAt: item.openedAt,
+    summary: item.summary,
+    ...(recommended && { recommendation: { answer: recommended.optionId, by: recommended.by, rationale: recommended.rationale, confidence: recommended.confidence } }),
+    kind: item.kind,
+    door: item.door,
+    irreversible: item.irreversible !== undefined,
+    onSilence: item.onSilence,
+    default: item.default,
+    options: item.options?.map((option) => option.id),
+    decisionClass: item.class,
+    ...(item.authority && { authorityRows: [item.authority.ruleId], authorityTable: item.authority.table }),
+    paths: anchoredPaths(item),
+    category: item.category,
+    op: item.op?.kind,
+    audience: item.audience,
+    personal: item.personal,
+    changeRequested: item.answer?.changeRequested === true,
+    blind: recommended?.hidden === true,
+    closed: item.status !== "open",
+    ship: system === "round" && item.kind === "approve",
+    text: [item.summary, item.context, ...(item.options ?? []).flatMap((option) => [option.label, option.description ?? "", option.consequence ?? ""])],
+  };
+}
