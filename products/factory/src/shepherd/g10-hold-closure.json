@@ -321,6 +321,7 @@
   "shepherd/main-verdict.ts",
   "shepherd/main-watch-ledger.ts",
   "shepherd/main-watch.ts",
+  "shepherd/member-respawn.ts",
   "shepherd/merge-base-command.ts",
   "shepherd/merge-base-exception.ts",
   "shepherd/merge-main.ts",
