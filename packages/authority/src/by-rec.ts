@@ -1,5 +1,6 @@
 import { isCarryFencedPath, isNonCanonical, isOwnerFloorPath } from "./paths.js";
-import { isFullSha, isRecord, isStringList } from "./shape.js";
+import type { AgentIdentity } from "./shape.js";
+import { isFullSha, isRecord, isStringList, sameAgent } from "./shape.js";
 import type { ByRecConditionKind } from "./vocabulary.js";
 
 /** The approve-merge gate as the caller read it. Times are epoch milliseconds, read by the caller, since the evaluator has no clock. */
@@ -17,6 +18,8 @@ export interface OwnerGateFact {
 /** The facts MRG-AU-RB's own conditions read; `MergeFacts` carries each of them. */
 export interface ByRecFacts {
   head: string;
+  dispatchedReviewer: AgentIdentity;
+  verdict: { author?: AgentIdentity };
   changedPaths: string[];
   ownerGate?: OwnerGateFact;
   holdClasses?: string[];
@@ -44,6 +47,12 @@ function ownerGateSilent24h(facts: ByRecFacts): boolean {
 
 function gateRecommendsMerge(facts: ByRecFacts): boolean {
   return ownerGateAt(facts)?.recommended === "merge";
+}
+
+// In MRG-AU-RB Shepherd resolves, not the reviewer, so the verdict's own author must be the dispatched reviewer.
+function verdictByDispatchedReviewer(facts: ByRecFacts): boolean {
+  const author = facts.verdict.author;
+  return isRecord(author) && isRecord(facts.dispatchedReviewer) && sameAgent(author, facts.dispatchedReviewer);
 }
 
 function changedPathsOf(facts: ByRecFacts): string[] | undefined {
@@ -81,6 +90,7 @@ function noReleasePath(facts: ByRecFacts): boolean {
 export const BY_REC_CHECKS: Record<ByRecConditionKind, (facts: ByRecFacts) => boolean> = {
   "owner-gate-silent-24h": ownerGateSilent24h,
   "gate-recommends-merge": gateRecommendsMerge,
+  "verdict-by-dispatched-reviewer": verdictByDispatchedReviewer,
   "no-hold": noHold,
   "no-owner-path": noOwnerPath,
   "no-release-path": noReleasePath,

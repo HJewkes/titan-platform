@@ -1,15 +1,12 @@
 import type { OwnerGateFact } from "./by-rec.js";
 import { BY_REC_CHECKS } from "./by-rec.js";
 import { isCarryFencedPath, isNonCanonical, isProtectedPath } from "./paths.js";
-import { FULL_SHA, isRecord, isStringList } from "./shape.js";
+import type { AgentIdentity } from "./shape.js";
+import { FULL_SHA, isId, isRecord, isStringList, sameAgent } from "./shape.js";
 import type { ConditionKind, MergeConditionKind, QuestionConditionKind } from "./vocabulary.js";
 
 export { isCarryFencedPath } from "./paths.js";
-
-export interface AgentIdentity {
-  agentId: string;
-  sessionId: string;
-}
+export type { AgentIdentity } from "./shape.js";
 
 export interface CheckRunFact {
   name: string;
@@ -45,7 +42,8 @@ export interface MergeFacts {
   head: string;
   resolver: AgentIdentity;
   dispatchedReviewer: AgentIdentity;
-  verdict: { value: string; head: string };
+  /** `author` is the reviewer who posted the verdict, as the caller resolved it; only MRG-AU-RB reads it. */
+  verdict: { value: string; head: string; author?: AgentIdentity };
   requiredContexts: string[];
   /** Check-run app ids the caller trusts; the package pins none. */
   allowedApps: number[];
@@ -86,14 +84,6 @@ export interface ConditionFacts {
 const GREEN_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 /** PR kinds whose reviewed MERGE may carry to a new head (`pr-kind-not-security`); the factory gates its carry on this same set. */
 export const CARRYING_KINDS: ReadonlySet<string> = new Set(["correctness", "feature", "refactor"]);
-
-function isId(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
-}
-
-function sameAgent(a: AgentIdentity, b: AgentIdentity): boolean {
-  return isId(a.agentId) && isId(a.sessionId) && a.agentId === b.agentId && a.sessionId === b.sessionId;
-}
 
 function verdictMergeAtHead(facts: MergeFacts): boolean {
   const { head } = facts;

@@ -16,6 +16,7 @@ const OPENED_AT = Date.UTC(2026, 0, 1);
 const WHEN: ConditionKind[] = [
   "owner-gate-silent-24h",
   "gate-recommends-merge",
+  "verdict-by-dispatched-reviewer",
   "verdict-merge-at-head",
   "required-contexts-green",
   "no-non-green-run",
@@ -45,7 +46,7 @@ function byRecFacts(): MergeFacts {
     head: HEAD,
     resolver: { agentId: "shepherd", sessionId: "serve-1" },
     dispatchedReviewer: { agentId: "rv-1", sessionId: "session-1" },
-    verdict: { value: "MERGE", head: HEAD },
+    verdict: { value: "MERGE", head: HEAD, author: { agentId: "rv-1", sessionId: "session-1" } },
     requiredContexts: ["check"],
     allowedApps: [APP],
     checkRuns: [{ name: "check", appId: APP, headSha: HEAD, conclusion: "success" }],
@@ -78,6 +79,22 @@ function expectFallsBackToGate(facts: MergeFacts, condition: ConditionKind): voi
 
 const gate = (facts: MergeFacts) => facts.ownerGate!;
 
+// Mergeability conditions the row shares with MRG-AU-RV; the row's text does not name them, and they only narrow it.
+const UNNAMED_IN_TEXT: ConditionKind[] = ["merge-tree-clean", "repo-not-frozen"];
+
+// Each clause of the row's text, the conditions that enforce it, and a patch that removes the clause's fact.
+const CLAUSES: [string, ConditionKind[], (facts: MergeFacts) => void][] = [
+  ["recommended answer is merge", ["gate-recommends-merge"], (f) => { gate(f).recommended = null; }],
+  ["unanswered for 24 h at the same head", ["owner-gate-silent-24h"], (f) => { gate(f).observedAt = OPENED_AT; }],
+  ["The dispatched reviewer's MERGE", ["verdict-by-dispatched-reviewer"], (f) => { Reflect.deleteProperty(f.verdict, "author"); }],
+  ["at the exact head", ["verdict-merge-at-head"], (f) => { f.verdict.head = ""; }],
+  ["green required checks", ["required-contexts-green", "no-non-green-run"], (f) => { f.checkRuns[0]!.conclusion = null; }],
+  ["no Shepherd hold of any class", ["no-hold"], (f) => { Reflect.deleteProperty(f, "holdClasses"); }],
+  ["protected", ["no-protected-path-change"], (f) => { f.changedPaths = []; }],
+  ["release", ["no-release-path"], (f) => { Reflect.deleteProperty(f, "headRef"); }],
+  ["authority or owner-tier path", ["no-owner-path"], (f) => { Reflect.deleteProperty(f, "ownerTierPaths"); }],
+];
+
 const ONE_FALSE: [string, ConditionKind, (facts: MergeFacts) => void][] = [
   ["the gate is a millisecond short of 24 h", "owner-gate-silent-24h", (f) => { gate(f).observedAt = OPENED_AT + DAY_MS - 1; }],
   ["the gate's open time is not an integer", "owner-gate-silent-24h", (f) => { gate(f).openedAt = OPENED_AT + 0.5; }],
@@ -87,6 +104,14 @@ const ONE_FALSE: [string, ConditionKind, (facts: MergeFacts) => void][] = [
   ["the gate recommends abandon", "gate-recommends-merge", (f) => { gate(f).recommended = "abandon"; }],
   ["the gate recommends nothing", "gate-recommends-merge", (f) => { gate(f).recommended = null; }],
   ["the gate recommends MERGE in upper case", "gate-recommends-merge", (f) => { gate(f).recommended = "MERGE"; }],
+  ["the MERGE came from another reviewer", "verdict-by-dispatched-reviewer", (f) => { f.verdict.author = { agentId: "rv-2", sessionId: "session-2" }; }],
+  ["the MERGE came from the dispatched agent in another session", "verdict-by-dispatched-reviewer", (f) => { f.verdict.author = { agentId: "rv-1", sessionId: "session-2" }; }],
+  ["the MERGE has no author", "verdict-by-dispatched-reviewer", (f) => { Reflect.deleteProperty(f.verdict, "author"); }],
+  ["the MERGE's author is not a record", "verdict-by-dispatched-reviewer", (f) => { Reflect.set(f.verdict, "author", "rv-1"); }],
+  ["the MERGE and the dispatched reviewer are both blank", "verdict-by-dispatched-reviewer", (f) => {
+    f.dispatchedReviewer = { agentId: "", sessionId: "" };
+    f.verdict.author = { agentId: "", sessionId: "" };
+  }],
   ["the reviewer's MERGE is at an older head", "verdict-merge-at-head", (f) => { f.verdict.head = OLD_HEAD; }],
   ["the reviewer said FIX_FIRST", "verdict-merge-at-head", (f) => { f.verdict.value = "FIX_FIRST"; }],
   ["a required context has no run", "required-contexts-green", (f) => { f.requiredContexts.push("e2e"); }],
@@ -102,6 +127,20 @@ const ONE_FALSE: [string, ConditionKind, (facts: MergeFacts) => void][] = [
 describe("MRG-AU-RB: automation merges an approve-merge gate left 24 h on a merge recommendation", () => {
   it("is the row the owner approved, word for word", () => {
     expect(DEFAULT_TABLE.rules.find((rule) => rule.id === "MRG-AU-RB")).toEqual(APPROVED_ROW);
+  });
+
+  it("enforces every clause of its text with a condition in its when list", () => {
+    const named = CLAUSES.flatMap(([clause, conditions]) => {
+      expect(APPROVED_ROW.condition).toContain(clause);
+      return conditions;
+    });
+    expect([...named, ...UNNAMED_IN_TEXT].sort()).toEqual([...WHEN].sort());
+  });
+
+  it.each(CLAUSES)("gates when the fact behind %j is missing", (_clause, conditions, patch) => {
+    const unmet = unmetConditions(WHEN, { merge: patched(patch) });
+    expect(unmet).toEqual(expect.arrayContaining(conditions));
+    expectFallsBackToGate(patched(patch), conditions[0]!);
   });
 
   it("allows the merge when every condition holds, and only then", () => {

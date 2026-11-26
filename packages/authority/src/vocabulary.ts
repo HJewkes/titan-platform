@@ -31,8 +31,15 @@ export const VERDICTS = ["allow", "gate", "deny"] as const;
 /** Codes for the record each rule expects to leave behind, from a decision record to a device read-back. */
 export const EVIDENCE_KINDS = ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-npm", "E-spn", "E-prin", "E-dev", "E-rev"] as const;
 
-/** Conditions only MRG-AU-RB reads: an owner gate left 24 h on a merge recommendation, with no hold, owner-tier path or release path. */
-const BY_REC_CONDITION_KINDS = ["owner-gate-silent-24h", "gate-recommends-merge", "no-hold", "no-owner-path", "no-release-path"] as const;
+/** Conditions only MRG-AU-RB reads: an owner gate left 24 h on a merge recommendation, a MERGE the dispatched reviewer wrote, and no hold, owner-tier path or release path. */
+const BY_REC_CONDITION_KINDS = [
+  "owner-gate-silent-24h",
+  "gate-recommends-merge",
+  "verdict-by-dispatched-reviewer",
+  "no-hold",
+  "no-owner-path",
+  "no-release-path",
+] as const;
 
 /** Conditions read from `facts.merge`. */
 export const MERGE_CONDITION_KINDS = [

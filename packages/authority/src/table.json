@@ -170,6 +170,7 @@
       "when": [
         "owner-gate-silent-24h",
         "gate-recommends-merge",
+        "verdict-by-dispatched-reviewer",
         "verdict-merge-at-head",
         "required-contexts-green",
         "no-non-green-run",

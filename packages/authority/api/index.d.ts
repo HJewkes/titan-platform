@@ -10,11 +10,11 @@ declare const VERDICTS: readonly ["allow", "gate", "deny"];
 /** Codes for the record each rule expects to leave behind, from a decision record to a device read-back. */
 declare const EVIDENCE_KINDS: readonly ["E-dec", "E-gate", "E-ref", "E-byp", "E-gh", "E-npm", "E-spn", "E-prin", "E-dev", "E-rev"];
 /** Conditions read from `facts.merge`. */
-declare const MERGE_CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "owner-gate-silent-24h", "gate-recommends-merge", "no-hold", "no-owner-path", "no-release-path"];
+declare const MERGE_CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "owner-gate-silent-24h", "gate-recommends-merge", "verdict-by-dispatched-reviewer", "no-hold", "no-owner-path", "no-release-path"];
 /** Conditions read from `facts.question`, the gate a decider would answer. */
 declare const QUESTION_CONDITION_KINDS: readonly ["gate-rule-is-question", "category-mode-auto"];
 /** Facts a conditional rule checks on the request; the rule applies only when every one holds. */
-declare const CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "owner-gate-silent-24h", "gate-recommends-merge", "no-hold", "no-owner-path", "no-release-path", "gate-rule-is-question", "category-mode-auto"];
+declare const CONDITION_KINDS: readonly ["resolver-is-dispatched-reviewer", "verdict-merge-at-head", "verdict-merge-carried-tree-equal", "verdict-merge-carried-remerge-clean", "verdict-merge-carried-merge-up-disjoint", "pr-kind-not-security", "required-contexts-green", "no-non-green-run", "merge-tree-clean", "repo-not-frozen", "no-protected-path-change", "seat-grants-merge-on-green-approve", "owner-gate-silent-24h", "gate-recommends-merge", "verdict-by-dispatched-reviewer", "no-hold", "no-owner-path", "no-release-path", "gate-rule-is-question", "category-mode-auto"];
 /** What made an agent identity tainted; `inbound-message` is reserved for an external door that does not exist yet. */
 declare const TAINT_KINDS: readonly ["web-fetch", "web-search", "external-tool", "inbound-message", "untrusted-item", "inherited"];
 type ActorClass = (typeof ACTOR_CLASSES)[number];
@@ -27,6 +27,11 @@ type MergeConditionKind = (typeof MERGE_CONDITION_KINDS)[number];
 type QuestionConditionKind = (typeof QUESTION_CONDITION_KINDS)[number];
 type ConditionKind = (typeof CONDITION_KINDS)[number];
 type TaintKind = (typeof TAINT_KINDS)[number];
+
+interface AgentIdentity {
+    agentId: string;
+    sessionId: string;
+}
 
 /** The approve-merge gate as the caller read it. Times are epoch milliseconds, read by the caller, since the evaluator has no clock. */
 interface OwnerGateFact {
@@ -43,10 +48,6 @@ interface OwnerGateFact {
 /** Whether a base-side path bars a MERGE carry across a merge-up; a path that cannot be compared exactly counts as fenced. */
 declare function isCarryFencedPath(path: unknown): boolean;
 
-interface AgentIdentity {
-    agentId: string;
-    sessionId: string;
-}
 interface CheckRunFact {
     name: string;
     appId: number;
@@ -79,9 +80,11 @@ interface MergeFacts {
     head: string;
     resolver: AgentIdentity;
     dispatchedReviewer: AgentIdentity;
+    /** `author` is the reviewer who posted the verdict, as the caller resolved it; only MRG-AU-RB reads it. */
     verdict: {
         value: string;
         head: string;
+        author?: AgentIdentity;
     };
     requiredContexts: string[];
     /** Check-run app ids the caller trusts; the package pins none. */
@@ -179,6 +182,7 @@ declare const ruleSchema: z.ZodObject<{
         "required-contexts-green": "required-contexts-green";
         "resolver-is-dispatched-reviewer": "resolver-is-dispatched-reviewer";
         "seat-grants-merge-on-green-approve": "seat-grants-merge-on-green-approve";
+        "verdict-by-dispatched-reviewer": "verdict-by-dispatched-reviewer";
         "verdict-merge-at-head": "verdict-merge-at-head";
         "verdict-merge-carried-merge-up-disjoint": "verdict-merge-carried-merge-up-disjoint";
         "verdict-merge-carried-remerge-clean": "verdict-merge-carried-remerge-clean";

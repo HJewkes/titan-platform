@@ -168,13 +168,18 @@ MRG-AU-RB (owner decision of 2026-11-19, TP-6765) allows an automation merge whe
 an approve-merge gate unanswered for 24 hours on a merge recommendation. It needs no seat grant and
 no reviewer as the resolver; the gate is cancelled as `auto-by-rec`, and automation still resolves no
 gate. It keeps MRG-AU-RV's `verdict-merge-at-head`, `required-contexts-green`, `no-non-green-run`,
-`merge-tree-clean`, `repo-not-frozen` and `no-protected-path-change`, and adds five conditions:
+`merge-tree-clean`, `repo-not-frozen` and `no-protected-path-change`, and adds six conditions. Each
+clause of the row's text maps to a condition in its `when` list, and a test fails on a clause
+with none:
 
 - `owner-gate-silent-24h`: the `ownerGate` fact names `facts.head` as its `head`, `pending` is exactly
   `true`, and `observedAt - openedAt` is at least 24 hours. Both are positive integer epoch
   milliseconds that the caller reads, since the evaluator has no clock. A head move re-opens the gate,
   so the clock starts again.
 - `gate-recommends-merge`: that same gate's `recommended` option id is exactly `merge`.
+- `verdict-by-dispatched-reviewer`: `verdict.author`, the reviewer who posted the MERGE, is the
+  `dispatchedReviewer`, with both ids non-empty. Shepherd resolves this row, so
+  `resolver-is-dispatched-reviewer` cannot stand in for it; a missing author fails.
 - `no-hold`: `holdClasses` is a list of strings and is empty. Any Shepherd hold, of any class
   (`owner-asked`, `owner-review`, a g10 or visual hold), fails it, and so does a missing list.
 - `no-owner-path`: `ownerTierPaths`, the changed paths Shepherd's owner tier holds for the owner
