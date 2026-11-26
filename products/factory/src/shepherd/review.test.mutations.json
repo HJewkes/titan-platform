@@ -48,7 +48,7 @@
     {
       "name": "a panel round whose blocking member never started counts no-verdict past the cap",
       "file": "products/factory/src/shepherd/review-panel-step.ts",
-      "find": "return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results)), ...adversaryMerged(merged) };",
+      "find": "return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, outcomes, results)), ...adversaryMerged(merged) };",
       "replace": "return { ...panelNone(verdict, false), ...adversaryMerged(merged) };",
       "kills": [
         "reviewPhase review.panel on retries without a failed round when the blocking adversary's ask timed out unseen and correctness said MERGE (TP-5296)",

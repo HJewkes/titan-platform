@@ -924,7 +924,7 @@ describe("sh-review", () => {
     const { result } = await steps.review(spawnIntent);
 
     expect(dispatch.spawns).toHaveLength(1);
-    expect(result).toEqual({ kind: "none", reason: `reviewer rv-octo-demo-7 did not start one session in time; the last roster read failed: Error` });
+    expect(result).toEqual({ kind: "none", reason: `reviewer rv-octo-demo-7 did not start one session in time; the last roster read failed: Error`, unseen: true });
   });
 
   it("answers not-started, naming the timeout and the wait, when every roster read after a successful ask timed out", async () => {
@@ -955,7 +955,7 @@ describe("sh-review", () => {
 
     const { result } = await reviewSteps(dispatch).review(spawnIntent);
 
-    expect(result).toEqual({ kind: "none", reason: "reviewer rv-octo-demo-7 did not start one session in time" });
+    expect(result).toEqual({ kind: "none", reason: "reviewer rv-octo-demo-7 did not start one session in time", unseen: true });
   });
 
   it("sh-review answers none and starts nobody when it is given an intent and no dispatch is wired", async () => {
@@ -1461,7 +1461,7 @@ describe("reviewPhase", () => {
   const verdictAt = (head: string, verdict = "MERGE") => `Read it all.\n\nVerdict: ${verdict}\nPR: ${REPO}#1\nHead: ${head}\n`;
   /** An adversary member's verdict carries the probes it ran, or it is refused. */
   const probedAt = (head: string, verdict = "MERGE") => `Probes: empty token -> refused\nAuthority: unchanged\n\n${verdictAt(head, verdict)}`;
-  const verdictBy = (who: ReviewerAgent, head: string) => (who.name.endsWith("-adversary") ? probedAt(head) : verdictAt(head));
+  const verdictBy = (who: ReviewerAgent, head: string) => (/-adversary(?:-\d+)?$/.test(who.name) ? probedAt(head) : verdictAt(head));
 
   interface Scene {
     dispatch: FakeDispatch;
@@ -1492,6 +1492,8 @@ describe("reviewPhase", () => {
     ownDiff?: { stateDir: string };
     /** The PR's changed files; absent means one source file with no line counts. */
     files?: PrFile[];
+    /** The verdict wait's ceiling and exit grace; absent means a 5 s ceiling and the default grace. */
+    verdictWait?: { timeoutMs: number; exitGraceMs: number };
   }
 
   async function review(scene: Scene) {
@@ -1510,7 +1512,7 @@ describe("reviewPhase", () => {
       for (const { headSha, fresh } of requests) verdicts.push(await reviewPhase(ctx, { repo: REPO, pr: 1, round: 0, headSha, ...(fresh && { fresh: true }), ...(scene.cause && { cause: scene.cause }) }));
     };
     const { awaited } = scene;
-    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }), ...(scene.holdMember && { holdMember: scene.holdMember }), ...(scene.ownDiff && { ownDiff: true, carry: { stateDir: scene.ownDiff.stateDir, remote: () => join(scene.ownDiff!.stateDir, "absent.git") } }) });
+    const wired = reviewRoutes(deps, { reader, dispatch: scene.dispatch, timeoutMs: 5_000, ...scene.verdictWait, ...(scene.roles && { roles: scene.roles }), ...(scene.machineStop && { machineStop: scene.machineStop }), ...(scene.panel && { panel: scene.panel }), ...(scene.holdMember && { holdMember: scene.holdMember }), ...(scene.ownDiff && { ownDiff: true, carry: { stateDir: scene.ownDiff.stateDir, remote: () => join(scene.ownDiff!.stateDir, "absent.git") } }) });
     const swapped = wired.map((route) => (awaited && route.match === "sh-await-verdict" ? codeRoute(route.match, deps.now, async (input: AwaitVerdictInput) => awaited(input)) : route));
     const inputs: Record<string, unknown> = {};
     const recorded = swapped.map((route): StepRoute => ({ ...route, runner: { run: (step) => ((inputs[step.stepId] = JSON.parse(step.prompt)), route.runner.run(step)) } }));
@@ -1639,14 +1641,58 @@ describe("reviewPhase", () => {
       expect(fixFirstText(verdicts[0]).trimEnd().split("\n").at(-1)).toBe("Defect class: unchecked retry path");
     });
 
-    it("on gives no verdict when the blocking adversary never starts, and never merges on correctness alone", async () => {
-      const dispatch = fakeDispatch([], { onSpawn: (name) => void (name === adversary || dispatch.agents.push(agent(name, { presence: "live" }))) });
+    it("on re-spawns a blocking adversary whose session never showed once, then retries the round as not-started, never merging on correctness alone (TP-6831)", async () => {
+      const dispatch = fakeDispatch([], { onSpawn: (name) => void (name.startsWith(adversary) || dispatch.agents.push(agent(name, { presence: "live" }))) });
 
       const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles });
 
-      expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-review:${H1}:adversary`, `sh-await-verdict:${H1}`, `sh-review-panel:${H1}`]);
+      expect(dispatch.spawns.map(({ name }) => name)).toEqual(["rv-octo-demo-1", adversary, `${adversary}-2`]);
+      expect(stepIds).toEqual([`sh-fix-proof:${H1}`, `sh-review-intent:${H1}`, `sh-review:${H1}`, `sh-review:${H1}:adversary`, `sh-review:${H1}:adversary:respawn`, `sh-await-verdict:${H1}`, `sh-review-panel:${H1}`]);
       expect(resultOf(`sh-review-panel:${H1}`)).toMatchObject({ outcome: "no-verdict" });
-      expect(verdicts).toEqual([{ kind: "none", cause: "no-verdict", reason: "a blocking panel member gave no verdict" }]);
+      expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: "a blocking panel member never started" }]);
+    });
+
+    it("on merges on the re-spawned adversary's verdict when its first session never showed (TP-6831)", async () => {
+      const dispatch = fakeDispatch([], { onSpawn: (name) => void (name === adversary || dispatch.agents.push(agent(name, { presence: "live" }))) });
+
+      const { verdicts, stepIds } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles });
+
+      expect(stepIds).toContain(`sh-await-verdict:${H1}:adversary:respawn`);
+      expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", panel: expect.objectContaining({ members: [expect.objectContaining({ shape: "correctness" }), expect.objectContaining({ shape: "adversary", agentId: `agent-${adversary}-2` })] }) })]);
+    });
+
+    /** The #4045 shape: the adversary's spawn is admitted and its row shows once, then the agent is gone with no transcript. */
+    function admittedUnregistered(stillMissing: (name: string) => boolean): FakeDispatch {
+      const dispatch = fakeDispatch();
+      const vanishing = new Set<string>();
+      const spawn = dispatch.spawn.bind(dispatch);
+      dispatch.spawn = async (name, ...rest) => (stillMissing(name) && vanishing.add(name), spawn(name, ...rest));
+      dispatch.roster = async () => {
+        const rows = [...dispatch.agents];
+        dispatch.agents = dispatch.agents.filter((row) => !vanishing.has(row.name));
+        return rows;
+      };
+      return dispatch;
+    }
+    const exitGraceWait = { timeoutMs: 30 * 60_000, exitGraceMs: 60_000 };
+
+    it("on re-spawns an adversary admitted but never registered, and a second miss is a not-started round, not a failed one (#4045 shape, TP-6831)", async () => {
+      const dispatch = admittedUnregistered((name) => name.startsWith(adversary));
+
+      const { verdicts, stepIds, resultOf } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles, verdictWait: exitGraceWait });
+
+      expect(resultOf(`sh-await-verdict:${H1}:adversary`)).toMatchObject({ kind: "none", ended: "reviewer-gone", unregistered: true });
+      expect(dispatch.spawns.map(({ name }) => name)).toEqual(["rv-octo-demo-1", adversary, `${adversary}-2`]);
+      expect(stepIds.slice(-3)).toEqual([`sh-review:${H1}:adversary:respawn`, `sh-await-verdict:${H1}:adversary:respawn`, `sh-review-panel:${H1}`]);
+      expect(verdicts).toEqual([{ kind: "none", cause: "not-started", reason: "a blocking panel member never started" }]);
+    });
+
+    it("on takes the re-spawned adversary's MERGE when only its first spawn never registered (TP-6831)", async () => {
+      const dispatch = admittedUnregistered((name) => name === adversary);
+
+      const { verdicts } = await review({ dispatch, policy: AUTO, panel: "on", files: securityFiles, verdictWait: exitGraceWait });
+
+      expect(verdicts).toEqual([expect.objectContaining({ kind: "MERGE", headSha: H1 })]);
     });
 
     it("on retries without a failed round when the blocking adversary's ask timed out unseen and correctness said MERGE (TP-5296)", async () => {

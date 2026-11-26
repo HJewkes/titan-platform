@@ -64,6 +64,16 @@ export const AWAIT_VERDICT_STEP = "sh-await-verdict";
 type Roster = () => Promise<readonly { agentId: string; presence: Presence }[]>;
 
 /**
+ * A wait that ended on a reviewer no roster read ever listed and whose transcript never had a message: the spawn was admitted
+ * but the agent never registered (TP-6831), which is infra, not a reviewer that read the head and said nothing.
+ */
+function unregistered(result: AwaitVerdictResult, sighted: { row: boolean; message: boolean }): AwaitVerdictResult {
+  if (result.kind !== "none" || isUsageLimit(result) || sighted.row || sighted.message) return result;
+  const stamped: Extract<AwaitVerdictResult, { kind: "none" }> & { unregistered: true } = { ...result, unregistered: true };
+  return stamped;
+}
+
+/**
  * Time spent since the reviewer's session was up, or since the intent for a run recorded before that was stamped. The intent
  * comes before a busy broker's wait, so a live reviewer's clock starts at its session. A stamp ahead of this clock counts as just now.
  */
@@ -74,7 +84,7 @@ const sinceStart = (timing: AwaitVerdictTiming, input: AwaitVerdictInput): numbe
  * or deregistered at the first read after a (re)start, a grace or more after its start, is gone at once. A detached one is not:
  * a broker restart detaches everyone, so its grace runs from first sight.
  */
-function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: AwaitVerdictInput) => Promise<boolean> {
+function silenceWatch(timing: AwaitVerdictTiming, roster: Roster, sighted: { row: boolean }): (input: AwaitVerdictInput) => Promise<boolean> {
   let gone: { presence: Presence; since: number } | undefined;
   let firstRead = true;
   return async (input) => {
@@ -82,7 +92,9 @@ function silenceWatch(timing: AwaitVerdictTiming, roster: Roster): (input: Await
     if (!rows) return false;
     const atStart = firstRead;
     firstRead = false;
-    const presence: Presence = rows.find((row) => row.agentId === input.reviewerAgentId)?.presence ?? "deregistered";
+    const row = rows.find((agent) => agent.agentId === input.reviewerAgentId);
+    sighted.row ||= row !== undefined;
+    const presence: Presence = row?.presence ?? "deregistered";
     if (presence !== "exited" && presence !== "detached" && presence !== "deregistered") return (gone = undefined), false;
     const grace = presence === "detached" ? (timing.detachGraceMs ?? DEFAULT_DETACH_GRACE_MS) : (timing.exitGraceMs ?? DEFAULT_EXIT_GRACE_MS);
     if (atStart && presence !== "detached" && sinceStart(timing, input) >= grace) return true;
@@ -103,15 +115,20 @@ export async function awaitVerdict(
   roster?: Roster,
 ): Promise<AwaitVerdictResult> {
   const clock = deadline({ ...timing, timeoutMs: Math.max(0, timing.timeoutMs - sinceStart(timing, input)) });
-  const silent = roster ? silenceWatch(timing, roster) : async () => false;
+  const sighted = { row: false, message: false };
+  const silent = roster ? silenceWatch(timing, roster, sighted) : async () => false;
   let last: AwaitVerdictResult = { kind: "none" };
-  const poll = async () => (last = acceptVerdict(input, await reader.read(input).catch(() => [])));
+  const poll = async () => {
+    const messages = await reader.read(input).catch(() => []);
+    sighted.message ||= messages.length > 0;
+    return (last = acceptVerdict(input, messages));
+  };
   for (;;) {
     const result = await poll();
     // A limit notice is the reviewer's last word, so waiting for its exit adds nothing.
     if (result.kind === "verdict" || isUsageLimit(result)) return result;
     // A verdict can land between the read and the decision that the reviewer is gone, so that decision reads once more.
-    if (await silent(input)) return withEnd(await poll(), "reviewer-gone");
+    if (await silent(input)) return unregistered(withEnd(await poll(), "reviewer-gone"), sighted);
     if (clock.expired()) return withEnd(last, "deadline");
     await clock.sleep(timing.pollMs, signal);
   }
