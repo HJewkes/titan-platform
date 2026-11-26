@@ -27,7 +27,7 @@ type SeatGate = (typeof SEAT_GATES)[number];
  * holds because no fix PR is marked, or a runaway whose
  * convergence review still said FIX_FIRST, which is the planner's to redesign or split.
  */
-const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "fix-pr-unmarked", "review-infra", "seat-held", "conflict", "fix-first-planner", "unreviewed", "order-expired", "dead-end"] as const;
+const SEAT_NOTICES = [...SEAT_GATES, "held", "base-red", "merge-unsettled", "fix-pr-unmarked", "review-infra", "seat-held", "conflict", "fix-first-planner", "unreviewed", "order-expired", "dead-end", "visual-empty"] as const;
 type SeatNotice = (typeof SEAT_NOTICES)[number];
 
 const SEAT_NOTICE_STEP = "sh-seat-notice";
@@ -52,6 +52,7 @@ const NEXT: Record<SeatNotice, string> = {
     "After you resume or start the worker: `titan-factory gate resolve <run> sh-dead-end --json '{\"decision\":\"respawn\",\"headSha\":\"<head>\"}'`.",
     "To have a planner redesign or split the task: the same with `replan`. To end the run: the same with `abandon`.",
   ].join(" "),
+  "visual-empty": `Nothing waits on the owner: a visual gate asks only when the pr-visual run rendered something to look at. ${WAITS} Next: read the pr-visual run's log for why it failed or rendered nothing, then push a fix to the PR, or close it to end the run.`,
   "order-expired": "Nothing waits on the owner, and Shepherd keeps landing the PR as before. An overlapping PR may now merge first and conflict it again. Next: see what keeps it from landing (titan-factory shepherd timeline), or close it to end the run.",
 };
 

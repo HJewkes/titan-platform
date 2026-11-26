@@ -1,0 +1,50 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "a store error escapes the step body",
+      "file": "products/factory/src/shepherd/check-candidates-step.ts",
+      "find": "  } catch (error) {\n    return { recorded: 0, ...warning, error: errorOf(error) };\n  }\n",
+      "replace": "  } finally {\n    void errorOf;\n  }\n",
+      "kills": [
+        "sh-check-candidates a store that throws records the error and does not throw"
+      ]
+    },
+    {
+      "name": "a replay records the step a pre-step ledger never held",
+      "file": "products/factory/src/shepherd/check-candidates-step.ts",
+      "find": "  if (next !== undefined && !stepIdMatches(CHECK_CANDIDATES_STEP, next)) return;\n",
+      "replace": "",
+      "kills": [
+        "sh-check-candidates a replayed run recorded before the step skips it"
+      ]
+    },
+    {
+      "name": "off still records the rows",
+      "file": "products/factory/src/shepherd/check-candidates-step.ts",
+      "find": "    if (mode() === \"off\") return { recorded: 0, ...warning, skipped: \"off\" };\n",
+      "replace": "",
+      "kills": [
+        "sh-check-candidates off records nothing"
+      ]
+    },
+    {
+      "name": "a verdict with no Check-candidates block still records the step",
+      "file": "products/factory/src/shepherd/check-candidates-step.ts",
+      "find": "  if (found.checkCandidates === undefined && found.checkCandidatesWarning === undefined) return;\n",
+      "replace": "",
+      "kills": [
+        "sh-check-candidates a verdict without the block records nothing"
+      ]
+    },
+    {
+      "name": "the area is the dir with the fewest changed lines",
+      "file": "products/factory/src/shepherd/check-candidates-step.ts",
+      "find": "entry[1] > best[1]",
+      "replace": "entry[1] < best[1]",
+      "kills": [
+        "sh-check-candidates area is the dir with most changed lines"
+      ]
+    }
+  ]
+}

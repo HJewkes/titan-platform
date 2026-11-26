@@ -57,6 +57,7 @@ export default withMermaid(
             { text: "active-work", link: "/guides/active-work" },
             { text: "Working in the repo", link: "/guides/contributing" },
             { text: "Set up the autonomous loop", link: "/guides/autonomous-loop-setup" },
+            { text: "Idle heartbeat", link: "/guides/idle-heartbeat" },
           ],
         },
         {

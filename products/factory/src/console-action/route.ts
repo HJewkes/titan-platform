@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { ConfigRef } from "../config-ref.js";
 import type { FactoryHost } from "../host.js";
 import { doneResults, ownerOpsLedger } from "../owner-ops/ledger.js";
+import type { BranchDeletePolicy } from "../owner-ops/branch-policy.js";
 import type { HostCommandPorts } from "../owner-ops/host-command.js";
 import type { PauseClearPorts } from "../owner-ops/pause-clear.js";
 import type { AgentChatRetirePort } from "../owner-ops/retire-agent.js";
@@ -44,6 +45,8 @@ interface ConsoleActionDeps {
   stateDir: string;
   /** The agent-chat CLI a retire-agent op runs through; absent, such an op answers 503. */
   agentChat?: AgentChatRetirePort;
+  /** The branch prefixes a delete-branch op may name and the repos it may name them in; absent, every such op is refused. */
+  branches?: BranchDeletePolicy;
   /** The agent-chat CLI a host command's vetted script sits beside; absent, such an op answers 503. */
   agentChatBin?: string;
   /** `systemd-run --user` and the file reads a host command needs. */
@@ -97,13 +100,13 @@ async function consoleAction(raw: Request, deps: ConsoleActionDeps, ops: OpDeps,
 type Mounted = ConsoleActionDeps & { port: GitHubPort; store: ShepherdStoreRef };
 
 async function acted(actionId: string, deps: Mounted, ops: OpDeps, answers: StandingAnswers): Promise<Outcome> {
-  const { host, port, store, freeze, deploy, now, agentChat, agentChatBin, hostPorts, stateDir, readVerdictText, activeRoot, config } = deps;
+  const { host, port, store, freeze, deploy, now, agentChat, agentChatBin, hostPorts, branches, stateDir, readVerdictText, activeRoot, config } = deps;
   const read = await readRecord(deps.actionsDir, actionId);
   if ("outcome" in read) return read;
   if ("op" in read) {
     const done = (id: string) => doneResults(stateDir, id);
     const factoryConfig = config === undefined ? undefined : { ...config, stateDir };
-    const context = { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, agentChatBin, hostPorts, activeRoot, factoryConfig, done };
+    const context = { host, port, services: { store, freeze }, answers, ledger: ops.ledger, deploy, now, agentChat, agentChatBin, hostPorts, branches, activeRoot, factoryConfig, done };
     return actOnOp(actionId, read, ops, context);
   }
   const { action, confirmEvent } = read;

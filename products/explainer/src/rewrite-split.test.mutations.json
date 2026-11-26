@@ -7,7 +7,7 @@
       "find": "export { splitOverlong } from \"./rewrite-split.js\";",
       "replace": "export const splitOverlong = (_before: string, spoken: string, _clean?: unknown): string => spoken;",
       "kills": [
-        "rewriteScript on the workflow path, with no speech verdict keeps a beat whose rewrite overshoots the cap, split at a clause joint, instead of refusing it"
+        "rewriteScript on the workflow path with speech-vet refusing it, keeps a beat whose rewrite overshoots the cap, split at a clause joint, instead of refusing it"
       ]
     }
   ]

@@ -28,7 +28,7 @@
       "replace": "const ownerTier = ownerTierStamp(reads.ownerTier, decidable);",
       "kills": [
         "under ownerTier on Authority: widened raises approve-merge on owner-tier",
-        "under ownerTier shadow widened merges and its evidence records the would-gate"
+        "under ownerTier shadow widened keeps the g10-adversary hold for the owner, and its evidence records the would-gate"
       ]
     },
     {

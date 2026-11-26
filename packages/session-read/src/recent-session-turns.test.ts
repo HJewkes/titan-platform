@@ -170,6 +170,19 @@ describe("readRecentSessionTurns", () => {
     expect(result.turns.map((turn) => turn.representation)).toEqual(["canonical", "projection-fallback"]);
   });
 
+  it("keeps one canonical message when the canonical message precedes its projection", async () => {
+    const conversation = identity("codex", "canonical-first-thread");
+    const records = [
+      codexEnvelope("event_msg", { type: "task_started" }),
+      codexEnvelope("response_item", { type: "message", role: "assistant", content: [{ type: "output_text", text: "same" }] }),
+      codexEnvelope("event_msg", { type: "agent_message", message: "same" }),
+      codexEnvelope("event_msg", { type: "task_complete" }),
+    ];
+    const result = await readRecentSessionTurns(await writeCodex(conversation, records), options());
+
+    expect(result.turns.map((turn) => turn.representation)).toEqual(["canonical"]);
+  });
+
   it("marks context outside a Codex byte window and missing tool error state as unknown", async () => {
     const conversation = identity("codex", "bounded-thread");
     const prefix = renderCodexRollout([

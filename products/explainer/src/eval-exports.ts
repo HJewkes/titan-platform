@@ -14,6 +14,17 @@ export {
   type StructureRow,
 } from "./eval-store.js";
 export { L0_CHECKS, l0HardPass, mapLintCheck, runL0, type L0Check, type L0Input, type L0Result } from "./eval-l0.js";
+export {
+  cameraPathCheck,
+  cameraPathFromMap,
+  cameraPathRows,
+  loadCameraPathDoctrine,
+  type CameraKeyBox,
+  type CameraPathDoctrine,
+  type CameraPathFromMapOptions,
+  type CameraPathInput,
+  type CameraReveal,
+} from "./camera-path.js";
 export { L0_EVAL_ID, runEvalCli, type EvalCliDeps } from "./eval-cli.js";
 export {
   calibrate,

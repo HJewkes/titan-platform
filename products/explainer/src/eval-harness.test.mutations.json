@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the claude-print judge drops the call's images",
+      "file": "products/explainer/src/eval-harness.ts",
+      "find": "        ...(images?.length ? { images } : {}),\n        cwd,",
+      "replace": "        cwd,",
+      "kills": [
+        "createJudgeHarness claude-print judge forwards the call's images to runAgent"
+      ]
+    },
+    {
+      "name": "the codex judge drops the call's images",
+      "file": "products/explainer/src/eval-harness.ts",
+      "find": "        ...(images?.length ? { images } : {}),\n        ...(config.reasoning_effort",
+      "replace": "        ...(config.reasoning_effort",
+      "kills": [
+        "createJudgeHarness codex judge forwards the call's images"
+      ]
+    }
+  ]
+}

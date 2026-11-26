@@ -1,3 +1,4 @@
+import { isoDate } from '@titan-design/pm';
 import { z } from 'zod';
 import { BriefFrontmatterSchema, type BriefFrontmatter } from '../schemas/brief.js';
 import { getLockPath } from '../utils/paths.js';
@@ -7,17 +8,6 @@ import { today } from '../utils/today.js';
 import { NotFoundError } from '../errors.js';
 import { defineCommand } from '../registry/index.js';
 import { loadAllBriefs, sortSlugs } from './_focus-helpers.js';
-
-const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-const isoDate = z
-  .string()
-  .regex(ISO_DATE_REGEX, 'since must be YYYY-MM-DD')
-  .refine((v) => {
-    const parsed = new Date(v);
-    if (Number.isNaN(parsed.getTime())) return false;
-    return parsed.toISOString().slice(0, 10) === v;
-  }, 'since must be a valid calendar date');
 
 const ArgsSchema = z.object({
   slug: z.string().min(1),
