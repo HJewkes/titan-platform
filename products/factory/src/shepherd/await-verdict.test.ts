@@ -65,17 +65,36 @@ describe("awaitVerdict after a restart", () => {
   });
 
   it.each([
-    ["exited", "exited"],
-    ["deregistered", "absent"],
-  ] as const)("ends on the first read when the reviewer is already %s, past the exit grace since dispatch", async (_name, presence) => {
+    ["exited", "exited", {}],
+    ["deregistered", "absent", { unregistered: true }],
+  ] as const)("ends on the first read when the reviewer is already %s, past the exit grace since dispatch", async (_name, presence, marks) => {
     const clock = restartedAt(2);
     const reader = countingReader();
 
     const result = await awaitVerdict(reader, input, clock.timing, signal, rosterOf(() => presence));
 
-    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone", ...marks });
     expect(clock.elapsed()).toBe(0);
     expect(reader.reads).toBe(2);
+  });
+
+  it("marks a reviewer never on the roster unregistered only while its transcript stayed empty (TP-6831)", async () => {
+    const wrote: ReviewerReader = { read: async () => [{ ...verdictMessage(DISPATCHED_AT), text: "Reading the diff." }] };
+
+    const silent = await awaitVerdict(countingReader(), input, restartedAt(0).timing, signal, rosterOf(() => "absent"));
+    const spoke = await awaitVerdict(wrote, input, restartedAt(0).timing, signal, rosterOf(() => "absent"));
+
+    expect(silent).toEqual({ kind: "none", ended: "reviewer-gone", unregistered: true });
+    expect(spoke).not.toHaveProperty("unregistered");
+  });
+
+  it("does not mark a reviewer unregistered once the roster has listed it, though its row is later gone (TP-6831)", async () => {
+    const clock = restartedAt(0);
+    const goneAt = clock.start + MINUTE;
+
+    const result = await awaitVerdict(countingReader(), input, clock.timing, signal, rosterOf(() => (clock.timing.now() < goneAt ? "live" : "absent")));
+
+    expect(result).toEqual({ kind: "none", ended: "reviewer-gone" });
   });
 
   it("still gives an exited reviewer its grace when the first read comes within the grace of dispatch", async () => {
