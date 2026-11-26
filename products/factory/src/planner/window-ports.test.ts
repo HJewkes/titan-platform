@@ -2,8 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { BY_REC_FEEDBACK_GENERAL } from "@titan-design/owner-queue";
 import type { PlannerRun } from "./inputs.js";
 import { ghWindow, roundAnswers } from "./window-ports.js";
+import { probeWindow } from "./window-probes.js";
 
 const SINCE = "2026-01-02T03:00:00.000Z";
 const AFTER = "2026-01-02T03:30:00.000Z";
@@ -106,13 +108,25 @@ describe("roundAnswers", () => {
   it.each(["1", "Nov 8", "0", "yesterday", "", "2026-13-45T00:00:00Z", "2026-02-30T00:00:00Z", "2026-11-08T24:00:00Z"])("treats submittedAt %j as undatable", async (value) => {
     const root = roundsDir({ odd: feedbackAt(value) });
 
-    expect(await roundAnswers(root)).toEqual([{ id: "odd", submittedAt: undefined, why: "submittedAt is not an ISO time" }]);
+    expect(await roundAnswers(root)).toEqual([{ id: "odd", by: { class: "owner", id: "owner", channel: "round" }, submittedAt: undefined, why: "submittedAt is not an ISO time" }]);
+  });
+
+  it("a by-rec-answered round is not counted as an owner answer", async () => {
+    const swept = JSON.stringify({ unit: "u", round: 1, manifestSha256: "abc", submittedAt: AFTER, general: BY_REC_FEEDBACK_GENERAL, answers: [] });
+    const root = roundsDir({ owner: feedbackAt(AFTER), swept, sweptUndatable: JSON.stringify({ general: BY_REC_FEEDBACK_GENERAL }) });
+    const sources = { github: { mergedPrs: async () => [], redMainRuns: async () => [] }, repos: [], gates: () => [], rounds: () => roundAnswers(root) };
+
+    const answers = await roundAnswers(root);
+    const contact = await probeWindow("owner-contact", sources, SINCE);
+
+    expect(answers.map(({ id, by }) => [id, by.class])).toEqual([["owner", "owner"], ["swept", "automation"], ["sweptUndatable", "automation"]]);
+    expect(contact).toEqual([`round owner answered ${AFTER}`]);
   });
 
   it("names the failing field when submittedAt is valid but another field is not", async () => {
     const bad = JSON.stringify({ unit: "u", round: "one", manifestSha256: "abc", submittedAt: "2026-11-08T00:00:00Z", answers: [] });
     const root = roundsDir({ other: bad });
 
-    expect(await roundAnswers(root)).toEqual([{ id: "other", submittedAt: undefined, why: "feedback.json has invalid field round" }]);
+    expect(await roundAnswers(root)).toEqual([{ id: "other", by: { class: "owner", id: "owner", channel: "round" }, submittedAt: undefined, why: "feedback.json has invalid field round" }]);
   });
 });

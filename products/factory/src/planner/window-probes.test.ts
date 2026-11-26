@@ -1,4 +1,5 @@
 import type { GateRecord } from "@titan-design/hitl";
+import { ROUND_ANSWERER } from "@titan-design/owner-queue";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../cli.js";
 import type { CliIo } from "../cli-types.js";
@@ -11,6 +12,7 @@ const SINCE = "2026-01-02T03:00:00.000Z";
 const BEFORE = "2026-01-02T02:59:59.000Z";
 const AFTER = "2026-01-02T03:30:00.000Z";
 const REPO = "example-org/example-repo";
+const OWNER = ROUND_ANSWERER;
 
 const BLANK_GATE: GateRecord = {
   id: "",
@@ -74,7 +76,7 @@ const verdict = (window: Window) => {
 
 describe("planner prior window over the probe verbs", () => {
   it("empty window with all three probes empty skips", async () => {
-    const quiet = { merged: [], gates: [gate({ id: "run-1/ci-failed", createdAt: BEFORE })], rounds: [{ id: "r1", submittedAt: BEFORE }] };
+    const quiet = { merged: [], gates: [gate({ id: "run-1/ci-failed", createdAt: BEFORE })], rounds: [{ id: "r1", by: OWNER, submittedAt: BEFORE }] };
     expect(await verdict(quiet)).toEqual({ kind: "quiet", summary: "0 merges, 0 owner contact, 0 new red" });
   });
 
@@ -97,7 +99,7 @@ describe("titan-factory planner probe", () => {
   it("counts a gate resolve and a console round answer as owner contact", async () => {
     const resolved = gate({ id: "run-2/approve-merge", status: "resolved", resolvedAt: AFTER });
     const stillOpen = gate({ id: "run-3/approve-merge", createdAt: AFTER });
-    const out = await probe(["owner-contact", "--since", SINCE], { gates: [resolved, stillOpen], rounds: [{ id: "r9", submittedAt: AFTER }] });
+    const out = await probe(["owner-contact", "--since", SINCE], { gates: [resolved, stillOpen], rounds: [{ id: "r9", by: OWNER, submittedAt: AFTER }] });
     expect(out.stdout).toBe(`gate run-2/approve-merge resolved ${AFTER}\nround r9 answered ${AFTER}\n`);
   });
 
@@ -106,7 +108,7 @@ describe("titan-factory planner probe", () => {
     ["schema mismatch", "feedback.json has no valid submittedAt field"],
     ["non-ISO submittedAt", "submittedAt is not an ISO time"],
   ])("reports a round undatable by %s with its own cause", async (_name, why) => {
-    const out = await probe(["owner-contact", "--since", SINCE], { rounds: [{ id: "r8", submittedAt: undefined, why }] });
+    const out = await probe(["owner-contact", "--since", SINCE], { rounds: [{ id: "r8", by: OWNER, submittedAt: undefined, why }] });
     expect(out.stdout).toBe(`round r8 answered at an unknown time: ${why}\n`);
   });
 

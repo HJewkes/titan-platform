@@ -1,4 +1,5 @@
 import type { GateRecord } from "@titan-design/hitl";
+import { isOwnerAnswer, type OwnerAnswer } from "@titan-design/owner-queue";
 import { isIsoTime } from "./iso-time.js";
 
 export interface MergedPr {
@@ -12,8 +13,12 @@ export interface RedRun {
   createdAt: string;
 }
 
-/** A console round the owner answered; `submittedAt` is the feedback's own time, not the file's, and is absent, with `why`, when the round cannot be dated. */
-export type RoundAnswer = { id: string; submittedAt: string } | { id: string; submittedAt: undefined; why: string };
+/**
+ * A console round that has an answer; `by` is who gave it, read through owner-queue's `feedbackAnswerer`, so the by-rec
+ * sweep's answer is not the owner's. `submittedAt` is the feedback's own time, not the file's, and is absent, with `why`,
+ * when the round cannot be dated.
+ */
+export type RoundAnswer = { id: string; by: OwnerAnswer["by"] } & ({ submittedAt: string } | { submittedAt: undefined; why: string });
 
 export interface WindowGitHub {
   mergedPrs: (repo: string, since: string) => Promise<readonly MergedPr[]>;
@@ -54,7 +59,7 @@ async function mergesSince(sources: WindowSources, since: string): Promise<strin
 async function ownerContactSince(sources: WindowSources, since: string): Promise<string[]> {
   const resolved = sources.gates().filter((gate) => gate.status === "resolved");
   const gates = splitByTime(resolved, (gate) => gate.resolvedAt, since);
-  const rounds = await sources.rounds();
+  const rounds = (await sources.rounds()).filter(isOwnerAnswer);
   const answers = rounds.filter((round) => inWindow(round.submittedAt, since));
   const undatable = rounds.flatMap((round) => (round.submittedAt === undefined ? [round] : []));
   return [
