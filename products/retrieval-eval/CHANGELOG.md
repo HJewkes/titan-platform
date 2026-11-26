@@ -1,5 +1,44 @@
 # @titan-design/retrieval-eval
 
+## 0.2.0
+
+### Minor Changes
+
+- df0ea58: Add a `claims` verb that scores claim recall at an equal token budget: each named arm (fts, fts+hash, fts+ollama) packs context for every question, and a required claim counts as present when its quote occurs in the packed text. Quotes too short to check are excluded and counted.
+- 7670c55: Add `run --mutations none,drop-letter,swap-pair,substring`: each mutation damages the rarest term of the derived query, seeded by the pair id, so the grid reports recall on typo-shaped queries. Default output is unchanged.
+- c63e233: Add `retrieval-eval freeze`, which pins a pair file as a deduplicated, sorted set with a hash-named manifest; `run` accepts the set directory, refuses a tampered one and stamps its rows with the set id (TP-6212).
+- 9ec05ef: Add `retrieval-eval weekly --week <YYYY-Www>`, which writes one dated measurement row per ISO week (served opened ratio per trigger and the share of sessions using a recall tool) to `weekly.jsonl`, replacing a re-run week's line. `countUptake` gains an `until` bound and a `sessionsUsingRecall` count.
+- cf7848d: Add `detectRestatement`, a pure detector that flags an owner prompt restating a prior decision, task or session (cues such as "as I said" or "we decided"), ignoring bare "try again" and cues inside code.
+- 9dcbf92: Add a `hybrid-bge-small` candidate that fuses notes-fts with the local `Xenova/bge-small-en-v1.5` embedder at RRF k=60, and accept `--embedder local` for `hybrid-fts-vector`. An unknown `--embedder` value now fails before any pairs are read. `hybridVector` takes a `name` option; the existing arm keeps `hybrid-fts-vector`.
+
+### Patch Changes
+
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- Updated dependencies [8a69e02]
+- Updated dependencies [0de5073]
+- Updated dependencies [beff4cb]
+- Updated dependencies [f012a1b]
+- Updated dependencies [bbe129b]
+- Updated dependencies [cffaab7]
+- Updated dependencies [e93951d]
+- Updated dependencies [b33b361]
+- Updated dependencies [144f696]
+- Updated dependencies [a56d49d]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [3fec5b7]
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/retrieval@0.5.0
+  - @titan-design/evidence@0.6.0
+
 ## 0.1.0
 
 ### Minor Changes

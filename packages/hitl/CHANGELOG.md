@@ -1,5 +1,18 @@
 # @titan-design/hitl
 
+## 0.10.2
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [beff4cb]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [37bd17f]
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/evidence@0.6.0
+
 ## 0.10.1
 
 ### Patch Changes

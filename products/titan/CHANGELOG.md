@@ -1,5 +1,30 @@
 # @titan-design/titan
 
+## 0.6.0
+
+### Minor Changes
+
+- be01e34: `titan heartbeat idle --idle <duration> --prompt <text> [--max <duration>] [--stop-cmd <command>]` wakes a Claude Code session once it has gone a set time without a turn, read from its own transcript tail, then exits with one wake line that carries its own re-arm command. It ends itself after `--lifetime` (default 115 min, under the 2 h background task cap) with a lapse line, so the harness never has to kill it. A session mid-turn is never woken, and every turn restarts the idle clock.
+
+### Patch Changes
+
+- 5c8299f: Export `profilesRoot(env, home)` from `@titan-design/anthropic-account/node` as the single resolver of the Claude profiles root, and use it in active-work, factory context-audit, session-miner friction transcripts and the titan config report. `CLAUDE_PROFILE_ROOT` now applies to all of them; a relative value is ignored.
+- Updated dependencies [0de5073]
+- Updated dependencies [f012a1b]
+- Updated dependencies [e114f17]
+- Updated dependencies [bbe129b]
+- Updated dependencies [a56d49d]
+- Updated dependencies [a411d70]
+- Updated dependencies [b937077]
+- Updated dependencies [5c8299f]
+- Updated dependencies [c759bad]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+  - @titan-design/session-read@0.18.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/anthropic-account@0.5.0
+  - @titan-design/health@0.2.2
+
 ## 0.5.0
 
 ### Minor Changes

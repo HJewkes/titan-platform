@@ -1,6 +1,6 @@
 {
   "name": "@titan-design/service-supervisor",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Render systemd user units and launchd plists for a long-running job",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,5 +1,17 @@
 # codewatch
 
+## 0.0.22
+
+### Patch Changes
+
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- Updated dependencies [6b652a8]
+- Updated dependencies [b937077]
+- Updated dependencies [3d19ff3]
+  - @titan-design/react-app@0.3.0
+  - @titan-design/code-read@0.3.6
+  - @titan-design/rpc-client@0.4.3
+
 ## 0.0.21
 
 ### Patch Changes

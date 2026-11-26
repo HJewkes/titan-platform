@@ -1,5 +1,15 @@
 # @titan-design/health
 
+## 0.2.2
+
+### Patch Changes
+
+- Updated dependencies [beff4cb]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+  - @titan-design/store-sqlite@0.6.0
+
 ## 0.2.1
 
 ### Patch Changes

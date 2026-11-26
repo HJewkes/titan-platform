@@ -1,5 +1,16 @@
 # @titan-design/agent-protocol
 
+## 0.11.0
+
+### Minor Changes
+
+- bd68bea: Export `canonicalJson` from agent-protocol as the one copy; agent-lifecycle now imports it. Output is byte-identical to the former copies.
+
+### Patch Changes
+
+- 81668be: Price `claude-fable-5-2` at its published rates: $8 input, $10 five-minute cache write, $16 one-hour cache write, $0.20 cache read and $40 output per million tokens.
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+
 ## 0.10.0
 
 ### Minor Changes

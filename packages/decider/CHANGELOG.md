@@ -1,5 +1,31 @@
 # @titan-design/decider
 
+## 0.7.1
+
+### Patch Changes
+
+- 1fc8813: Carry an edited decision note's new answer into the precedent ledger. A changed note is appended as a superseding revision row (`<key>@<n>`), so `LedgerStore.get` and `rows` return the current text while the ledger stays append-only and unchanged notes and active-work v1 rows still dedupe.
+- 5911f78: `toPrinciple` skips note-ref provenance when collecting cited ledger keys, now that a bullet's provenance can be a note ref.
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [0de5073]
+- Updated dependencies [beff4cb]
+- Updated dependencies [f012a1b]
+- Updated dependencies [5911f78]
+- Updated dependencies [84a7cc0]
+- Updated dependencies [bbe129b]
+- Updated dependencies [a56d49d]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [0910060]
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/memory@0.4.0
+
 ## 0.7.0
 
 ### Minor Changes

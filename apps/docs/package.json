@@ -1,6 +1,6 @@
 {
   "name": "titan-docs",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "The titan-platform docs site on react-ui, prerendered to static HTML and hydrated in the browser",
   "type": "module",

@@ -1,5 +1,15 @@
 # @titan-design/egress-scan
 
+## 0.7.1
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [b937077]
+- Updated dependencies [3d19ff3]
+  - @titan-design/fix-proof@0.9.1
+
 ## 0.7.0
 
 ### Minor Changes

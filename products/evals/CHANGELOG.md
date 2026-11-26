@@ -1,5 +1,82 @@
 # @titan-design/evals
 
+## 0.7.0
+
+### Minor Changes
+
+- 43544fd: Add `titan-evals bench run`, the model-routing bench skeleton. It runs one headless `claude -p` job per (case, arm),
+  block by block, with at most 6 in flight. Each job gets an `env -i` environment, an allowlisted PATH, its own HOME, a
+  dead-end proxy, and a per-run deny-list settings file. Rows are fsynced to `jobs.jsonl` (`titan.bench-job/v1`), and a
+  restart resumes, re-running an `infra` job once. Dispatch pauses under machine pressure and stops at the account's
+  seven-day cap. Tracks plug in through a small `prepare` / `score` / `cleanup` interface.
+
+### Patch Changes
+
+- 43544fd: Make `bench judge review-fa` work on a real review run: read the scorer's `cited` field, judge a false alarm with no citation as a whole review, rebuild case bundles from `--cases` and `--repo-root`, and add `bench judge review-fa-controls` to generate the controls.
+- 43544fd: Add the model-routing benchmark's implement-track case builder (TP-5756, S5). It joins Shepherd registrations (read-only), task files and main's squash merges into corpus rows tagged by kind, size and package group, scrubs each brief to title and done_when, and orders the eligible PRs into a seeded, stratified queue. Each candidate goes through `exportImplementTaskCases` alone, and a kept case gets a prepared base: a one-commit repo, installed offline and built, which `copyPreparedBase` copies per arm.
+- 43544fd: Add the bench I track: a per-arm copy of the prepared base with the design's implement prompt; scoring after exit on a fresh copy (touched-package build, own tests with one rerun of failing files, typecheck, then the withheld tests overlaid last) with a diff-size ratio and the patch kept; a post-hoc transcript audit that voids jobs reaching denied tools, proxy overrides or paths outside the job; and `bench oracle` for the no-model solvability check. `bench run` now selects the plan plugin for track p, and the plan-cases, judge-plan and report verbs are registered.
+- 43544fd: Add the bench judge core: a tool-less claude-print judge no arm shares, batches with planted controls (rerun once, then void), both-order pairwise agreement, a seeded second judge with Cohen's kappa, and the R false-alarm judge.
+- 43544fd: Add the bench meter: transcript to tokens by model, list cost, effort and model seen, with a CLI cost cross-check.
+- 43544fd: Add the bench P track: a case builder over multi-slice parents and large single-PR tasks (read-only Shepherd registrations, task files, origin/main) with a stratified, prefix-balanced queue and a brief scrub; a plan job on a seeded one-commit base repo; slice-count error and file-recall scoring; the landed reference; and the pairwise plan judge against the O-med anchor with its three controls.
+- 43544fd: Add the bench report: per-track arm tables over complete blocks only (Wilson CIs, R by case type, I solved, P win rate against the anchor), paired bootstrap and exact McNemar comparisons against O-med with Holm and MDEs, cost per success with a case-resampling CI, the routing table with its "too thin, keep production" rule, two cost ledgers, and `report.json` plus a `REPORT.md` skeleton. The `bench report` verb lives in `cli-report.ts` (`registerReport`).
+- 43544fd: Score review benchmark jobs at three catch levels (verdict, path, strict), add `bench rescore`, and wire `bench judge` and `bench cases --track i`.
+- 43544fd: Add the bench's review track: `bench cases --track r` samples real-defect, planted and clean cases into a stratified queue, and `bench run --track r` reviews each case's bundle and scores its verdict block and citations. `bench run` now meters every job.
+- d7af847: Register an explainer-resolve eval unit gating the resolve stage's emphasis, word-budget, slot, template, chart and sim-cut checks, and list it as a child of explainer-video.
+- 9020042: Share one scratch-clone helper between the implement-task screen and the later-fix attach step, so the repo-name check and the shared no-checkout clone live in one place.
+- 96e6f29: Private-case exclusion decides which initiatives agents may read through pm's `agentAccess`, the brief plus the charter's human-only list, instead of its own brief parser. A human-only initiative whose brief says agent-visible is excluded, and an unreadable brief or charter excludes (TP-5800).
+- Updated dependencies [61a7e30]
+- Updated dependencies [e11e750]
+- Updated dependencies [3fe2120]
+- Updated dependencies [81668be]
+- Updated dependencies [8a69e02]
+- Updated dependencies [0de5073]
+- Updated dependencies [4d349a1]
+- Updated dependencies [beff4cb]
+- Updated dependencies [bd68bea]
+- Updated dependencies [f012a1b]
+- Updated dependencies [25f5d83]
+- Updated dependencies [73cd2ea]
+- Updated dependencies [8286432]
+- Updated dependencies [dc4eb2c]
+- Updated dependencies [8fb9ab8]
+- Updated dependencies [4ed6420]
+- Updated dependencies [bbe129b]
+- Updated dependencies [62066a3]
+- Updated dependencies [07e7f6d]
+- Updated dependencies [13c9b1c]
+- Updated dependencies [ff39530]
+- Updated dependencies [a56d49d]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+- Updated dependencies [07330ed]
+- Updated dependencies [0cc16f2]
+- Updated dependencies [efa6e58]
+- Updated dependencies [f34bb79]
+  - @titan-design/review-panel@0.10.0
+  - @titan-design/agent@0.8.0
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/pm@0.12.0
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/workflow@0.15.1
+  - @titan-design/evidence@0.6.0
+  - @titan-design/hitl@0.10.2
+  - @titan-design/review-workflow@0.2.0
+  - @titan-design/health@0.2.2
+
 ## 0.6.8
 
 ### Patch Changes

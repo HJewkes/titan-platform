@@ -1,5 +1,29 @@
 # @titan-design/owner-queue
 
+## 0.9.0
+
+### Minor Changes
+
+- 078ae3a: Add the `delete-branch` owner op (`{kind, repo, branch, tipSha}`) and its factory effect (TP-3623). The factory re-reads every check before it deletes: a managed repo (`shepherd.repos`), a valid branch name under an allowed prefix (`shepherd.consoleAnswers.branchPrefixes`, default `scratch/`), not the default branch, not protected, no open PR on or into it, no live Shepherd run on it and no agent on its own `agent-chat/<name>` branch. A tip that moved answers `moved`. The op maps to `destructive-remote`, whose owner-remote row denies it, so the console cannot run it until the authority table says otherwise. The console pins no PR for an op that names none.
+- 9353f86: Add the `host-command` owner op (TP-5265): a deposit may name one vetted owner-only host command by id, starting with `broker-restart-window`, and never a path or argument. The factory's effect starts the vetted script beside the installed agent-chat CLI as a transient `systemd-run --user` unit, outside any agent session's process tree. The op sits under `destructive-local`, which denies owner-remote, until the owner picks its authority row.
+- 8231dca: Export `parsePrKey`, the one reader of `pr:` keys, and use it in merge, stale, supersede and recheck. A short sha after `@` no longer counts as a pin in recheck, and stale now trims keys as supersede does.
+- d77960e: A sitting deposit: a `do` deposit may carry `steps` (1 to 20, each a title, a command, an optional op and an optional verify hint), filed as one item that counts once against the 5-per-asker cap. The new `@titan-design/owner-queue/sitting` entry records a step done or skipped (`recordStep`, asker only, first outcome stands) and closes the sitting with a tally answer when every step has an outcome; `withStepOutcomes` reads them back. `titan-console inbox step <id> <n> --done|--skipped --as <asker> --actor <seat>` runs it, and the inbox page lists a sitting's steps in order with each status and a copy button per command; the row's tap is the current step's op, through the existing owner-op tap.
+- dcfbadd: Add a strict `start-session` owner op (session name, profile, host, `least-used` or a named account, absolute cwd and brief path, surface, Remote Control, optional brief sha256) and a `sessionKey` helper. `opKeys` keys the op `session:<name>`, which merges, so two deposits starting one session are one item.
+
+### Patch Changes
+
+- Updated dependencies [25f5d83]
+- Updated dependencies [73cd2ea]
+- Updated dependencies [8286432]
+- Updated dependencies [dc4eb2c]
+- Updated dependencies [8fb9ab8]
+- Updated dependencies [4ed6420]
+- Updated dependencies [17d1110]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/pm@0.12.0
+  - @titan-design/evidence@0.6.0
+
 ## 0.8.2
 
 ### Patch Changes

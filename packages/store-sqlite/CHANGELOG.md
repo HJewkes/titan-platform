@@ -1,5 +1,14 @@
 # @titan-design/store-sqlite
 
+## 0.6.0
+
+### Minor Changes
+
+- beff4cb: `CacheBlobTable` gains `delete(namespace, model)`, which drops every row under that pair and returns the count, and `models(namespace)`, which lists the models holding rows there with their row counts (TP-220). code-graph's `embedSnapshot` result now carries `staleVectors`, the symbol vectors cached under another model identity, and the new `pruneStaleSymbolVectors(store, model)` deletes them, returning `{ deleted, models }`. `embedSnapshot` does not prune on its own.
+- 67dd3fc: Record a hash of each migration's declared `definition` in `_migration` and throw `MigrationDriftError` (or warn, with `onDrift: "warn"`) when an applied migration's definition has changed. Rows without a hash are backfilled, never treated as drift.
+- c55981b: Add `sqlMigration({ version, name, sql })`, a migration whose SQL is both what runs and its `definition`, and export `definitionHash` so a drift check can read the recorded hash.
+- a87852f: Add an opt-in contentless trigram twin to the span FTS tables. `spanFtsTablesDdl({ trigram: true })` (or the `spanFtsTrigram` kit key) creates `<name>_tri`; `index(span, text, { trigram: true })` writes its row, `searchTrigram(expression, limit?, scope?)` finds substrings inside tokens, and `clearIndex`, `purgeOwner`, `purgeSource` and `orphanRatio` cover both tables. Default behaviour is unchanged.
+
 ## 0.5.0
 
 ### Minor Changes

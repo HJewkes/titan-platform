@@ -1,5 +1,29 @@
 # @titan-design/memory
 
+## 0.4.0
+
+### Minor Changes
+
+- 5911f78: `Provenance` now accepts `{ noteRef }` (`note:<slug>/<file>.md`) as well as `{ sessionRef, byteOffset? }`. The store persists and reloads both shapes, and `curate()` rejects a malformed note ref.
+- 84a7cc0: `proposeDestination` now proposes `reference:<project>` for groups made only of reference facts and `config` for groups naming a setting, permission, hook or environment variable. Both rules run before the CLAUDE.md rules, so fewer groups grow a CLAUDE.md.
+- 0910060: Send the reflector only the playbook bullets that match the session diary, best match first and capped by the new `maxBullets` option (default 40), instead of the whole playbook on every iteration.
+
+### Patch Changes
+
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [beff4cb]
+- Updated dependencies [cffaab7]
+- Updated dependencies [e93951d]
+- Updated dependencies [b33b361]
+- Updated dependencies [144f696]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [3fec5b7]
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/retrieval@0.5.0
+
 ## 0.3.1
 
 ### Patch Changes

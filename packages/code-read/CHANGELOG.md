@@ -1,5 +1,19 @@
 # @titan-design/code-read
 
+## 0.3.6
+
+### Patch Changes
+
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [beff4cb]
+- Updated dependencies [66eef82]
+- Updated dependencies [838103e]
+- Updated dependencies [29b3b5f]
+- Updated dependencies [b937077]
+- Updated dependencies [3d19ff3]
+  - @titan-design/code-graph@0.20.0
+
 ## 0.3.5
 
 ### Patch Changes

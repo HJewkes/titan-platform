@@ -1,5 +1,113 @@
 # titan-console
 
+## 0.15.0
+
+### Minor Changes
+
+- b592bca: Answer a plain owner-queue deposit from the inbox: a deposit with no op now offers Answer instead of Run on terminal, and the owner's option pick or typed text is filed beside the deposit through owner-queue's `writeAnswer`, so the deposit leaves the open list and a replayed confirm answers already (TP-6290).
+- 8513e1a: Home's Needs you region lists each open task's owner-only steps (kind and note, initiative, a tap to the task page), and a human-action or human-only task with no steps by its title. `work.tasks` rows carry `owner_steps` and `ownerTagged`, and `work.tasks` takes `ownerOnly`.
+- 25308ad: Add `titan-console inbox answer <id> --as <seat>`, a local verb that prints the owner's answer to a deposit the seat filed.
+- 3bb4e0b: Add an `inbox.context` read that returns one open inbox item's context and its recommendation's rationale and cite, which `inbox.list` leaves out of every row.
+- 8fd87c3: Inbox rows offer the Release hold tap on a g10 hold-release instead of Run on terminal, and show who asked, the initiative link, what an answer unblocks now and what a hard blocker blocks (TP-6158, TP-6159).
+- 09595ba: Filter the Knowledge Browse tab by note tag and note kind, each kept in the URL, and show a note's tags on its row (TP-6239).
+- 7f95ad4: `titan-console rounds sweep` falls back to `<active-work root>/claude-channels/sources/autonomy/decisions.md` when neither `--decisions` nor `TITAN_CONSOLE_DECISIONS_FILE` is set, and prints `decisions: <path>`. An absent default file keeps the "no decisions file" line.
+- 08a77c3: Open the matching video from `#/theater/latest?series=` (or `tag`, `subject`) and `#/theater/@alias`, keeping `t=` and `edit=` (TP-6277).
+- 97955ae: Show the day's explainer video on Home with a poster and a link to the theater, falling back to the previous UTC day (TP-6188).
+- d77960e: A sitting deposit: a `do` deposit may carry `steps` (1 to 20, each a title, a command, an optional op and an optional verify hint), filed as one item that counts once against the 5-per-asker cap. The new `@titan-design/owner-queue/sitting` entry records a step done or skipped (`recordStep`, asker only, first outcome stands) and closes the sitting with a tally answer when every step has an outcome; `withStepOutcomes` reads them back. `titan-console inbox step <id> <n> --done|--skipped --as <asker> --actor <seat>` runs it, and the inbox page lists a sitting's steps in order with each status and a copy button per command; the row's tap is the current step's op, through the existing owner-op tap.
+- 423e1b7: Add `prTaps.prepare` and `prTaps.act`, so the owner closes or merges a PR from the console without an agent's deposit. The act is owner-write only, pins the posted op to the head the prepare read back, and refuses a confirm once the PR's head or read-back moved.
+- 50b9788: Add the weekly sheet (TP-5453 P16). `active-work plan sheet generate` writes `<initiative>/plan/sheets/<week>.md` from the initiative's outcomes, bets, scorecard week rows and stored prediction checks, in five sections: statement, moved, not moved, proposed bets and proposed stops. Every bet line names its intent line and metric, and any bet line that cites no intent line is flagged and defaults to hold. A bet with no prediction check reads `unread`. `plan sheet show` reads a sheet back. `plan sheet apply-defaults` records the sheet's defaults as its decisions, and only once the deadline has passed with no answer recorded. Reading a sheet never records anything. The console initiative page shows the newest sheet.
+
+### Patch Changes
+
+- 0fe5836: An agent's Runs link each task id to its task page and offer an "All runs" link to the filtered sessions list when more than 50 runs exist.
+- 398e2b1: `coord.cards` reads task titles for the cards' own task ids instead of the whole task tree, and `coord.cards` and `coord.shipped` share the inbox's kept finished-runs read.
+- 998aacb: Open console links to outside pages in one tab: the anchor Links no longer also call `window.open`, which opened each URL twice (TP-6235).
+- b1a9f4b: Answer an agent's chat question from the console inbox: an Answer button opens a sheet with the question, the asker's options as chips that fill a text field, and Confirm once there are words (TP-6289).
+- 0da1554: Group the inbox's planning list by asker, largest group first with a count per group, each group closed unless it holds the linked item (TP-6262).
+- 77a0f59: Link an initiative's Tasks tab to the filtered Tasks page, and each note and source title to its Knowledge record (TP-6231).
+- 26d6b71: Offer a Retry tap on the Tasks, Rounds and session pages when their read fails, so a phone no longer needs a full reload.
+- 78f2fcc: The console perf budgets set every read's time limit to 4 times the median CI measures, rounded up to 50 ms.
+- 46a05fc: The console perf budgets bound the bytes each read pulls from its upstreams, and the work.task and work.tasks time budgets now sit near their measured cost.
+- 68d5529: The rounds page folds Sent and Withdrawn rounds behind a count, so the open rounds lead; a `?set=` view keeps every group expanded.
+- 9373486: Render the session Conversation tab with react-ui's `SessionConversation` in place of the local stand-in: messages now always show, and each turn's tool calls sit in a group that starts open for the first or deep-linked turn (TP-6344).
+- cbe9999: Count live `ran` edges as task links: a task page lists sessions linked by an edge as well as by origin task ids, and a session row's task ids include the edge targets (TP-6279).
+- 58f8551: Show each session's title in the Sessions list: a Title column on desktop and a wrapping line on the phone card (TP-6171).
+- ef6c296: List the agents working a task on its task page, each with a state pill and a link to the agent (TP-6233).
+- ba2542b: Mark a task done, and undo it, from its task page through the owner-write `work.task-done` (TP-6296).
+- c979c1a: A task's page adds a Related panel: its parent, dependencies and open children as task links, each deliverable with its record title or "no record", and a warning when the deliverable registry is unavailable.
+- 3ff6493: Render a task stage the console does not know as a neutral pill with the raw stage text instead of throwing (TP-6223).
+- 078ae3a: Add the `delete-branch` owner op (`{kind, repo, branch, tipSha}`) and its factory effect (TP-3623). The factory re-reads every check before it deletes: a managed repo (`shepherd.repos`), a valid branch name under an allowed prefix (`shepherd.consoleAnswers.branchPrefixes`, default `scratch/`), not the default branch, not protected, no open PR on or into it, no live Shepherd run on it and no agent on its own `agent-chat/<name>` branch. A tip that moved answers `moved`. The op maps to `destructive-remote`, whose owner-remote row denies it, so the console cannot run it until the authority table says otherwise. The console pins no PR for an op that names none.
+- ac4ed66: Open the linked inbox item, not the bare inbox, when a top-blocker row on Home is pressed.
+- 1e24917: Draw the home count tiles with react-ui `CardStat` instead of a hand-built card.
+- 41e50c4: Offer the gate tap on a replay-diverged gate (TP-6194). A gate joined to a live Shepherd row whose stall reason reads "replay diverged" now gets the same resolve-gate action as a healthy row, pinned to that row's PR and head, since the diverged sweep merges the parked run on the owner's merge answer at that head (TP-3918). A gate with no Shepherd row stays on the terminal with its command and reads "no live Shepherd row pins this gate's PR and head". `DIVERGED_HOLD` is removed.
+- eaf0d1c: A `kind: "feedback"` round is now refused when it carries `planApprovals` or any pick-one question, so a feedback round cannot hide a decision from the inbox (TP-5472).
+- f8bb465: The tap sheet now shows a landed plan, a plan approval and a permission answer as success instead of a warning.
+- caf2e27: Answers to a chat_ask now post through the same broker client as verdicts, so a broker reason or transport error that echoes the UI token no longer carries it to the browser.
+- e5bc26e: Stop exporting file-local symbols in apps and products (TP-5821).
+- 463944e: Show a refused tap as one plain sentence with a next step (tap again later, read the item again, or use the terminal) instead of the factory's raw refusal code.
+- Updated dependencies [d8294fb]
+- Updated dependencies [3fe2120]
+- Updated dependencies [8a69e02]
+- Updated dependencies [0de5073]
+- Updated dependencies [beff4cb]
+- Updated dependencies [f012a1b]
+- Updated dependencies [e114f17]
+- Updated dependencies [1fc8813]
+- Updated dependencies [5911f78]
+- Updated dependencies [078ae3a]
+- Updated dependencies [ecdddab]
+- Updated dependencies [25f5d83]
+- Updated dependencies [893d4e7]
+- Updated dependencies [73cd2ea]
+- Updated dependencies [eabd299]
+- Updated dependencies [9353f86]
+- Updated dependencies [8231dca]
+- Updated dependencies [d77960e]
+- Updated dependencies [8286432]
+- Updated dependencies [dc4eb2c]
+- Updated dependencies [8fb9ab8]
+- Updated dependencies [4ed6420]
+- Updated dependencies [bbe129b]
+- Updated dependencies [6b652a8]
+- Updated dependencies [13c9b1c]
+- Updated dependencies [ff39530]
+- Updated dependencies [4eb5c07]
+- Updated dependencies [f5c87b7]
+- Updated dependencies [a56d49d]
+- Updated dependencies [dcfbadd]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [209305e]
+- Updated dependencies [b937077]
+- Updated dependencies [17d1110]
+- Updated dependencies [1029d2e]
+- Updated dependencies [c759bad]
+- Updated dependencies [d3d1d5b]
+- Updated dependencies [e5d8d29]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [3d19ff3]
+- Updated dependencies [62d9877]
+- Updated dependencies [07330ed]
+- Updated dependencies [d0b9edf]
+- Updated dependencies [7acf411]
+  - @titan-design/agent-dispatch@0.11.0
+  - @titan-design/agent@0.8.0
+  - @titan-design/app-paths@0.2.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+  - @titan-design/daemon@0.10.0
+  - @titan-design/decider@0.7.1
+  - @titan-design/owner-queue@0.9.0
+  - @titan-design/github@0.14.0
+  - @titan-design/pm@0.12.0
+  - @titan-design/session-graph@0.20.0
+  - @titan-design/react-app@0.3.0
+  - @titan-design/session-analytics@0.20.0
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/rpc-client@0.4.3
+  - @titan-design/coordinator@0.7.4
+
 ## 0.14.6
 
 ### Patch Changes

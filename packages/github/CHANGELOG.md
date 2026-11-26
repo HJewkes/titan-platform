@@ -1,5 +1,20 @@
 # @titan-design/github
 
+## 0.14.0
+
+### Minor Changes
+
+- ecdddab: Add `readPrOutcome` to the GitHub port: a PR's state (`open`, `closed` or `merged`), `mergedAt`, `closedAt`, each review's `{state, submittedAt}` and each commit's committed date, read in one GraphQL call over either transport. A malformed answer throws `PrOutcomeMalformed`; past `PR_OUTCOME_CAP` (100) reviews or commits `truncated` is set. `fakeGitHub()` seeds outcomes through `fake.outcomes`.
+- d0b9edf: GitHubPort gains `refActivity`, a branch's repository activity with the account that made each push. Shepherd keeps and carries the owner's release approve-merge answer only to a head that the configured `shepherd.releaseAppLogin` (a `[bot]` login) pushed. It also counts an added CHANGELOG.md as a release file only when the package.json beside it is modified (TP-5606).
+
+### Patch Changes
+
+- 893d4e7: Land carries an owner's approve-merge approval to a head update-branch moved to only when that head is a clean merge-up
+  of the approved head: its first parent the approved head, its second on the base branch, and its tree git's clean
+  merge-tree of the two (TP-6006). A two-parent push with any other tree, or a failed read, asks approve-merge again. The
+  fake GitHub's update-branch commits now carry that merge tree, and `fake.cleanMergeTree` answers it.
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+
 ## 0.13.0
 
 ### Minor Changes

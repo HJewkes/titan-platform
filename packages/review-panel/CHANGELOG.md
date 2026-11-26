@@ -1,5 +1,40 @@
 # @titan-design/review-panel
 
+## 0.10.0
+
+### Minor Changes
+
+- 61a7e30: An accepted verdict carries the reviewer's Check-candidates: `checkCandidatesFields(text)` returns `checkCandidates` and `checkCandidatesWarning`, which `acceptVerdict` and Shepherd's external-review acceptor spread on MERGE and FIX_FIRST alike. The verdict never reads them.
+- e11e750: An adversary fix round gets a focus section (TP-6412). Given a usable fix-round scope, `shapeBrief("adversary", …)` adds a
+  section that points at the change since the last reviewed head, its line ranges, and the open findings, while the brief
+  still reads the whole PR's diff and carries no unchanged-line rule. Every other member's brief still drops the scope.
+  Under `shepherd.review.scopedRereview: on`, Shepherd passes the scope to the adversary member only, and records its
+  `sh-review` result as `scopeFocus: true` rather than `scoped`. Under `shadow` and `off` the adversary brief is unchanged.
+- 62066a3: Add `parseCheckCandidates`, which reads a reviewer's optional `Check-candidates:` block (class key, route, rule sketch per finding) against the fixed `CHECK_CLASSES` vocabulary, keeping unknown keys as `other:<slug>` and dropping a faulty block whole with one closed warning. `reviewerBrief` now asks for the block through `CHECK_CANDIDATES_RULE` and lists every class key under its default route.
+- 07e7f6d: The reviewer brief now tells reviewers to leave out non-blocking notes that are cosmetic, on behaviour already on the base, or on gaps the PR description states, unless one would mislead a reader. It never covers a blocking item: a stated gap that leaves the done-when unmet, or a pre-existing defect the PR now relies on, still blocks. Cosmetic notes are never filed as follow-ups; a non-cosmetic stated gap may be. A convergence review still lists Nit and Pre-existing items in its own section.
+
+### Patch Changes
+
+- 0de5073: An adversary Authority label glued to an identifier character is still a reading (TP-6624). `Authority-gate: widened` and
+  `Authority_level: widened` read widened, and any other line whose fold starts `authority` (`Authority-widens: ...`, an
+  `authorityLevel` lead) reads malformed, so it can never sit beside `Authority: unchanged` unread. session-read exports
+  `foldLabelledLine`; its CI-policy reading does not change. Factory bumps `sh-await-verdict`, whose output changes for such
+  replies.
+- 4d349a1: An adversary MERGE refused as `authority_missing` because a prose line starts with the word Authority now quotes that line, and the correction prompt asks the reviewer to reword it so it does not start with Authority. The adversary brief says no other line may start with Authority. The Authority parser is unchanged, so such a line still reads malformed and is never read as unchanged (TP-6608).
+- 37bd17f: Export `citationsIn` and `citationHolds` from evidence; review-panel's aggregate and the evals replay score use them instead of their own copies of the `path:line` reader.
+- 3d19ff3: Stop exporting symbols used only inside their own file; no public API change.
+- Updated dependencies [0de5073]
+- Updated dependencies [f012a1b]
+- Updated dependencies [bbe129b]
+- Updated dependencies [a56d49d]
+- Updated dependencies [b937077]
+- Updated dependencies [83ed2aa]
+- Updated dependencies [37bd17f]
+- Updated dependencies [3d19ff3]
+  - @titan-design/session-read@0.18.0
+  - @titan-design/fix-proof@0.9.1
+  - @titan-design/evidence@0.6.0
+
 ## 0.9.1
 
 ### Patch Changes

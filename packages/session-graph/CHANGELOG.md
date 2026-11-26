@@ -1,5 +1,40 @@
 # @titan-design/session-graph
 
+## 0.20.0
+
+### Minor Changes
+
+- bbe129b: Restore the `built_on` relation (pr --built_on--> branch). The `pr_create` event's command half now carries `headRef` and `base`, read from `gh pr create --head`/`-H` and `--base`/`-B`, or from the checked-out branch when no head is named and nothing in the command switches it; `RELATIONS.BUILT_ON` documents the relation. session-graph migration 16 stores the head, base and call time on `pr_create_observation`, and `reconcile` writes one live `built_on` edge per create whose result named a PR, with the base in `attrs` and a `builtOn` count. A failed create writes no edge. Rows indexed before migration 16 gain edges on the next rebuild.
+- 4eb5c07: session-graph now owns the drain ingest: `ingestDrain(graph, { limit })` clusters tool-result errors into recurring failure templates and returns a `DrainSummary`, `listTemplates(graph, limit)` reads them, and `DRAIN_TEMPLATE_MIGRATION` and `DRAIN_SCREENED_MIGRATION` carry the template, occurrence, clusterer_snapshot and drain_screened tables at versions 2000 and 2002. It adds a dependency on `@titan-design/cluster`. session-miner's `drain.ingest` and `drain.templates` commands become thin wrappers over them.
+- f5c87b7: `session_origin` gains a nullable `execution_phase` column (migration 17, "origin execution phase"), and `ResolvedOrigin` carries `executionPhase`. A launcher's resolver sets it to the phase its execution ledger records for the session, so a session's outcome is queryable without reading the transcript.
+- 209305e: Add `sessionsTouchingFiles` to session-graph (TP-5453 P11b-1). It lists the sessions with a live `touched`
+  edge to any of the given repo-relative files since a time, newest first and capped. Each row has the
+  session's cwd, title, the matching file refs and the initiatives its task edges name. `context.brief` in
+  active-work uses it to add a recent-sessions section for the files an assignment names. The section covers
+  the last 14 days, holds at most 4 lines and stays within 500 bytes. It lists a session only when the agent
+  view shows its initiative, so sessions in owner-only initiatives, or in no initiative, never appear.
+- 7acf411: `why <path>:<line>[-<end>]` runs `git blame -L` at HEAD and maps each commit to its PR (the squash subject's `(#n)`), the tasks behind it and the sessions that did the work, printing the rung that found each: `trailer`, `pr-subject`, `pr-task`, `refs`, `session-ran`. An `Agent-Session:` trailer is read first. Sessions and tasks in an initiative the caller may not see are counted in `hidden`, never named. session-graph exports the walk as `commitLineage` (TP-2771).
+
+### Patch Changes
+
+- eabd299: Treat prompts in a transcript with no `promptSource` and an `sdk-cli` entrypoint as headless sdk prompts, so older spawned-agent briefs stay out of prompt spans unless `indexSdkPrompts` is set. Lines that carry a `promptSource` keep their classification.
+- b937077: Stop exporting file-local helpers that nothing imports (TP-5793).
+- Updated dependencies [81668be]
+- Updated dependencies [0de5073]
+- Updated dependencies [beff4cb]
+- Updated dependencies [bd68bea]
+- Updated dependencies [f012a1b]
+- Updated dependencies [bbe129b]
+- Updated dependencies [a56d49d]
+- Updated dependencies [67dd3fc]
+- Updated dependencies [c55981b]
+- Updated dependencies [a87852f]
+- Updated dependencies [b937077]
+- Updated dependencies [83ed2aa]
+  - @titan-design/agent-protocol@0.11.0
+  - @titan-design/session-read@0.18.0
+  - @titan-design/store-sqlite@0.6.0
+
 ## 0.19.0
 
 ### Minor Changes
