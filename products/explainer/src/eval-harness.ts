@@ -34,6 +34,8 @@ export const judgeLabel = (config: JudgeConfig): string =>
 export interface JudgeCall<T> {
   prompt: string;
   schema: ZodType<T>;
+  /** Absolute paths to PNG or JPEG files the judge looks at; omitted for a text-only call. */
+  images?: readonly string[];
 }
 
 export type JudgeReply<T> =
@@ -80,14 +82,20 @@ function codexSchema<T>(schema: ZodType<T>) {
 }
 
 function codexHarness(config: JudgeConfig, adapter: HarnessAdapter<"codex">, cwd: string): JudgeHarness {
-  return async <T>({ prompt, schema }: JudgeCall<T>): Promise<JudgeReply<T>> => {
+  return async <T>({ prompt, schema, images }: JudgeCall<T>): Promise<JudgeReply<T>> => {
     const result = await adapter.run<T>({
       harness: "codex",
       prompt,
       cwd,
       target: { kind: "fresh", namespace: "explainer-eval" },
       wallTimeMs: config.wall_time_s * 1000,
-      native: { model: config.model, sandbox: "read-only", outputSchema: codexSchema(schema), ...(config.reasoning_effort ? { reasoningEffort: config.reasoning_effort } : {}) },
+      native: {
+        model: config.model,
+        sandbox: "read-only",
+        outputSchema: codexSchema(schema),
+        ...(images?.length ? { images } : {}),
+        ...(config.reasoning_effort ? { reasoningEffort: config.reasoning_effort } : {}),
+      },
     });
     const spend = codexSpend(result);
     if (!result.ok) return { ok: false, reason: `${result.failure.kind}: ${result.failure.reason}`, ...spend };
@@ -107,11 +115,12 @@ export function createJudgeHarness(config: JudgeConfig, deps: JudgeHarnessDeps =
     return codexHarness(config, adapter, cwd);
   }
   const run = deps.runAgent ?? runAgent;
-  return async <T>({ prompt, schema }: JudgeCall<T>) =>
+  return async <T>({ prompt, schema, images }: JudgeCall<T>) =>
     claudePrintReply(
       await run<T>({
         harness: "claude-print",
         prompt,
+        ...(images?.length ? { images } : {}),
         cwd,
         model: config.model,
         outputSchema: schema,

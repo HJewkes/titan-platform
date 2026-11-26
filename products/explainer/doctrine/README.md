@@ -19,6 +19,7 @@ Two registries share this directory, with a pinned data file beside them. Keep t
 | `beats/<type>.yaml` | One `beat-spec/v1` per beat type: the builder's packet, and a ref to its zod slot schema in `src/beat-slots.ts` | `loadBeatSpecs` |
 | `sims/<id>.yaml` | One `sim-model/v1` per sim model: its params and bounds, the statistics a claim may name with each tolerance and its `why`, and `fittedFrom`; the code model is in `SIM_MODELS` | `loadSims` |
 | `qa/gate-profile.yaml` | The qa stage's gate profile (`explainer.qa-gate-profile/v1`): the render-qa finding kinds that fail the stage and the inspector thresholds, by default and per video type | `loadQaGate` |
+| `qa/camera-path.yaml` | The camera-path rows' thresholds (`explainer.camera-path/v1`): velocity and jerk limits, each row's severity, the caption line, the sample multiple and the assumed easing | `loadCameraPathDoctrine` |
 | `style-packs/<id>.yaml` | One `style-pack/v1` per style pack: existing titan-design token names by slot | `loadStylePacks` |
 | `style-tokens.json` | The token names of react-ui's `tokens.css`, the file the explainer template imports; rewrite it with `scripts/pin-style-tokens.mjs`, never by hand | `loadStylePacks` |
 | `guides/planner/<type>.md` | Generated planner guides; rewrite them with `explainer guide types`, never by hand | `guideForType` |

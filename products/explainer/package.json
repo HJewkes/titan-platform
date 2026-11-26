@@ -16,6 +16,7 @@
     "doctrine",
     "stage-bumps",
     "rubrics",
+    "assets",
     "README.md"
   ],
   "author": "Henry Jewkes",

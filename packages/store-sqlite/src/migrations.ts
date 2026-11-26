@@ -16,6 +16,12 @@ export interface Migration {
   up: (db: Db) => void;
 }
 
+/** A migration whose one statement text is both what runs and what is hashed, so the two cannot drift apart. */
+export function sqlMigration(spec: { version: number; name?: string; sql: string }): Migration {
+  const { version, name, sql } = spec;
+  return { version, ...(name === undefined ? {} : { name }), definition: sql, up: (db) => db.exec(sql) };
+}
+
 export interface RunMigrationsOptions {
   /** What an edited, already-applied migration does: throw (the default) or emit a process warning and go on. */
   onDrift?: "error" | "warn";
@@ -122,7 +128,8 @@ function checkDefinition(db: Db, m: Migration, recordedHash: string | null, onDr
   process.emitWarning(drift);
 }
 
-function definitionHash(m: Migration): string | null {
+/** The hash recorded for an applied migration; null for one that declares no definition. */
+export function definitionHash(m: Migration): string | null {
   if (m.definition === undefined) return null;
   return createHash("sha256").update(m.definition).digest("hex");
 }

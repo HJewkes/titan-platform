@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the track file schema ignores unknown fields",
+      "file": "products/explainer/src/camera-track-file.ts",
+      "find": "const CameraTrackFileSchema = z.strictObject({",
+      "replace": "const CameraTrackFileSchema = z.object({",
+      "kills": [
+        "camera track file a track file with an unknown field is refused"
+      ]
+    }
+  ]
+}

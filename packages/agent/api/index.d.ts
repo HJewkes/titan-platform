@@ -47,6 +47,8 @@ interface CodexNativeOptions<T> {
     sandbox?: CodexSandbox;
     approvalPolicy?: CodexApprovalPolicy;
     outputSchema?: CodexOutputSchema<T>;
+    /** Absolute paths to PNG or JPEG files, passed as one `-i` each. Not yet proven against a live Codex. */
+    images?: readonly string[];
 }
 interface ClaudeCodeRunRequest<T = string> extends BoundedRunBase {
     harness: "claude-code";
@@ -131,6 +133,8 @@ interface AgentRunConfig<T = string> {
     /** Defaults to `claude-code` (the SDK). `claude-print` spawns `claude -p` and needs no `CLAUDE_CODE_OAUTH_TOKEN`. */
     harness?: AgentRunHarness;
     prompt: string;
+    /** Absolute paths to PNG or JPEG files, sent before the prompt in this order. Only the `claude-print` harness accepts them. */
+    images?: readonly string[];
     cwd: string;
     /** Required: the SDK's own default is unlimited. Must be positive. */
     maxTurns: number;

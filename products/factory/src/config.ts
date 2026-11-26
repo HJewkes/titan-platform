@@ -12,6 +12,7 @@ import { SeatDigestPacingSchema } from "./shepherd/seat-digest-pace.js";
 import { VisualThresholdSchema } from "./shepherd/visual-threshold-config.js";
 import { VisualGateSchema } from "./shepherd/visual-gate-config.js";
 import { RedSeatConfigSchema } from "./shepherd/red-seat-config.js";
+import { BranchPrefixSchema } from "./owner-ops/branch-policy.js";
 
 /** execFile throws on a NUL byte, which would fail the post-merge step after the merge instead of at config load. */
 const noNul = z.string().refine((value) => !value.includes("\0"), "must not contain a NUL byte");
@@ -245,7 +246,7 @@ export const FactoryConfigSchema = z.object({
       /** Paces each seat's Shepherd digest (TP-4207); absent sends every change on the sweep that sees it. */
       seatDigest: z.strictObject({ pacing: SeatDigestPacingSchema.optional() }).optional(),
       /** Decisions 422 and 423's stopgaps, each off when absent. `twoMergeRelease` other than `off` gives a g10-adversary hold Shepherd's
-       * own adversary member; `shadow` records where that member's MERGE and the correctness MERGE would release the hold, `on` releases it.
+       * own adversary member; `shadow` records where that member's clean MERGE would release the hold, `on` releases it (TP-6767).
        * `heldRepair: on` lets a g10 hold gate only the merge, so its run repairs as usual. `noReproProceed: on` lets a test-only PR whose
        * diff is tests alone go to review on a vacuous or test-less fix-proof, recorded as unverified; any source change keeps NO_REPRO.
        * `nonSourceNoRepro: record-fact` does the same for any non-security PR whose every path is tests, workflows, changesets or
@@ -270,12 +271,11 @@ export const FactoryConfigSchema = z.object({
       visualGate: VisualGateSchema.optional(),
       releaseAppLogin: z.string().regex(/^[^\s[\]]+\[bot\]$/, "must be an App's <app-slug>[bot] login").optional(), // Only a head this App pushed keeps the owner's release answer (TP-5606).
       /**
-       * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer
-       * read out of `roundsDir`. No token: any same-user caller can post, as for gateNotify. Absent means the route 404s.
-       * `actionsDir` also mounts `POST /owner/console-action`, which resolves an approve-merge gate as owner-remote from the
-       * console inbox's action record read out of that dir; absent means that route 404s.
+       * Mounts `POST /gates/answer-ship`, which resolves an approve-merge gate as owner-remote from a console Ship answer in `roundsDir`; no token,
+       * as for gateNotify. `actionsDir` also mounts `POST /owner/console-action`, which acts on the console's action record in that dir. Absent, each
+       * route 404s. `branchPrefixes` are the branches a delete-branch op may name, in `shepherd.repos` only; absent means `scratch/` alone.
        */
-      consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional() }).optional(),
+      consoleAnswers: z.strictObject({ roundsDir: absolutePath, actionsDir: absolutePath.optional(), branchPrefixes: z.array(BranchPrefixSchema).min(1).optional() }).optional(),
       /** Off when absent. `shadow` records where a visual approve-merge gate would spawn its review packager; `on` spawns it. */
       visualPacket: z.enum(["off", "shadow", "on"]).optional(),
       /** Per repo, the visual-diff threshold the merge evidence measures against; read at each evidence step. */

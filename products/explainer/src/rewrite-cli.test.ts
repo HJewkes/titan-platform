@@ -8,6 +8,7 @@ import { runRewriteCli, type RewriteCliDeps } from "./rewrite-cli.js";
 import { BEATS, cuedChoppy, compliant, fakeRewriter, type Rewriter } from "./rewrite-fixtures.test-helpers.js";
 import type { RewriteReport } from "./rewrite-pass.js";
 import { ScriptSchema } from "./script-schema.js";
+import { VETTED_RANGE } from "./speech-vet-gate.js";
 import { pipelineScript } from "./spike-fixtures.test-helpers.js";
 
 // These tests pin the mechanics on fixtures; the shipped status table is data a recalibration changes (TP-4662).
@@ -115,7 +116,7 @@ describe("explainer rewrite", () => {
 });
 
 describe("explainer rewrite --speech-vet", () => {
-  it("vets a rewritten sentence of 26 to 32 words and keeps it when speech-vet accepts it", async () => {
+  it("vets a rewritten sentence between the Q-V9 caps and keeps it when speech-vet accepts it", async () => {
     // h1 gets the seconds to speak LONG_H1 within its word cap.
     const vet = fakeVet("accepted");
 
@@ -140,10 +141,10 @@ describe("explainer rewrite --speech-vet", () => {
     expect(ScriptSchema.parse(readJson("out.json")).beats.find((beat) => beat.id === "h1")!.spoken).toBe(
       "When a courier asks for a label, the desk refuses ghost labels. So it looks for the parcel row and waits for the ledger before it prints anything at all.",
     );
-    expect(err).toContain("speech-vet: vetted 1 sentence(s) of 26-32 words: 1 rejected");
+    expect(err).toContain(`speech-vet: vetted 1 sentence(s) of ${VETTED_RANGE} words: 1 rejected`);
   });
 
-  it("vets nothing without the flag, so the long sentence keeps the plain cap", async () => {
+  it("vets nothing without the flag", async () => {
     const vet = fakeVet("accepted");
 
     await run(write("in.json", cuedChoppy()), ["--rounds", "1", "--report", join(dir, "report.json")], {

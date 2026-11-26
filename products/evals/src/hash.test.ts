@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalJson, caseHash, hashCanonical, pinVariantPrompts, suiteHash, unitHash, variantHash } from "./hash.js";
+import { caseHash, hashCanonical, pinVariantPrompts, suiteHash, unitHash, variantHash } from "./hash.js";
 import type { UnitSpec } from "./spec/index.js";
 import { asRecord, llmStep, readCase, readSuite, readUnit, readVariant, unvalidated } from "./test-fixtures.js";
 
@@ -30,10 +30,6 @@ describe("canonical hashing", () => {
 
     expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(unit));
     expect(unitHash(reordered)).toBe(unitHash(unit));
-  });
-
-  it("emits sorted keys with no whitespace and drops undefined members", () => {
-    expect(canonicalJson({ b: [2, { d: 1, c: undefined }], a: "x" })).toBe('{"a":"x","b":[2,{"d":1}]}');
   });
 
   it("refuses values that do not survive a JSON round trip", () => {

@@ -77,7 +77,8 @@ rules:
     owner_support: none
     l0: { severity: error, status: implemented, checks: ["Q-V8"], scope: chapter }
   - id: Q-V9
-    rule: "Sentences at most 25 words; 26 to 32 pass only when speech-vet reports the sentence clean to speak (a TTS guardrail, never a target)"
+    rule: "Sentences at most 62 words, the human 99th percentile; 26 to 62 fail only when speech-vet runs and reports the sentence unclean to speak, and otherwise pass pending a hand vet (a TTS guardrail, never a target)"
+    note: "Owner round tp5721-qv9-sentence-length-r1 (2026-11-17, option A) supersedes decision 517's error above 25 words. The caps and their evidence live in doctrine/writing-gate.json sentence-cap."
     fields: [beats.spoken]
     aliases: [K13]
     related: ["EL 5"]
