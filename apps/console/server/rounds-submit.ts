@@ -335,8 +335,9 @@ interface SubmitAs {
 
 /**
  * The one way a round answer is written, logged and announced; the nudge's one-tap rec answer runs it too (TP-4044).
- * The by-rec sweep (TP-6773) passes `byRec`, which writes owner-queue's by-rec mark into the feedback's `general`; the
- * decision log and every queue reader take the answerer from that file through `feedbackAnswerer`, never from here.
+ * The by-rec sweep (TP-6773) passes `byRec`, which writes owner-queue's by-rec mark into the feedback's `general`. The
+ * readers that name who answered take it from that file through `feedbackAnswerer`, never from here; the census in
+ * `feedback-readers.test.ts` lists each reader and how it treats the answerer.
  */
 export type SubmitPipeline = (posted: z.input<typeof submitArgs>, as?: SubmitAs) => Promise<SubmitResult>;
 

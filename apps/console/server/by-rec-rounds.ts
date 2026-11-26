@@ -3,13 +3,16 @@
  * question carrying a recommendation that answers it, is answered with those recommendations. It goes through
  * `rounds.submit`'s own pipeline, as the nudge's one tap does, so the decision log, the listeners and the asker's notice
  * hear it as they hear any answer. The pipeline writes owner-queue's `auto-by-rec` mark into the feedback's `general`
- * (never `answered-by-rec`, which stays the owner's own tap), and every reader takes the answerer from that file: the
- * decisions bullet credits the automation, the decider's ledger gets no row, and the owner queue neither credits the
- * owner nor lets the answer settle another item or lift a change request.
+ * (never `answered-by-rec`, which stays the owner's own tap). Which readers take the answerer from that mark, and which
+ * refuse an answer that is not the owner's, is the census in `feedback-readers.test.ts`: among them, the decisions bullet
+ * credits the automation, the decider's ledger gets no row, the owner queue neither credits the owner nor lets the answer
+ * settle another item or lift a change request, the asker's notice names the sweep, and the gate relay and plan approval
+ * refuse it.
  *
- * Each question is judged by owner-queue's `byRecDecision`, so the exclusion floor applies: an after-answer round (the
- * owner chose to answer it blind), a Ship, a plan approval or a question with no recommendation makes the whole round
- * skip. A round is claimed once per mode with a marker written `wx` beside it before anything else is done, so a second
+ * Each question is judged by owner-queue's `byRecDecision` on the subject `byRecRoundSubject` builds, whose text holds the
+ * prompt, the section's deciding text and context, the option labels and details, so the exclusion floor applies: a cost
+ * named in any of them, an after-answer round (the owner chose to answer it blind), a Ship, a plan approval or a question
+ * with no recommendation makes the whole round skip. A round is claimed once per mode with a marker written `wx` beside it before anything else is done, so a second
  * sweep or a restart finds the marker and leaves the round alone. Shadow mode, the default, claims with its own marker
  * and writes would-resolve rows only, so switching to live still answers the rounds shadow saw.
  */

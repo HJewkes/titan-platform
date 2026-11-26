@@ -17,7 +17,8 @@ const BY_REC_MARK = "auto-by-rec:";
 
 /**
  * The `general` the by-rec sweep's feedback carries (TP-6773). feedback@1 is strict and has no answerer field, so this
- * mark is the one place the file says who answered, and every reader takes the answerer from it through `feedbackAnswerer`.
+ * mark is the one place the file says who answered. A reader that names who answered takes it through `feedbackAnswerer`,
+ * and one that acts as the owner refuses an answer `isOwnerAnswer` rejects; the console's reader census lists which.
  */
 export const BY_REC_FEEDBACK_GENERAL = `${BY_REC_MARK} every question was answered with its recommendation after the round went unanswered past the by-rec wait`;
 

@@ -789,14 +789,19 @@ recommendations. The wait runs from the later of the `round.json` mtime and when
 manifest, kept in `<state dir>/auto-by-rec-seen/`, so an asker who backdates `round.json` gains nothing; a rewritten
 `round.json` starts a fresh wait. The sweep uses `rounds.submit`'s pipeline, so the decision log, the gate listener
 and the asker's notice see it like any other answer. The pipeline writes owner-queue's `BY_REC_FEEDBACK_GENERAL`
-(`auto-by-rec: ...`) into the feedback's `general`, not `answered-by-rec`, which stays the owner's own tap. Every reader
-takes the answerer from that file through `feedbackAnswerer`: the decisions bullet credits `auto-by-rec`, the decider's
-ledger (`answers.jsonl`) gets no row, and the owner queue shows the answer as the automation's, which never settles
-another item nor lifts a change request. An agent's recommendation never returns as the owner's precedent.
+(`auto-by-rec: ...`) into the feedback's `general`, not `answered-by-rec`, which stays the owner's own tap. The
+readers that name who answered take it from that file through `feedbackAnswerer`: the decisions bullet credits
+`auto-by-rec`, the decider's ledger (`answers.jsonl`) gets no row, the owner queue shows the answer as the automation's,
+which never settles another item nor lifts a change request, and the asker's notice says the sweep answered and the
+owner has not seen it. The readers that act as the owner refuse it as "answered by automation, not the owner": the gate
+relay, the plan-approval record, the factory's Ship and Send back checks and the judge-calibration labels, and the
+planner's owner-contact probe does not count it. An agent's recommendation never returns as the owner's precedent. `server/feedback-readers.test.ts` is the census of every
+feedback.json reader and its label; a new reader fails it until it is listed.
 
-The sweep decides each question with owner-queue's `byRecDecision`. A round is skipped, with the reason in the
-daemon log, when any question:
+The sweep decides each question with owner-queue's `byRecDecision`, on the subject `byRecRoundSubject` builds. A
+round is skipped, with the reason in the daemon log, when any question:
 
+- names a cost in its prompt, its section's deciding text or context, an option or an option's details,
 - is in an after-answer round,
 - is a Ship,
 - records a plan approval,
