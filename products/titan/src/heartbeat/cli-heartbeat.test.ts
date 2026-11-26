@@ -37,7 +37,7 @@ describe("titan heartbeat idle", () => {
 
     expect(result.code).toBe(0);
     expect(result.out).toContain("Idle heartbeat (no turn for 60 min): Run the seat's tick");
-    expect(result.out).toContain(`re-arm it in the background: node /opt/titan/bin.js heartbeat idle --idle 20m --prompt 'Run the seat'\\''s tick'`);
+    expect(result.out).toContain(`re-arm it: node /opt/titan/bin.js heartbeat idle --idle 20m --prompt 'Run the seat'\\''s tick'  (with Bash run_in_background and timeout 7200000)`);
   });
 
   it("reports the stop instead of beating when the stop command exits 0", async () => {
@@ -55,6 +55,24 @@ describe("titan heartbeat idle", () => {
 
     expect(result.code).toBe(64);
     expect(result.err).toContain("--max must be longer than --idle");
+  });
+
+  it("refuses a lifetime at or past the background task cap", async () => {
+    const env = { CLAUDE_CONFIG_DIR: configDirWithIdleSession(), CLAUDE_CODE_SESSION_ID: SESSION };
+
+    const result = await run(["--idle", "20m", "--lifetime", "2h", "--prompt", "tick"], env);
+
+    expect(result.code).toBe(64);
+    expect(result.err).toContain("under the 120 min background task cap");
+  });
+
+  it("refuses an idle threshold the lifetime would cut off before it fires", async () => {
+    const env = { CLAUDE_CONFIG_DIR: configDirWithIdleSession(), CLAUDE_CODE_SESSION_ID: SESSION };
+
+    const result = await run(["--idle", "2h", "--prompt", "tick"], env);
+
+    expect(result.code).toBe(64);
+    expect(result.err).toContain("shorter than --lifetime");
   });
 
   it("refuses to arm with no session id", async () => {

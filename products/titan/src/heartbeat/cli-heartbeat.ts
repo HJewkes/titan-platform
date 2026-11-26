@@ -3,8 +3,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { Command } from "commander";
 import { findClaudeSessionSource } from "@titan-design/session-read";
 import { readClaudeTurnState } from "./turn-state.js";
+import { BACKGROUND_TIMEOUT_CAP_MS, DEFAULT_LIFETIME } from "./harness-limits.js";
+import type { IdleBeatPolicy } from "./idle-beat.js";
 import { renderOutcome, type IdleBeatArgs } from "./render.js";
-import { waitForIdleBeat, type IdleBeatPorts } from "./run.js";
+import { waitForIdleBeat, type IdleBeatPorts, type RunLimits } from "./run.js";
 
 interface HeartbeatIo {
   stdout: (text: string) => void;
@@ -17,6 +19,7 @@ interface HeartbeatIo {
 interface IdleOptions {
   idle: string;
   max?: string;
+  lifetime?: string;
   prompt: string;
   stopCmd?: string;
   session?: string;
@@ -47,23 +50,36 @@ export function registerHeartbeat(program: Command, io: HeartbeatIo): void {
     .option("--stop-cmd <command>", "shell command checked when a beat is due; exit 0 stops the beat instead")
     .option("--session <id>", "Claude Code session id (default: CLAUDE_CODE_SESSION_ID)")
     .option("--poll <duration>", "how often to read the transcript", "30s")
+    .option("--lifetime <duration>", `end with a re-arm line after this long with no beat due, under the 2 h background task cap (default ${DEFAULT_LIFETIME})`)
     .action(async (opts: IdleOptions) => runIdle(opts, io));
 }
 
 async function runIdle(opts: IdleOptions, io: HeartbeatIo): Promise<void> {
-  const idleMs = parseDuration(opts.idle);
-  const maxMs = opts.max === undefined ? undefined : parseDuration(opts.max);
-  const pollMs = parseDuration(opts.poll);
-  if (idleMs === undefined || pollMs === undefined || (opts.max !== undefined && (maxMs === undefined || maxMs <= idleMs))) {
-    return usage(io, "--idle and --poll take a duration such as 90s, 20m or 1h, and --max must be longer than --idle");
-  }
+  const parsed = parseTiming(opts);
+  if (typeof parsed === "string") return usage(io, parsed);
   const sessionId = opts.session ?? io.env.CLAUDE_CODE_SESSION_ID;
   if (sessionId === undefined || sessionId === "") return usage(io, "no --session given and CLAUDE_CODE_SESSION_ID is unset");
   const transcript = locateTranscript(sessionId, io.env);
   if (typeof transcript !== "string") return usage(io, transcript.error);
-  const args: IdleBeatArgs = { titanBin: io.titanBin, idle: opts.idle, max: opts.max, prompt: opts.prompt, stopCmd: opts.stopCmd, session: opts.session };
-  const outcome = await waitForIdleBeat({ idleMs, maxMs }, pollMs, realPorts(transcript, opts.stopCmd, io.env));
+  const { titanBin } = io;
+  const args: IdleBeatArgs = { titanBin, idle: opts.idle, max: opts.max, lifetime: opts.lifetime, prompt: opts.prompt, stopCmd: opts.stopCmd, session: opts.session };
+  const outcome = await waitForIdleBeat(parsed.policy, parsed.limits, realPorts(transcript, opts.stopCmd, io.env));
   io.stdout(renderOutcome(outcome, args));
+}
+
+/** Every duration must fit inside the lifetime, and the lifetime inside the background task cap, or the beat could never fire. */
+function parseTiming(opts: IdleOptions): { policy: IdleBeatPolicy; limits: RunLimits } | string {
+  const idleMs = parseDuration(opts.idle);
+  const maxMs = opts.max === undefined ? undefined : parseDuration(opts.max);
+  const pollMs = parseDuration(opts.poll);
+  const lifetimeMs = parseDuration(opts.lifetime ?? DEFAULT_LIFETIME);
+  if (idleMs === undefined || pollMs === undefined || lifetimeMs === undefined || (opts.max !== undefined && maxMs === undefined)) {
+    return "--idle, --max, --poll and --lifetime take a duration such as 90s, 20m or 1h";
+  }
+  if (maxMs !== undefined && maxMs <= idleMs) return "--max must be longer than --idle";
+  if (lifetimeMs >= BACKGROUND_TIMEOUT_CAP_MS) return `--lifetime must be under the ${BACKGROUND_TIMEOUT_CAP_MS / 60_000} min background task cap`;
+  if (Math.max(idleMs, maxMs ?? 0) >= lifetimeMs) return "--idle and --max must be shorter than --lifetime, or the beat could never fire";
+  return { policy: { idleMs, maxMs }, limits: { pollMs, lifetimeMs } };
 }
 
 function usage(io: HeartbeatIo, message: string): void {

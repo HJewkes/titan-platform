@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { waitForIdleBeat, type IdleBeatPorts } from "./run.js";
 
 const MIN = 60_000;
-const POLL = MIN;
+/** Long enough that only the lapse test reaches it. */
+const LIMITS = { pollMs: MIN, lifetimeMs: 20 * 60 * MIN };
 
 /** A session scripted minute by minute: `turns` lists the minutes at which a turn ends. */
 interface Script {
@@ -44,7 +45,7 @@ describe("waitForIdleBeat", () => {
   it("fires once the session has been idle for the threshold since its last turn", async () => {
     const { ports, elapsedMin } = rig({ turns: [0] });
 
-    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN }, POLL, ports);
+    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN }, LIMITS, ports);
 
     expect(outcome).toEqual({ kind: "beat", reason: "idle", idleMs: 20 * MIN });
     expect(elapsedMin()).toBe(20);
@@ -54,7 +55,7 @@ describe("waitForIdleBeat", () => {
     const turns = Array.from({ length: 12 }, (_, i) => i * 10);
     const { ports, elapsedMin } = rig({ turns });
 
-    await waitForIdleBeat({ idleMs: 20 * MIN }, POLL, ports);
+    await waitForIdleBeat({ idleMs: 20 * MIN }, LIMITS, ports);
 
     expect(elapsedMin()).toBe(130);
   });
@@ -62,7 +63,7 @@ describe("waitForIdleBeat", () => {
   it("resets the idle clock on a new turn", async () => {
     const { ports, elapsedMin } = rig({ turns: [0, 15] });
 
-    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN }, POLL, ports);
+    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN }, LIMITS, ports);
 
     expect(elapsedMin()).toBe(35);
     expect(outcome).toMatchObject({ kind: "beat", reason: "idle" });
@@ -72,7 +73,7 @@ describe("waitForIdleBeat", () => {
     const busy = Array.from({ length: 50 }, (_, i) => i + 10);
     const { ports, elapsedMin } = rig({ turns: [0, 60], busy });
 
-    await waitForIdleBeat({ idleMs: 20 * MIN }, POLL, ports);
+    await waitForIdleBeat({ idleMs: 20 * MIN }, LIMITS, ports);
 
     expect(elapsedMin()).toBe(80);
   });
@@ -81,7 +82,7 @@ describe("waitForIdleBeat", () => {
     const turns = Array.from({ length: 12 }, (_, i) => i * 10);
     const { ports, elapsedMin } = rig({ turns });
 
-    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN, maxMs: 45 * MIN }, POLL, ports);
+    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN, maxMs: 45 * MIN }, LIMITS, ports);
 
     expect(outcome).toEqual({ kind: "beat", reason: "max", idleMs: 5 * MIN });
     expect(elapsedMin()).toBe(45);
@@ -90,7 +91,7 @@ describe("waitForIdleBeat", () => {
   it("stops instead of beating when the stop condition holds", async () => {
     const { ports, stopChecks } = rig({ turns: [0], stop: true });
 
-    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN }, POLL, ports);
+    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN }, LIMITS, ports);
 
     expect(outcome).toEqual({ kind: "stopped" });
     expect(stopChecks()).toBe(1);
@@ -99,14 +100,24 @@ describe("waitForIdleBeat", () => {
   it("checks the stop condition only when a beat is due", async () => {
     const { ports, stopChecks } = rig({ turns: [0] });
 
-    await waitForIdleBeat({ idleMs: 20 * MIN }, POLL, ports);
+    await waitForIdleBeat({ idleMs: 20 * MIN }, LIMITS, ports);
 
     expect(stopChecks()).toBe(1);
+  });
+
+  it("lapses on its own before the background deadline when no beat comes due", async () => {
+    const turns = Array.from({ length: 30 }, (_, i) => i * 10);
+    const { ports, elapsedMin } = rig({ turns });
+
+    const outcome = await waitForIdleBeat({ idleMs: 20 * MIN }, { pollMs: MIN, lifetimeMs: 115 * MIN }, ports);
+
+    expect(outcome).toEqual({ kind: "lapsed", afterMs: 115 * MIN });
+    expect(elapsedMin()).toBe(115);
   });
 
   it("ends quietly once the session that armed it has exited", async () => {
     const { ports } = rig({ turns: [0], exitsAt: 5 });
 
-    expect(await waitForIdleBeat({ idleMs: 20 * MIN }, POLL, ports)).toEqual({ kind: "session-gone" });
+    expect(await waitForIdleBeat({ idleMs: 20 * MIN }, LIMITS, ports)).toEqual({ kind: "session-gone" });
   });
 });

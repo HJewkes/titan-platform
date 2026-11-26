@@ -14,18 +14,27 @@ export interface IdleBeatPorts {
 export type IdleBeatOutcome =
   | { kind: "beat"; reason: "idle" | "max"; idleMs: number }
   | { kind: "stopped" }
-  | { kind: "session-gone" };
+  | { kind: "session-gone" }
+  | { kind: "lapsed"; afterMs: number };
+
+export interface RunLimits {
+  pollMs: number;
+  /** The run ends itself after this long, so the harness never has to kill it at its background deadline. */
+  lifetimeMs: number;
+}
 
 /**
  * Polls until a beat is due, then returns once. One wake per run: the session re-arms on the
  * wake it gets, so the beat needs no state file and nothing to survive a compaction.
  */
-export async function waitForIdleBeat(policy: IdleBeatPolicy, pollMs: number, ports: IdleBeatPorts): Promise<IdleBeatOutcome> {
+export async function waitForIdleBeat(policy: IdleBeatPolicy, limits: RunLimits, ports: IdleBeatPorts): Promise<IdleBeatOutcome> {
   const armedAtMs = ports.now();
   for (;;) {
     if (!ports.sessionAlive()) return { kind: "session-gone" };
-    const step = idleBeatStep({ turn: ports.readTurn(), nowMs: ports.now(), armedAtMs, policy });
+    const nowMs = ports.now();
+    const step = idleBeatStep({ turn: ports.readTurn(), nowMs, armedAtMs, policy });
     if (step.kind === "beat") return ports.stopHolds() ? { kind: "stopped" } : step;
-    await ports.sleep(pollMs);
+    if (nowMs - armedAtMs >= limits.lifetimeMs) return { kind: "lapsed", afterMs: nowMs - armedAtMs };
+    await ports.sleep(limits.pollMs);
   }
 }

@@ -13,9 +13,9 @@ never woken.
 
 The command polls the transcript tail (every 30 s by default). When the session has been
 idle for `--idle`, it prints one wake line and exits. The seat runs it with Bash
-`run_in_background`, so the exit is what wakes the seat: Claude Code delivers a finished
-background task's output as a new turn. That turn ends, the idle clock restarts, and the seat
-re-arms the beat. The wake line carries the exact re-arm command.
+`run_in_background` and `timeout: 7200000`, so the exit is what wakes the seat: Claude Code
+delivers a finished background task's output as a new turn. That turn ends, the idle clock
+restarts, and the seat re-arms the beat. The wake line carries the exact re-arm command.
 
 | Option | Meaning |
 | --- | --- |
@@ -25,6 +25,7 @@ re-arms the beat. The wake line carries the exact re-arm command.
 | `--stop-cmd <command>` | Optional shell command, run only when a beat is due. Exit 0 means the stop condition holds: the command prints a stop line instead of the beat, and the seat should not re-arm until there is work to watch again. |
 | `--session <id>` | The session to watch. Defaults to `CLAUDE_CODE_SESSION_ID`, which Claude Code sets for every command a session runs. |
 | `--poll <duration>` | How often to read the transcript. Default `30s`. |
+| `--lifetime <duration>` | How long the run waits with no beat due before it ends itself with a re-arm line. Default `115m`; must be under 2 h, and longer than `--idle` and `--max`. |
 
 The run ends quietly with no output when the session that armed it exits (`CLAUDE_PID` is
 gone), so a parked seat leaves nothing polling.
@@ -33,7 +34,9 @@ gone), so a parked seat leaves nothing polling.
 
 1. Build titan once: `pnpm build`, then the bin is `products/titan/dist/bin.js`.
 2. Delete the seat's `CronCreate` heartbeat job.
-3. In the seat's boot steps, arm the beat with Bash `run_in_background: true`:
+3. In the seat's boot steps, arm the beat with Bash `run_in_background: true` and
+   `timeout: 7200000`. Without the timeout, a build that enforces the 10 min default kills the
+   beat before a 20 min `--idle` can fire:
 
    ```sh
    node <titan checkout>/products/titan/dist/bin.js heartbeat idle \
@@ -49,12 +52,28 @@ gone), so a parked seat leaves nothing polling.
 queue": a script that reads the seat's roster and queue and exits 0 only when both are empty.
 It runs once per due beat, not once per poll, so a slow roster read costs little.
 
-## Why a background command and not a Monitor
+## Harness limits the recipe depends on
 
-A `Monitor` is killed at its timeout, at most 30 minutes, and its expiry notice is itself a
-wake. A Monitor-hosted beat would wake the seat every 30 minutes whether or not it was idle,
-which is the fixed schedule this replaces. A background Bash command has no such deadline and
-wakes the seat exactly once, when it exits.
+The beat runs inside Claude Code's background task machinery, so its limits are the harness's.
+They are named in `products/titan/src/heartbeat/harness-limits.ts`.
+
+- **Monitor: not used.** A `Monitor` is killed at its timeout, at most 30 minutes, and its
+  expiry notice is itself a wake. A Monitor-hosted beat would wake the seat every 30 minutes
+  whether or not it was idle, which is the fixed schedule this replaces.
+- **Background Bash deadline.** A `run_in_background` task has a `timeout`: 10 minutes when
+  unset in current builds, capped at 2 hours (7200000 ms). At the deadline the task is killed
+  and the seat is woken with no wake line. Some builds do not enforce it. The beat does not
+  rely on either behaviour: the seat passes `timeout: 7200000`, and the beat ends itself
+  after `--lifetime` (115 minutes by default) with a lapse line that carries the re-arm
+  command. So a seat that stays busy for hours is woken at most once per lifetime, not every
+  20 minutes.
+- **If the deadline is reached anyway**, for example because the seat armed without the
+  `timeout`, the seat is woken by the kill with no re-arm line. Its tick instructions should
+  say: on a heartbeat task that ended with no wake line, re-arm from the boot step.
+- **Transcript records.** The idle clock starts at the last assistant record with
+  `stop_reason` `end_turn` or `stop_sequence`, or at a user interrupt. A prompt, a channel
+  message (even though it is `isMeta`), a queued item or an open tool call reads as busy. The
+  compact summary and local slash-command output get no reply, so they are skipped.
 
 ## Compaction and teleport
 
