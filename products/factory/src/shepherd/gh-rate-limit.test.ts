@@ -36,6 +36,11 @@ function primaryLimit403(resetS: number): GhResult {
   return { code: 1, stdout: `${head}\r\n\r\n${body}`, stderr: "gh: API rate limit exceeded for user ID 1. If you reach out to GitHub Support for help, please include the request ID 0000:0000:0000000:0000000:00000000. (HTTP 403)\n" };
 }
 
+function secondaryLimit403(retryAfterS: number): GhResult {
+  const body = JSON.stringify({ message: "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.", status: "403" });
+  return { code: 1, stdout: `HTTP/2.0 403 Forbidden\r\nRetry-After: ${retryAfterS}\r\nX-Ratelimit-Remaining: 4000\r\n\r\n${body}`, stderr: "gh: You have exceeded a secondary rate limit. (HTTP 403)\n" };
+}
+
 function forbidden403(): GhResult {
   const body = JSON.stringify({ message: "Resource not accessible by integration", status: "403" });
   return { code: 1, stdout: `HTTP/2.0 403 Forbidden\r\nX-Ratelimit-Remaining: 4000\r\n\r\n${body}`, stderr: "gh: Resource not accessible by integration (HTTP 403)\n" };
@@ -102,8 +107,8 @@ describe("a Shepherd run whose sh-observe read meets a GitHub rate limit", () =>
 const NOW = 1_760_295_060_000;
 const STEP: RoutedStepInput = { runId: "r", workflowName: "w", stepId: `${OBSERVE_STEP}:h`, iteration: 0, prompt: "{}", signal: new AbortController().signal, attempt: 0, requestKey: "k" };
 
-/** One repeat-safe route that fails with each of `errors` in turn, then succeeds; its sleeps are recorded, the clock never moves. */
-function retried(errors: readonly Error[]) {
+/** One repeat-safe route at `match` that fails with each of `errors` in turn, then succeeds; its sleeps are recorded, the clock never moves. */
+function retried(errors: readonly Error[], match = OBSERVE_STEP) {
   const sleeps: number[] = [];
   let calls = 0;
   const body = async () => {
@@ -111,8 +116,8 @@ function retried(errors: readonly Error[]) {
     if (error) throw error;
     return {};
   };
-  const [route] = retryingGhServerErrors([codeRoute(OBSERVE_STEP, () => NOW, body)], { sleep: async (ms) => void sleeps.push(ms), now: () => NOW });
-  return { outcome: () => route!.runner.run(STEP), sleeps, calls: () => calls };
+  const [route] = retryingGhServerErrors([codeRoute(match, () => NOW, body)], { sleep: async (ms) => void sleeps.push(ms), now: () => NOW });
+  return { outcome: () => route!.runner.run({ ...STEP, stepId: match }), sleeps, calls: () => calls };
 }
 
 async function errorOf(pending: Promise<unknown>): Promise<Error> {
@@ -140,14 +145,25 @@ describe("retryingGhServerErrors on a rate limit", () => {
     expect(step.sleeps).toEqual([1_200_000 + 5_000]);
   });
 
-  it("fails on the third limit after two waits, filed gh-rate-limit", async () => {
-    const error = await cliError(primaryLimit403(NOW / 1000 + 60));
+  it.each(["ci-wait", "await-new-head"])("waits out a spent core limit on %s for every reset it takes, then resumes", async (match) => {
+    const error = await cliError(primaryLimit403(NOW / 1000 + 600));
+    const step = retried([error, error, error, error], match);
+
+    const outcome = await step.outcome();
+
+    expect(outcome.ok).toBe(true);
+    expect(step.calls()).toBe(5);
+    expect(step.sleeps).toEqual([605_000, 605_000, 605_000, 605_000]);
+  });
+
+  it("fails on the third secondary limit after two waits, filed gh-rate-limit", async () => {
+    const error = await cliError(secondaryLimit403(90));
     const step = retried([error, error, error]);
 
     const outcome = await step.outcome();
 
     expect(outcome.ok).toBe(false);
-    expect(step.sleeps).toEqual([65_000, 65_000]);
+    expect(step.sleeps).toEqual([90_000, 90_000]);
     expect(step.calls()).toBe(3);
     const failed = outcome.ok ? "" : outcome.error;
     expect(failed).toContain("after 2 gh-rate-limit retries");
