@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestAuth } from "@titan-design/daemon";
+import { BY_REC_FEEDBACK_GENERAL } from "@titan-design/owner-queue";
 import { EXIT, invokeCommand } from "@titan-design/registry";
 import { createRoundListeners, type RoundListeners } from "./listeners.js";
 import type { ConsoleContext } from "./owner-guard.js";
@@ -43,9 +44,10 @@ function listeners(): RoundListeners {
 }
 
 /** The owner's own submit through the owner-write command, then the listener it started. */
-async function submit(answers: { questionId: string; pick: string }[], inner: RoundListeners = listeners()) {
+async function submit(answers: { questionId: string; pick: string }[], inner: RoundListeners = listeners(), general?: string) {
   const settling = settledListeners(inner);
-  const outcome = await invokeCommand(roundsSubmitCommands({ dir: world.roundsDir }, undefined, settling)["rounds.submit"], { id: PLAN_ROUND, manifestSha256: world.manifestSha256, answers }, OWNER);
+  const args = { id: PLAN_ROUND, manifestSha256: world.manifestSha256, answers, ...(general !== undefined && { general }) };
+  const outcome = await invokeCommand(roundsSubmitCommands({ dir: world.roundsDir }, undefined, settling)["rounds.submit"], args, OWNER);
   await settling.settled();
   return outcome;
 }
@@ -95,6 +97,13 @@ describe("a plan round's approval answer", () => {
 
     expect([replay, second].map((each) => each.envelope)).toMatchObject([{ ok: true, data: { status: "already-submitted" } }, { ok: true, data: { status: "already-submitted" } }]);
     expect([(await recordFiles(world.actionsDir)).length, factory.posts.length, factory.rows.length]).toEqual([1, 1, 1]);
+  });
+
+  it("a by-rec-marked approve posts no plan-approval record", async () => {
+    await submit([{ questionId: "ci", pick: APPROVE.ci }], listeners(), BY_REC_FEEDBACK_GENERAL);
+    await listeners().sweep();
+
+    expect([await recordFiles(world.actionsDir), factory.posts, factory.rows]).toEqual([[], [], []]);
   });
 
   it("refuses a relayed or decided answer no owner submit wrote: the sweep writes and posts nothing", async () => {

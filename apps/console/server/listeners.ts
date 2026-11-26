@@ -18,6 +18,7 @@
 import { createHash } from "node:crypto";
 import { open, readdir, type FileHandle } from "node:fs/promises";
 import path from "node:path";
+import { feedbackAnswerer, isOwnerAnswer } from "@titan-design/owner-queue";
 import { z } from "zod";
 import { type AnswerChoice, type AnswerOutcome, type GateAnswerClient, type GateAnswerRequest } from "./gate-answer.js";
 import { FeedbackSchema, RoundSchema, type Feedback, type Manifest, type Question } from "./round-schema.js";
@@ -146,7 +147,7 @@ function verdictOf(question: ShipQuestion, merge: Merge, answer: Feedback["answe
   return others.length === 1 && others[0] === pick ? "send-back" : undefined;
 }
 
-/** One answer per merge-bound question the owner answered, in round order; none unless the packet is beside the round. */
+/** One answer per merge-bound question the owner answered, in round order; none unless the packet is beside the round, and none for an answer not the owner's. */
 async function readRoundAnswers(deps: ListenerDeps, roundId: string): Promise<RoundAnswer[]> {
   const dir = path.join(deps.roundsDir, roundId);
   const [round, feedback, packetBytes] = await Promise.all([
@@ -158,6 +159,11 @@ async function readRoundAnswers(deps: ListenerDeps, roundId: string): Promise<Ro
   const { manifest } = round;
   const tree = packetBytes && packetHeadTree(packetBytes);
   if (!manifest || !feedback || !packetBytes || tree === undefined) return [];
+  const by = feedbackAnswerer(feedback.general);
+  if (!isOwnerAnswer({ by })) {
+    deps.logger?.warn({ roundId }, `${roundId}: answer not relayed (answered by ${by.class}, not the owner)`);
+    return [];
+  }
   const packetSha = sha256(packetBytes);
   return manifest.questions.flatMap((question) => {
     const answer = feedback.answers.find((each) => each.questionId === question.id);

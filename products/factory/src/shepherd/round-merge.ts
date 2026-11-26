@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { feedbackAnswerer, isOwnerAnswer } from "@titan-design/owner-queue";
 import type { WorkflowRun } from "@titan-design/workflow";
 import { z } from "zod";
 import { ownerAtHeadRow } from "../coordinator-evidence.js";
@@ -38,6 +39,8 @@ export const RoundFeedbackSchema = z.object({
   round: z.number().int(),
   manifestSha256: z.string(),
   submittedAt: z.string(),
+  /** Says who answered: owner-queue's `feedbackAnswerer` reads the by-rec sweep's mark from it. */
+  general: z.string().optional(),
   answers: z.array(z.object({ questionId: z.string(), pick: z.string().optional(), revisionRequested: z.boolean().optional(), text: z.string().optional() })),
 });
 
@@ -76,8 +79,14 @@ function parseRound(roundBytes: string | Uint8Array): z.infer<typeof RoundManife
   }
 }
 
-/** Whether feedback.json answers this exact round.json: the manifest hash, unit and round all match. Undefined when it does. */
+/**
+ * Whether feedback.json is the owner's answer to this exact round.json: the owner gave it, and the manifest hash, unit and
+ * round all match. Undefined when it is. An answer the feedback credits to anyone else, the by-rec sweep's included, never
+ * merges or accepts.
+ */
 function answerBindingRefusal(round: z.infer<typeof RoundManifest>, roundBytes: string | Uint8Array, feedback: RoundFeedback): string | undefined {
+  const by = feedbackAnswerer(feedback.general);
+  if (!isOwnerAnswer({ by })) return `answered by ${by.class}, not the owner`;
   if (createHash("sha256").update(roundBytes).digest("hex") !== feedback.manifestSha256) return "the feedback was not written against this round.json (manifest hash differs)";
   if (feedback.unit !== round.unit || feedback.round !== round.round) return `the feedback is for ${feedback.unit} r${feedback.round}, the round is ${round.unit} r${round.round}`;
   return undefined;
