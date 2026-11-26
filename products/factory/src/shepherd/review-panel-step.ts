@@ -20,6 +20,7 @@ import type { ReviewerRoles } from "./reviewer-roles.js";
 import { takeAwaited, verdictOf, type AwaitedResult, type ProofStanding } from "./take-verdict.js";
 import type { ScopeRound } from "./scope-check-round.js";
 import { adversaryFocusOf, type ScopedRereview } from "./review-scope-round.js";
+import { RESPAWN_TAG, respawnName, unregisteredAtAwait, unseenAtDispatch } from "./member-respawn.js";
 
 /** Records the aggregate once, so a replay reads the verdict the panel gave rather than one recomputed over source that has since moved. */
 const PANEL_VERDICT_STEP = "sh-review-panel";
@@ -141,6 +142,8 @@ export interface MemberBase extends ReviewTarget {
 interface DispatchedMember {
   shape: OverlayShape;
   dispatched: z.infer<typeof Dispatched>;
+  /** Spawns this member again under the next name, at `sh-review:<head>:<shape>:respawn`; absent once it has been. */
+  respawn?: (ctx: WorkflowContext) => Promise<DispatchedMember>;
 }
 
 /** A member is always spawned fresh, whatever the correctness reviewer's mode, so it carries no agent id to resume. */
@@ -149,14 +152,24 @@ function memberIntent(intent: PanelIntent, reviewer: string): Record<string, unk
   return { ...Object.fromEntries(fields), reviewer, mode: "spawn" };
 }
 
-/** One `sh-review:<head>:<shape>` per member but correctness, in plan order, each at its planned profile and with its shape's brief. */
+/** One member's dispatch, and the one re-spawn it is allowed if its agent never registers. */
+function memberDispatch(stepId: string, shape: OverlayShape, input: (reviewer: string) => Record<string, unknown>, reviewer: string): (ctx: WorkflowContext) => Promise<DispatchedMember> {
+  const respawn = async (ctx: WorkflowContext): Promise<DispatchedMember> => ({ shape, dispatched: await step(ctx, `${stepId}:${RESPAWN_TAG}`, input(respawnName(reviewer)), Dispatched) });
+  return async (ctx) => ({ shape, dispatched: await step(ctx, stepId, input(reviewer), Dispatched), respawn });
+}
+
+/**
+ * One `sh-review:<head>:<shape>` per member but correctness, in plan order, each at its planned profile and with its shape's brief.
+ * A member whose ask went through but never showed a session is spawned once more at once, beside the rest.
+ */
 async function dispatchMembers(ctx: WorkflowContext, intent: PanelIntent, { scopedRereview, ...base }: MemberBase): Promise<DispatchedMember[]> {
   const members: DispatchedMember[] = [];
   for (const { shape, profile } of intent.plan.members) {
     const reviewer = intent.panelReviewers[shape];
     if (!isOverlay(shape) || reviewer === undefined) continue;
-    const input = { ...base, intent: memberIntent(intent, reviewer), shape, profile, ...(shape === "adversary" && adversaryFocusOf(scopedRereview)) };
-    members.push({ shape, dispatched: await step(ctx, `${REVIEW_STEP}:${base.head}:${shape}`, input, Dispatched) });
+    const input = (name: string) => ({ ...base, intent: memberIntent(intent, name), shape, profile, ...(shape === "adversary" && adversaryFocusOf(scopedRereview)) });
+    const member = await memberDispatch(`${REVIEW_STEP}:${base.head}:${shape}`, shape, input, reviewer)(ctx);
+    members.push(member.respawn && unseenAtDispatch(member.dispatched) ? await member.respawn(ctx) : member);
   }
   return members;
 }
@@ -171,28 +184,38 @@ function memberResultOf(awaited: AwaitedResult): MemberResult["result"] {
 }
 
 /** The adversary's and the tests member's verdicts have a form beyond the block (Probes, CI-policy), so only they get the correctness member's one correction turn. */
-export async function awaitMember(ctx: WorkflowContext, target: ReviewTarget, shape: OverlayShape, awaiting: AwaitVerdictInput & { shape: OverlayShape }): Promise<AwaitedResult> {
-  const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}:${shape}`, awaiting, Awaited);
+export async function awaitMember(ctx: WorkflowContext, target: ReviewTarget, shape: OverlayShape, awaiting: AwaitVerdictInput & { shape: OverlayShape }, tag: string = shape): Promise<AwaitedResult> {
+  const awaited = await step(ctx, `${AWAIT_VERDICT_STEP}:${target.head}:${tag}`, awaiting, Awaited);
   if (shape !== "adversary" && shape !== "tests") return awaited;
-  const replyStep = `${AWAIT_VERDICT_STEP}:${target.head}:${shape}:corrected`;
-  return correctOnce(ctx, awaiting, awaited, { ownerBrief: false, replyStep, correctStep: `${CORRECT_VERDICT_STEP}:${target.head}:${shape}` });
+  const replyStep = `${AWAIT_VERDICT_STEP}:${target.head}:${tag}:corrected`;
+  return correctOnce(ctx, awaiting, awaited, { ownerBrief: false, replyStep, correctStep: `${CORRECT_VERDICT_STEP}:${target.head}:${tag}` });
 }
 
-/** One `sh-await-verdict:<head>:<shape>` per started member; a member that never started gave no verdict. */
-async function awaitMembers(ctx: WorkflowContext, target: ReviewTarget, members: readonly DispatchedMember[]): Promise<MemberResult[]> {
-  const results: MemberResult[] = [];
-  for (const { shape, dispatched } of members) {
-    if (dispatched.kind !== "dispatched") {
-      results.push({ shape, result: { kind: "none" } });
-      continue;
-    }
-    const awaiting = { ...target, shape, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
-    const awaited = await awaitMember(ctx, target, shape, awaiting);
-    await fileFollowUpsAt(ctx, target, awaited, `:${shape}`);
-    await recordCheckCandidatesAt(ctx, target, awaited, `:${shape}`, shape);
-    results.push({ shape, result: memberResultOf(awaited) });
-  }
-  return results;
+/** A member's result, and whether it never started: a busy broker's refusal, or an agent that never registered even once re-spawned. */
+interface MemberOutcome extends MemberResult {
+  unstarted: boolean;
+}
+
+/**
+ * `sh-await-verdict:<head>:<shape>` for a started member; a member that never started gave no verdict. A wait that ends on an agent
+ * that never registered spawns it once more and waits under `:<shape>:respawn`.
+ */
+async function awaitMemberOutcome(ctx: WorkflowContext, target: ReviewTarget, member: DispatchedMember): Promise<MemberOutcome> {
+  const { shape, dispatched, respawn } = member;
+  if (dispatched.kind !== "dispatched") return { shape, result: { kind: "none" }, unstarted: dispatched.notStarted === true || unseenAtDispatch(dispatched) };
+  const tag = respawn ? shape : `${shape}:${RESPAWN_TAG}`;
+  const awaiting = { ...target, shape, reviewerAgentId: dispatched.agentId, reviewerSessionId: dispatched.sessionId, dispatchedAt: dispatched.at, ...(dispatched.startedAt !== undefined && { startedAt: dispatched.startedAt }) };
+  const awaited = await awaitMember(ctx, target, shape, awaiting, tag);
+  if (unregisteredAtAwait(awaited)) return respawn ? awaitMemberOutcome(ctx, target, await respawn(ctx)) : { shape, result: memberResultOf(awaited), unstarted: true };
+  await fileFollowUpsAt(ctx, target, awaited, `:${tag}`);
+  await recordCheckCandidatesAt(ctx, target, awaited, `:${tag}`, shape);
+  return { shape, result: memberResultOf(awaited), unstarted: false };
+}
+
+async function awaitMembers(ctx: WorkflowContext, target: ReviewTarget, members: readonly DispatchedMember[]): Promise<MemberOutcome[]> {
+  const outcomes: MemberOutcome[] = [];
+  for (const member of members) outcomes.push(await awaitMemberOutcome(ctx, target, member));
+  return outcomes;
 }
 
 const SHAPE = z.enum(["correctness", "adversary", "tests", "visual", "perf"]);
@@ -292,11 +315,12 @@ function panelNone(verdict: PanelVerdictRecord, unstarted: boolean): Extract<Ver
 /**
  * Whether every blocking member that withheld a verdict never started (TP-5296), as the single reviewer's `notStarted` reads in
  * not-reviewed.ts: the round retries the review and is no failed round. One that started and said nothing keeps the round no-verdict.
+ * An agent that never registered, even re-spawned, never started either (TP-6831).
  */
-function withheldNeverStarted(plan: PanelIntent["plan"], members: readonly DispatchedMember[], results: readonly MemberResult[]): boolean {
+function withheldNeverStarted(plan: PanelIntent["plan"], outcomes: readonly MemberOutcome[], results: readonly MemberResult[]): boolean {
   const heard = new Set<string>(results.filter(({ result }) => result.kind === "verdict").map(({ shape }) => shape));
   const withheld = plan.members.filter((member) => member.blocking === true && !heard.has(member.shape));
-  const unstarted = new Set<string>(members.filter(({ dispatched }) => dispatched.kind === "none" && dispatched.notStarted === true).map(({ shape }) => shape));
+  const unstarted = new Set<string>(outcomes.filter((outcome) => outcome.unstarted).map(({ shape }) => shape));
   return withheld.length > 0 && withheld.every((member) => unstarted.has(member.shape));
 }
 
@@ -339,14 +363,15 @@ export async function panelReview(ctx: WorkflowContext, intent: PanelIntent, bas
   const members = await dispatchMembers(ctx, intent, base);
   const taken = await takeAwaited(ctx, target, awaiting, dispatchedReviewer, account, scope);
   if ("held" in taken) return taken.held;
-  const results = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...(await awaitMembers(ctx, target, members))];
+  const outcomes = await awaitMembers(ctx, target, members);
+  const results: MemberResult[] = [{ shape: "correctness" as const, result: memberResultOf(taken.awaited) }, ...outcomes.map(({ shape, result }) => ({ shape, result }))];
   const verdict = await panelVerdict(ctx, target, intent.plan, results, base);
   if (verdict.outcome === "FIX_FIRST") return panelFixFirst(target.head, verdict);
   const shortfall = proofShortfall(verdict, target.head, base.fixProof);
   if (shortfall) return shortfall;
   const retryable = ctx.iteration(`${PANEL_VERDICT_STEP}:${target.head}`) < MAX_NOT_STARTED_REVIEWS;
   const merged = panelMerge(verdict, results, memberProfiles(members));
-  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, members, results)), ...adversaryMerged(merged) };
+  if (verdict.outcome !== "MERGE" && taken.awaited.kind === "verdict") return { ...panelNone(verdict, retryable && withheldNeverStarted(intent.plan, outcomes, results)), ...adversaryMerged(merged) };
   const decided = await verdictOf(ctx, target, awaiting, dispatchedReviewer, taken.awaited, standing, adversaryAttest(intent, merged));
   return decided.kind === "MERGE" && verdict.outcome === "MERGE" ? { ...decided, panel: merged } : decided;
 }

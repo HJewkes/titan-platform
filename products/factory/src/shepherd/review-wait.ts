@@ -294,7 +294,8 @@ export async function startedSession<A extends { sessionId: string }>(roster: ()
   }
 }
 
-export function notStartedInTime(reviewer: string, rosterError: string | undefined): { kind: "none"; reason: string } {
+/** `unseen` marks an ask that went through with no session ever on the roster, so a panel can re-spawn that member once (TP-6831). */
+export function notStartedInTime(reviewer: string, rosterError: string | undefined): { kind: "none"; reason: string; unseen: true } {
   const cause = rosterError === undefined ? "" : `; the last roster read failed: ${rosterError}`;
-  return { kind: "none", reason: `reviewer ${reviewer} did not start one session in time${cause}` };
+  return { kind: "none", reason: `reviewer ${reviewer} did not start one session in time${cause}`, unseen: true };
 }
