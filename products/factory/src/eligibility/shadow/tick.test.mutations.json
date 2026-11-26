@@ -26,7 +26,7 @@
       "replace": "${count(\"wake\")} would-dispatch",
       "kills": [
         "dispatch shadow-tick writes one wake row, would-dispatch rows in dispatch order up to the free slots, and a refused row per refused task",
-        "dispatch shadow-tick a write lock on the run-wide default factory db leaves a test home's wake untouched (TP-6750)"
+        "dispatch shadow-tick a write lock on the factory db this process resolves leaves a test home's wake untouched (TP-6750)"
       ]
     }
   ]
