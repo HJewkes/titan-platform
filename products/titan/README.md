@@ -17,7 +17,13 @@ node products/titan/dist/bin.js host doctor [--json]
 node products/titan/dist/bin.js host services list [--json]
 node products/titan/dist/bin.js host services install [--dry-run]
 node products/titan/dist/bin.js config report [--json] [--to <https console origin> --token-file <path>]
+node products/titan/dist/bin.js heartbeat idle --idle 20m [--max 60m] [--lifetime 115m] --prompt <text> [--stop-cmd <command>] [--session <id>]
 ```
+
+`titan heartbeat idle` waits until a Claude Code session has gone `--idle` without a turn, read
+from its transcript tail, then prints one wake line and exits; run it with Bash
+`run_in_background` and `timeout: 7200000` so the exit wakes the session; it ends itself after `--lifetime` (default 115 min, under the 2 h background cap) with a re-arm line. A turn restarts the idle clock and a session
+mid-turn is never woken. See the [idle heartbeat guide](../../site/guides/idle-heartbeat.md).
 
 `titan config report` lists this host's config files as facts (present, mode, mtime, and for a
 file that is not secret its size and sha256), never their values. `--to` deposits the report

@@ -36,7 +36,7 @@ function isWorkflowOnly(repo: RepoSlug, files: readonly PrFile[]): boolean {
 }
 
 /** Any file list that cannot be read in full leaves the diff to the fix-proof run, as before. */
-async function workflowOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number): Promise<boolean> {
+export async function workflowOnlyDiff(port: GitHubPort, repo: RepoSlug, pr: number): Promise<boolean> {
   try {
     const files = await port.listPrFiles(repo, pr);
     return files.length < PR_FILES_CAP && isWorkflowOnly(repo, files);

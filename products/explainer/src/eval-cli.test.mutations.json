@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "eval l0 drops the camera track from the runL0 call",
+      "file": "products/explainer/src/eval-cli.ts",
+      "find": "runL0(script, layout, checks, timing, spine, camera)",
+      "replace": "runL0(script, layout, checks, timing, spine)",
+      "kills": [
+        "explainer eval l0 eval l0 with a camera track writes four camera rows; without it, none"
+      ]
+    }
+  ]
+}

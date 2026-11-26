@@ -37,11 +37,12 @@ export async function parkAgent(
   name: string,
   timeoutMs: number,
   options: ParkOptions = {},
+  signal?: AbortSignal,
 ): Promise<ParkResult> {
   if (!PEER_NAME_PATTERN.test(name)) {
     throw new DispatchError(`invalid peer name: '${name}'`);
   }
-  const result = await runAgentChatAsync(agentChatBinPath, buildParkArgs(name, options), timeoutMs);
+  const result = await runAgentChatAsync(agentChatBinPath, buildParkArgs(name, options), timeoutMs, undefined, signal);
   if (result.status !== 0) throw refusal("agent park", result);
   const lines = result.stdout.split("\n").map((line) => line.trim());
   return { name, lines: lines.filter((line) => line !== "") };

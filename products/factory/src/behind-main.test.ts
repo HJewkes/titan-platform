@@ -123,4 +123,14 @@ describe("behindMain against the deploy pacer's path filter", () => {
 
     expect(await read(`4\n${COMPARE_FILE_CAP}\n${files.join("\n")}\n`)).toBe(4);
   });
+
+  it("counts every commit for a dirty build, where a clean sha reads 0", async () => {
+    const stdout = "2\n2\ndocs/guide.md\npackages/explainer/src/a.ts\n";
+    const dirty = behindMain({ sha: "abc-dirty", exec: ok(stdout), closure });
+    const clean = behindMain({ sha: "abc", exec: ok(stdout), closure });
+    await Promise.all([dirty.refresh(), clean.refresh()]);
+
+    expect(dirty.status()).toBe(2);
+    expect(clean.status()).toBe(0);
+  });
 });

@@ -1,7 +1,7 @@
 import { appliedVersions, openDatabase, runMigrations, type Db } from "@titan-design/store-sqlite";
 import { describe, expect, it } from "vitest";
 import { holdSlotsMigration } from "./store-migrations.js";
-import { eventsSince, shepherdEventMigration } from "./events.js";
+import { appendEvent, eventsSince, reclassMarkMigration, repoFreezeKindsMigration, shepherdEventMigration } from "./events.js";
 import { FreezeStore, freezeCancelOnlyMigration, freezeFixPrMigration, freezeMigration } from "./freeze.js";
 import { OWNER_GATE_POLICY } from "./policy.js";
 import { ShepherdStore, holdReviewerMigration, holdSatisfiedMigration, shepherdMigration, sliceMigration } from "./store.js";
@@ -14,7 +14,7 @@ const STAMP = Date.parse("2026-01-01T00:00:00Z");
 
 function open(): { db: Db; store: ShepherdStore; freezes: FreezeStore } {
   const db = openDatabase(":memory:");
-  runMigrations(db, [shepherdMigration(4), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), holdSlotsMigration(19), freezeFixPrMigration(23)]);
+  runMigrations(db, [shepherdMigration(4), freezeMigration(6), sliceMigration(8), holdReviewerMigration(9), holdSatisfiedMigration(11), freezeCancelOnlyMigration(12), shepherdEventMigration(16), holdSlotsMigration(19), freezeFixPrMigration(23), reclassMarkMigration(25)]);
   const store = new ShepherdStore(db, () => STAMP);
   store.register({ repo: REPO, pr: 7, runId: "run-1", task: "demo/1", implementer: "impl-a", policy: OWNER_GATE_POLICY });
   return { db, store, freezes: new FreezeStore(db, () => STAMP) };
@@ -134,5 +134,16 @@ describe("shepherd event history", () => {
 
     expect(runMigrations(db, [shepherdMigration(4), shepherdEventMigration(16)])).toEqual([]);
     expect(appliedVersions(db)).toContain(16);
+  });
+
+  it("keeps earlier rows through the repo-freeze kinds migration and then accepts the new kinds", () => {
+    const { db, store } = open();
+    store.hold("run-1", "r1", undefined, { actor: "coord" });
+
+    runMigrations(db, [repoFreezeKindsMigration(55)]);
+    appendEvent(db, { repo: REPO, kind: "repo-freeze", at: "2026-01-01T00:00:00.000Z", actor: "coord", reason: "r" });
+    appendEvent(db, { repo: REPO, kind: "repo-unfreeze", at: "2026-01-01T00:00:01.000Z", actor: "coord", reason: "r" });
+
+    expect(eventsSince(db).map((event) => [event.kind, event.runId])).toEqual([["hold", "run-1"], ["repo-freeze", null], ["repo-unfreeze", null]]);
   });
 });

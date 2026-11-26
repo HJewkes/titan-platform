@@ -20,7 +20,7 @@ export interface RewriteDeps {
   /** The config the harness was built from; the report names it. */
   judge: JudgeConfig;
   rounds?: number;
-  /** Lets a sentence of 26 to 32 words through the guard and Q-V9; without it the plan stays under the plain cap. */
+  /** Speech-vet's verdict on a sentence between the Q-V9 caps; without it the plan stays under the plain cap. */
   speechClean?: SpeechVerdict;
   /** Passed to speech-vet's guard for each beat. */
   guard?: BeatGuardOptions["guard"];

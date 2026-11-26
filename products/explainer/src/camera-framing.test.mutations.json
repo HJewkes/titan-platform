@@ -4,8 +4,8 @@
     {
       "name": "key rows ignore the caption keep-out line",
       "file": "products/explainer/src/camera-framing.ts",
-      "find": "!within(projectBox(key.box, s.camera), CAPTION_KEEP_OUT)",
-      "replace": "!within(projectBox(key.box, s.camera), 1)",
+      "find": "!within(projectBox(key.box, s.box), CAPTION_KEEP_OUT)",
+      "replace": "!within(projectBox(key.box, s.box), 1)",
       "kills": [
         "camera framing key boxes fails a key that dips into the caption band at its sample time"
       ]
@@ -40,8 +40,8 @@
     {
       "name": "a partly framed reveal object counts as seen",
       "file": "products/explainer/src/camera-framing.ts",
-      "find": "s.t < reveal.atS && within(projectBox(reveal.box, s.camera), 1)",
-      "replace": "s.t < reveal.atS && projectBox(reveal.box, s.camera).x < 1",
+      "find": "s.t < reveal.atS && within(projectBox(reveal.box, s.box), 1)",
+      "replace": "s.t < reveal.atS && projectBox(reveal.box, s.box).x < 1",
       "kills": [
         "camera framing reveals passes a reveal object only partly in frame before its cue"
       ]

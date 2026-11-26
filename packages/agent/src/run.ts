@@ -26,6 +26,7 @@ export async function runAgent<T = string>(
 ): Promise<AgentRunResult<T>> {
   assertBudgets(config);
   if (config.harness === "claude-print") assertClaudePrintConfig(config);
+  else if (config.images?.length) throw new TypeError("images is supported only by the claude-print harness");
   const now = deps.now ?? Date.now;
   const startedAt = now();
 

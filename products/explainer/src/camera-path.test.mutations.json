@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the camera-path check is not registered at L0",
+      "file": "products/explainer/src/eval-l0.ts",
+      "find": "  cameraPathCheck,\n",
+      "replace": "",
+      "kills": [
+        "camera-path rows at L0 a run with a camera track reports all four rows"
+      ]
+    },
+    {
+      "name": "a reveal window starts at its cue instead of its beat's start",
+      "file": "products/explainer/src/camera-path.ts",
+      "find": "fromS: s.startS, atS: e.atS",
+      "replace": "fromS: e.atS, atS: e.atS",
+      "kills": [
+        "camera-path track from a map timeline a reveal is checked from its beat's start up to its cue"
+      ]
+    }
+  ]
+}

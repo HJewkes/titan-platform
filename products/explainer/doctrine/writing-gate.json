@@ -3,6 +3,11 @@
   "note": "TP-5721 and TP-5841. Thresholds and severities of the writing gate rows (eval l0 and eval writing) and the owner's report-only overrides. Bands are the writing lab's (sources/writing-lab-2026-11, WORKFLOW.md and DECOMPOSITION.md); human FPRs are the TP-5721 S1 calibration over the lab's creator-punctuated human scripts and talks. Severity is error, warning or report-only; a report-only row prints its value and never fails.",
   "minWords": 150,
   "longWords": 30,
+  "sentence-cap": {
+    "plainMax": 25,
+    "vettedMax": 62,
+    "evidence": "Q-V9, a TTS guardrail and never a target. Owner round tp5721-qv9-sentence-length-r1 (2026-11-17, option A): a sentence of 26 words up to the human 99th percentile is allowed with a hand vet, and one above it is an error; this supersedes owner decision 517's error above 25 (26 to 32 vetted). A sentence of plainMax + 1 to vettedMax words fails only when speech-vet runs and finds it unclean to speak; without speech-vet it passes pending a hand vet. vettedMax is the per-sentence p99 of the TP-5721 S1 human set on the repo segmenter: 62 words over 27,756 sentences of 196 creator-punctuated scripts and talks (p95 42; scripts alone p99 61). E4 pieces' longest sentences are 43 and 41 words."
+  },
   "gate": {
     "short-register": {
       "severity": "error",

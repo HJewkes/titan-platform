@@ -73,6 +73,20 @@ describe("readCodexObservations", () => {
     ]);
   });
 
+  it("emits one canonical message when the canonical message precedes its projection", async () => {
+    const projectionIndex = records.findIndex((record) => objectAt(record, "payload").type === "agent_message" && objectAt(record, "payload").message === "Working.");
+    const swapped = records.splice(projectionIndex, 2);
+    records.splice(projectionIndex, 0, defined(swapped[1]), defined(swapped[0]));
+    writeFileSync(filePath, renderCodexRollout(records), "utf8");
+
+    const { observations } = await collect(source);
+    const working = observations.filter(
+      (observation) => observation.kind === "message" && observation.content.map((part) => part.text).join("\n") === "Working.",
+    );
+
+    expect(working.map((message) => message.kind === "message" && message.representation)).toEqual(["canonical"]);
+  });
+
   it("links interleaved tool results by conversation-scoped call IDs", async () => {
     const { observations } = await collect(source);
     const calls = observations.filter((observation) => observation.kind === "tool_call");
@@ -162,6 +176,21 @@ describe("readCodexObservations", () => {
     const second = await collect(source, { from: first.done.resumeBoundary });
 
     expect(first.done.resumeBoundary.byteOffset).toBe(codexOffsetAfter(records, 3));
+    expect(second.done.restartedFromZero).toBe(false);
+    expect(sortedById([...first.observations, ...second.observations])).toEqual(sortedById(full.observations));
+  });
+
+  it("converges across a chunk ending between a canonical message and its later projection", async () => {
+    const projectionIndex = records.findIndex((record) => objectAt(record, "payload").type === "agent_message" && objectAt(record, "payload").message === "Working.");
+    const swapped = records.splice(projectionIndex, 2);
+    records.splice(projectionIndex, 0, defined(swapped[1]), defined(swapped[0]));
+    writeFileSync(filePath, renderCodexRollout(records), "utf8");
+    const split = codexOffsetAfter(records, projectionIndex + 1);
+
+    const full = await collect(source);
+    const first = await collect(source, { untilByteOffset: split });
+    const second = await collect(source, { from: first.done.resumeBoundary });
+
     expect(second.done.restartedFromZero).toBe(false);
     expect(sortedById([...first.observations, ...second.observations])).toEqual(sortedById(full.observations));
   });

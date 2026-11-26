@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "mutations": [
+    {
+      "name": "the top findings are not printed",
+      "file": "products/explainer/src/eval-sheet-cli.ts",
+      "find": "...result.score.top.map((line, i) =>",
+      "replace": "...[].map((line: string, i: number) =>",
+      "kills": [
+        "explainer eval sheet a sheet dir scores and prints the top three"
+      ]
+    },
+    {
+      "name": "a score under the minimum is not enforced",
+      "file": "products/explainer/src/eval-sheet-cli.ts",
+      "find": "(flags.gate || flags.minOverall !== undefined) && score.overall",
+      "replace": "false && score.overall",
+      "kills": [
+        "explainer eval sheet a run below --min-overall exits 1"
+      ]
+    },
+    {
+      "name": "a missing cells.json is read as an empty set",
+      "file": "products/explainer/src/eval-sheet-cli.ts",
+      "find": "raw = readJson(file);",
+      "replace": "raw = { sheets: [{ file: \"sheet-one.png\" }], cells: [] };",
+      "kills": [
+        "explainer eval sheet a missing cells.json is a usage error"
+      ]
+    },
+    {
+      "name": "an untrusted run still exits 0",
+      "file": "products/explainer/src/eval-sheet-cli.ts",
+      "find": "return result.trusted && !enforcedFailure(",
+      "replace": "return !enforcedFailure(",
+      "kills": [
+        "explainer eval sheet an untrusted run exits 1 and says why"
+      ]
+    }
+  ]
+}

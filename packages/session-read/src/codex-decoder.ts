@@ -13,6 +13,7 @@ import type {
   SessionFormatDecoder,
   SessionSourceDescriptor,
   SourceEvidence,
+  SourceLineEvidence,
   SourceTextLocator,
 } from "./normalized.js";
 import { asObject, booleanOrNull, str, type Json } from "./text.js";
@@ -30,6 +31,15 @@ import {
   validateCodexDescriptor,
   type CodexMessage,
 } from "./codex-values.js";
+
+interface PendingCodexProjection {
+  role: "user" | "assistant";
+  text: string;
+  line: SourceLineEvidence;
+  timestamp: string | null;
+  path: readonly (string | number)[];
+  boundary: ResumeBoundary;
+}
 
 export const CODEX_DECODER_ID = "codex-rollout";
 export const CODEX_CHECKPOINT_VERSION = "1";
@@ -61,7 +71,7 @@ class CodexContext {
   private activeTurnId: string | null = null;
   private parentThreadId: string | null = null;
   private readonly turnModels = new Map<string, string>();
-  private readonly projections = new CodexProjectionBuffer();
+  private readonly projections = new CodexProjectionBuffer<PendingCodexProjection>();
   private readonly usage: CodexUsageDecoder;
 
   constructor(
@@ -73,7 +83,7 @@ class CodexContext {
   }
 
   get pendingBoundary(): ResumeBoundary | null {
-    return this.projections.boundary;
+    return this.projections.first()?.boundary ?? null;
   }
 
   handle(line: LocatedSourceLine, before: ResumeBoundary): void {
@@ -148,7 +158,7 @@ class CodexContext {
 
   private canonicalMessage(message: CodexMessage): void {
     const text = message.parts.map((part) => part.text).join("\n");
-    this.projections.match(message.role, text);
+    this.projections.addCanonical(message.role, text);
     const base = this.base(["payload"]);
     const itemId = str(this.payload, "id");
     this.observe({
@@ -166,7 +176,7 @@ class CodexContext {
     const text = str(this.payload, "message") ?? str(this.payload, "text");
     if (!text) return this.unknown(`event_msg.${subtype}`, this.payload, ["payload"]);
     const path = ["payload", str(this.payload, "message") ? "message" : "text"] as const;
-    this.projections.add({ role, text, line: this.line.evidence, timestamp: this.timestamp(), path, boundary: before });
+    this.projections.addProjection(role, text, { role, text, line: this.line.evidence, timestamp: this.timestamp(), path, boundary: before });
   }
 
   private flushProjectedMessages(): void {
